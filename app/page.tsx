@@ -5,8 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Plus, AlertTriangle, RefreshCw } from "lucide-react";
 
 // Tự kết nối trực tiếp, không phụ thuộc file ngoài
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Pig {
