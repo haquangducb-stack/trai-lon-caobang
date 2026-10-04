@@ -78,10 +78,6 @@ export default function FarmApp() {
   const [editingPig, setEditingPig] = useState<Pig | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Modal Thêm việc thủ công
-  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "", category: "GENERAL" });
-
   // Input cấu hình cài đặt
   const [newBreedInput, setNewBreedInput] = useState("");
   const [newStageInput, setNewStageInput] = useState("");
@@ -173,7 +169,7 @@ export default function FarmApp() {
   const boarList = pigs.filter(isBoar);
   const meatList = pigs.filter(isMeat);
 
-  // QUẢN LÝ LỢN CON THEO LÔ (Active Litters)
+  // QUẢN LÝ LỢN CON THEO LÔ
   const activeLitters = litters.filter((lit) => {
     const noteStr = (lit.notes || "").toLowerCase();
     const stStr = (lit.status || "").toLowerCase();
@@ -191,7 +187,7 @@ export default function FarmApp() {
   const meatCount = meatList.length;
   const totalCount = sowCount + boarCount + meatCount + totalPigletsCount;
 
-  // ENGINE CHUYÊN GIA THÚ Y 20 NĂM: TỰ ĐỘNG TÍNH TOÁN LỊCH KỸ THUẬT & VACCINE
+  // ENGINE CHUYÊN GIA THÚ Y: TỰ ĐỘNG TÍNH TOÁN LỊCH KỸ THUẬT & VACCINE
   const fullTasks = useMemo(() => {
     const autoList: FarmTask[] = [];
     const today = new Date();
@@ -207,12 +203,12 @@ export default function FarmApp() {
       return Math.floor((today.getTime() - d.getTime()) / (1000 * 3600 * 24));
     };
 
-    // 1. QUY TRÌNH NÁI PHỐI & MANG THAI (Theo bảng inseminations)
+    // 1. QUY TRÌNH NÁI PHỐI & MANG THAI
     inseminations.forEach((ins) => {
       if (!ins.mating_date) return;
       const daysAfterMating = diffDays(ins.mating_date);
 
-      // A. Kiểm tra lốc chu kỳ 1 (Ngày 18 - 22)
+      // Kiểm tra lốc chu kỳ 1 (Ngày 18 - 22)
       if (daysAfterMating >= 16 && daysAfterMating <= 25) {
         autoList.push({
           id: `auto-loc1-${ins.id}`,
@@ -225,7 +221,7 @@ export default function FarmApp() {
         });
       }
 
-      // B. Khám thai / Siêu âm (Ngày 38 - 42)
+      // Khám thai / Siêu âm (Ngày 38 - 42)
       if (daysAfterMating >= 35 && daysAfterMating <= 45) {
         autoList.push({
           id: `auto-thai2-${ins.id}`,
@@ -238,7 +234,7 @@ export default function FarmApp() {
         });
       }
 
-      // C. Nái chửa ngày 85: Tiêm phòng E.Coli ngừa tiêu chảy phân trắng lợn con
+      // Nái chửa ngày 85: Tiêm phòng E.Coli ngừa tiêu chảy phân trắng
       if (daysAfterMating >= 80 && daysAfterMating <= 90) {
         autoList.push({
           id: `auto-ecoli-${ins.id}`,
@@ -251,7 +247,7 @@ export default function FarmApp() {
         });
       }
 
-      // D. Nái ngày 107: Chuyển lên chuồng đẻ & giảm cám
+      // Nái ngày 107: Chuyển lên chuồng đẻ & giảm cám
       if (daysAfterMating >= 104 && daysAfterMating <= 112) {
         autoList.push({
           id: `auto-chuongde-${ins.id}`,
@@ -264,7 +260,7 @@ export default function FarmApp() {
         });
       }
 
-      // E. Dự đẻ (Ngày 114)
+      // Dự đẻ (Ngày 114)
       if (daysAfterMating >= 110 && daysAfterMating <= 118) {
         autoList.push({
           id: `auto-dude-${ins.id}`,
@@ -278,7 +274,7 @@ export default function FarmApp() {
       }
     });
 
-    // 2. QUY TRÌNH THÚ Y & VACCINE LỢN CON THEO LÔ (Theo activeLitters)
+    // 2. QUY TRÌNH THÚ Y & VACCINE LỢN CON THEO LÔ
     activeLitters.forEach((lit) => {
       if (!lit.farrow_date) return;
       const ageDays = diffDays(lit.farrow_date);
@@ -309,7 +305,7 @@ export default function FarmApp() {
         });
       }
 
-      // Ngày 14: Tiêm Tai xanh (PRRS) nhược độc
+      // Ngày 14: Tiêm Tai xanh (PRRS)
       if (ageDays >= 12 && ageDays <= 18) {
         autoList.push({
           id: `auto-prrs-${lit.id}`,
@@ -354,7 +350,6 @@ export default function FarmApp() {
     sowList.forEach((sow) => {
       const st = normalize(sow.stage);
       if (st.includes("hau bi") || st.includes("cho phoi")) {
-        // Tự nhắc kiểm tra chịu đực hàng ngày
         autoList.push({
           id: `auto-heat-${sow.id}`,
           title: `[THEO DÕI ĐỘNG DỤC] Ép đực dò nái kiểm tra chịu đực: ${sow.ear_tag} (Ô: ${sow.current_pen_code || "—"})`,
@@ -367,7 +362,6 @@ export default function FarmApp() {
       }
     });
 
-    // Hợp nhất danh sách việc tự động và việc thủ công trong database
     return [...autoList, ...dbTasks];
   }, [inseminations, activeLitters, sowList, dbTasks]);
 
@@ -417,34 +411,12 @@ export default function FarmApp() {
     fetchData();
   };
 
-  // Thêm việc mới thủ công
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTask.title.trim()) return;
-
-    const { error } = await supabase.from("farm_tasks").insert([
-      {
-        title: newTask.title.trim(),
-        due_date: newTask.due_date,
-        related_tag: newTask.related_tag.trim() || null,
-        category: newTask.category
-      }
-    ]);
-
-    if (!error) {
-      setShowAddTaskModal(false);
-      setNewTask({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "", category: "GENERAL" });
-      fetchData();
-    }
-  };
-
   const toggleTask = async (task: FarmTask) => {
     if (task.is_auto) {
       if (task.category === "WEAN") {
         alert("Để hoàn thành việc này, hãy vào phân hệ LỢN CON và bấm 'Xác nhận cai sữa'!");
         return;
       }
-      // Lưu task tự động này vào db dạng đã hoàn thành
       await supabase.from("farm_tasks").insert([
         {
           title: task.title,
@@ -504,165 +476,227 @@ export default function FarmApp() {
   );
 
   return (
-    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative" }}>
+    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
       
-      {/* HEADER */}
-      <header style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: 0, zIndex: 30 }}>
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", fontSize: "22px", lineHeight: "1" }}
-        >
-          ☰
-        </button>
-        <h1 style={{ fontSize: "18px", fontWeight: "900", margin: 0, letterSpacing: "0.5px", color: "#1e1b4b" }}>
-          {currentMenu === "OVERVIEW" && "TỔNG QUAN"}
-          {currentMenu === "SOW" && "QUẢN LÝ NÁI"}
-          {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
-          {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
-          {currentMenu === "MEAT" && "LỢN THỊT"}
-          {currentMenu === "SEARCH" && "TRA CỨU"}
-          {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
-        </h1>
-      </header>
+      <div>
+        {/* HEADER */}
+        <header style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: 0, zIndex: 30 }}>
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", fontSize: "22px", lineHeight: "1" }}
+          >
+            ☰
+          </button>
+          <h1 style={{ fontSize: "18px", fontWeight: "900", margin: 0, letterSpacing: "0.5px", color: "#1e1b4b" }}>
+            {currentMenu === "OVERVIEW" && "TỔNG QUAN"}
+            {currentMenu === "SOW" && "QUẢN LÝ NÁI"}
+            {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
+            {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
+            {currentMenu === "MEAT" && "LỢN THỊT"}
+            {currentMenu === "SEARCH" && "TRA CỨU"}
+            {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
+          </h1>
+        </header>
 
-      {/* DRAWER MENU */}
-      {isSidebarOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
-          <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
-          <div style={{ width: "280px", backgroundColor: "#ffffff", height: "100%", zIndex: 101, display: "flex", flexDirection: "column", padding: "20px 14px", boxShadow: "4px 0 16px rgba(0,0,0,0.1)" }}>
-            <div style={{ padding: "12px 14px 20px 14px", borderBottom: "1px solid #f1f5f9" }}>
-              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "900", color: "#5b21b6", letterSpacing: "1px" }}>
-                APPTRAILON
-              </h2>
+        {/* DRAWER MENU */}
+        {isSidebarOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
+            <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
+            <div style={{ width: "280px", backgroundColor: "#ffffff", height: "100%", zIndex: 101, display: "flex", flexDirection: "column", padding: "20px 14px", boxShadow: "4px 0 16px rgba(0,0,0,0.1)" }}>
+              <div style={{ padding: "12px 14px 20px 14px", borderBottom: "1px solid #f1f5f9" }}>
+                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "900", color: "#5b21b6", letterSpacing: "1px" }}>
+                  APPTRAILON
+                </h2>
+              </div>
+              <nav style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "16px" }}>
+                {[
+                  { key: "OVERVIEW", label: "Tổng quan", icon: "📊" },
+                  { key: "SOW", label: "Quản lý nái", icon: "🐖" },
+                  { key: "BOAR", label: "Quản lý đực", icon: "🐗" },
+                  { key: "PIGLET", label: "Lợn con (Theo lô)", icon: "🍼" },
+                  { key: "MEAT", label: "Lợn thịt", icon: "🥩" },
+                  { key: "SEARCH", label: "Tra cứu cá thể", icon: "🔍" },
+                  { key: "SETTINGS", label: "Cài đặt danh mục", icon: "⚙️" },
+                ].map((item) => {
+                  const isActive = currentMenu === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => {
+                        setCurrentMenu(item.key as any);
+                        setSubFilter("ALL");
+                        setIsSidebarOpen(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        border: "none",
+                        backgroundColor: isActive ? "#ede9fe" : "transparent",
+                        color: isActive ? "#5b21b6" : "#334155",
+                        fontWeight: isActive ? "800" : "600",
+                        fontSize: "15px",
+                        cursor: "pointer",
+                        textAlign: "left"
+                      }}
+                    >
+                      <span>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
-            <nav style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "16px" }}>
-              {[
-                { key: "OVERVIEW", label: "Tổng quan", icon: "📊" },
-                { key: "SOW", label: "Quản lý nái", icon: "🐖" },
-                { key: "BOAR", label: "Quản lý đực", icon: "🐗" },
-                { key: "PIGLET", label: "Lợn con (Theo lô)", icon: "🍼" },
-                { key: "MEAT", label: "Lợn thịt", icon: "🥩" },
-                { key: "SEARCH", label: "Tra cứu cá thể", icon: "🔍" },
-                { key: "SETTINGS", label: "Cài đặt danh mục", icon: "⚙️" },
-              ].map((item) => {
-                const isActive = currentMenu === item.key;
-                return (
+          </div>
+        )}
+
+        {/* 1. MÀN HÌNH TỔNG QUAN */}
+        {currentMenu === "OVERVIEW" && (
+          <div style={{ padding: "16px" }}>
+            
+            {/* Hộp Tổng Đàn */}
+            <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
+              <span style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b" }}>
+                TỔNG ĐÀN: {totalCount} con
+              </span>
+            </div>
+
+            {/* 4 Thẻ Màu */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
+              <div onClick={() => { setCurrentMenu("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
+                <div style={{ fontSize: "12px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#e11d48", margin: "2px 0" }}>{sowCount} con</div>
+                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
+                  <div>• Chửa: <strong>{sowChua}</strong></div>
+                  <div>• Nuôi con: <strong>{sowNuoiCon}</strong></div>
+                  <div>• Chờ phối: <strong>{sowChoPhoi}</strong></div>
+                </div>
+              </div>
+
+              <div onClick={() => { setCurrentMenu("BOAR"); setSubFilter("ALL"); }} style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
+                <div style={{ fontSize: "12px", fontWeight: "800", color: "#2563eb" }}>ĐỰC GIỐNG</div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb", margin: "2px 0" }}>{boarCount} con</div>
+                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
+                  <div>• Đang khai thác tinh</div>
+                </div>
+              </div>
+
+              <div onClick={() => { setCurrentMenu("PIGLET"); }} style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
+                <div style={{ fontSize: "12px", fontWeight: "800", color: "#16a34a" }}>LỢN CON</div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#16a34a", margin: "2px 0" }}>{totalPigletsCount} con</div>
+                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
+                  <div>• Theo {activeLitters.length} lô mẹ</div>
+                  <div>• Đang bú sữa</div>
+                </div>
+              </div>
+
+              <div onClick={() => { setCurrentMenu("MEAT"); }} style={{ backgroundColor: "#f6f1f2", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
+                <div style={{ fontSize: "12px", fontWeight: "800", color: "#854d0e" }}>LỢN THỊT</div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#854d0e", margin: "2px 0" }}>{meatCount} con</div>
+                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
+                  <div>• Đang vỗ béo</div>
+                </div>
+              </div>
+            </div>
+
+            {/* DANH SÁCH VIỆC CẦN LÀM & LỊCH THÚ Y TỰ ĐỘNG */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
+                  LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t.is_completed).length})
+                </h3>
+              </div>
+
+              {/* Bộ lọc loại công việc */}
+              <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+                {[
+                  { id: "ALL", label: "Tất cả" },
+                  { id: "REPRO", label: "Sinh sản & Động dục" },
+                  { id: "VET", label: "Vaccine & Thú y" },
+                  { id: "WEAN", label: "Cai sữa" },
+                ].map((tab) => (
                   <button
-                    key={item.key}
-                    onClick={() => {
-                      setCurrentMenu(item.key as any);
-                      setSubFilter("ALL");
-                      setIsSidebarOpen(false);
-                    }}
+                    key={tab.id}
+                    onClick={() => setTaskCategoryFilter(tab.id)}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      padding: "12px 16px",
-                      borderRadius: "12px",
+                      padding: "6px 10px",
+                      borderRadius: "16px",
                       border: "none",
-                      backgroundColor: isActive ? "#ede9fe" : "transparent",
-                      color: isActive ? "#5b21b6" : "#334155",
-                      fontWeight: isActive ? "800" : "600",
-                      fontSize: "15px",
+                      fontSize: "11px",
+                      fontWeight: "700",
                       cursor: "pointer",
-                      textAlign: "left"
+                      whiteSpace: "nowrap",
+                      backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0",
+                      color: taskCategoryFilter === tab.id ? "#fff" : "#475569"
                     }}
                   >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
+                    {tab.label}
                   </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-      )}
-
-      {/* 1. MÀN HÌNH TỔNG QUAN */}
-      {currentMenu === "OVERVIEW" && (
-        <div style={{ padding: "16px" }}>
-          
-          {/* Hộp Tổng Đàn */}
-          <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
-            <span style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b" }}>
-              TỔNG ĐÀN: {totalCount} con
-            </span>
-          </div>
-
-          {/* 4 Thẻ Màu */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
-            <div onClick={() => { setCurrentMenu("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
-              <div style={{ fontSize: "12px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
-              <div style={{ fontSize: "24px", fontWeight: "900", color: "#e11d48", margin: "2px 0" }}>{sowCount} con</div>
-              <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                <div>• Chửa: <strong>{sowChua}</strong></div>
-                <div>• Nuôi con: <strong>{sowNuoiCon}</strong></div>
-                <div>• Chờ phối: <strong>{sowChoPhoi}</strong></div>
+                ))}
               </div>
-            </div>
 
-            <div onClick={() => { setCurrentMenu("BOAR"); setSubFilter("ALL"); }} style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
-              <div style={{ fontSize: "12px", fontWeight: "800", color: "#2563eb" }}>ĐỰC GIỐNG</div>
-              <div style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb", margin: "2px 0" }}>{boarCount} con</div>
-              <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                <div>• Đang khai thác tinh</div>
-              </div>
-            </div>
-
-            <div onClick={() => { setCurrentMenu("PIGLET"); }} style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
-              <div style={{ fontSize: "12px", fontWeight: "800", color: "#16a34a" }}>LỢN CON</div>
-              <div style={{ fontSize: "24px", fontWeight: "900", color: "#16a34a", margin: "2px 0" }}>{totalPigletsCount} con</div>
-              <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                <div>• Theo {activeLitters.length} lô mẹ</div>
-                <div>• Đang bú sữa</div>
-              </div>
-            </div>
-
-            <div onClick={() => { setCurrentMenu("MEAT"); }} style={{ backgroundColor: "#f6f1f2", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
-              <div style={{ fontSize: "12px", fontWeight: "800", color: "#854d0e" }}>LỢN THỊT</div>
-              <div style={{ fontSize: "24px", fontWeight: "900", color: "#854d0e", margin: "2px 0" }}>{meatCount} con</div>
-              <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                <div>• Đang vỗ béo</div>
-              </div>
+              {filteredTasks.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "16px", color: "#94a3b8", fontSize: "13px" }}>Không có lịch việc trong mục này.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {filteredTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      onClick={() => toggleTask(task)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        cursor: "pointer",
+                        background: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#fef2f2" : "#fff",
+                        padding: "10px 14px",
+                        borderRadius: "10px",
+                        border: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "1px solid #fecaca" : "1px solid #f1e5f0"
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "700", color: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>
+                          {task.title}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                          Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "20px" }}>{task.is_completed ? "🟢" : "⚪"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+        )}
 
-          {/* DANH SÁCH VIỆC CẦN LÀM & LỊCH THÚ Y TỰ ĐỘNG */}
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
-                LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t.is_completed).length})
-              </h3>
-              <button
-                onClick={() => setShowAddTaskModal(true)}
-                style={{ padding: "5px 10px", borderRadius: "8px", background: "#0f172a", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-              >
-                + Thêm Việc
-              </button>
-            </div>
-
-            {/* Bộ lọc loại công việc */}
-            <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+        {/* 2. QUẢN LÝ NÁI */}
+        {currentMenu === "SOW" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto", paddingBottom: "4px" }}>
               {[
-                { id: "ALL", label: "Tất cả" },
-                { id: "REPRO", label: "Sinh sản & Động dục" },
-                { id: "VET", label: "Vaccine & Thú y" },
-                { id: "WEAN", label: "Cai sữa" },
+                { id: "ALL", label: `Tất cả (${sowCount})` },
+                { id: "CHUA", label: `Đang chửa (${sowChua})` },
+                { id: "NUOICON", label: `Nuôi con (${sowNuoiCon})` },
+                { id: "CHOPHOI", label: `Chờ phối (${sowChoPhoi})` },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setTaskCategoryFilter(tab.id)}
+                  onClick={() => setSubFilter(tab.id)}
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: "16px",
+                    padding: "8px 12px",
+                    borderRadius: "20px",
                     border: "none",
-                    fontSize: "11px",
+                    fontSize: "12px",
                     fontWeight: "700",
                     cursor: "pointer",
                     whiteSpace: "nowrap",
-                    backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0",
-                    color: taskCategoryFilter === tab.id ? "#fff" : "#475569"
+                    backgroundColor: subFilter === tab.id ? "#db2777" : "#fff",
+                    color: subFilter === tab.id ? "#fff" : "#475569",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
                   }}
                 >
                   {tab.label}
@@ -670,265 +704,206 @@ export default function FarmApp() {
               ))}
             </div>
 
-            {filteredTasks.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "16px", color: "#94a3b8", fontSize: "13px" }}>Không có lịch việc trong mục này.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {sowList.filter((p) => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
+            </div>
+          </div>
+        )}
+
+        {/* 3. QUẢN LÝ ĐỰC */}
+        {currentMenu === "BOAR" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>
+              ĐÀN ĐỰC GIỐNG ({boarCount} CON)
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {boarList.map(renderPigCard)}
+            </div>
+          </div>
+        )}
+
+        {/* 4. QUẢN LÝ LỢN CON THEO LÔ */}
+        {currentMenu === "PIGLET" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <span style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a" }}>
+                ĐANG NUÔI: {activeLitters.length} LÔ ({totalPigletsCount} CON)
+              </span>
+            </div>
+
+            {activeLitters.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px", background: "#fff", borderRadius: "12px", color: "#94a3b8" }}>
+                Hiện tại không có lô lợn con nào theo mẹ.
+              </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {filteredTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => toggleTask(task)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      background: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#fef2f2" : "#fff",
-                      padding: "10px 14px",
-                      borderRadius: "10px",
-                      border: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "1px solid #fecaca" : "1px solid #f1e5f0"
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "13px", fontWeight: "700", color: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>
-                        {task.title}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {activeLitters.map((lit) => {
+                  const sow = pigs.find((p) => p.ear_tag === lit.sow_ear_tag);
+                  const today = new Date();
+                  const fDate = new Date(lit.farrow_date);
+                  const ageDays = Math.floor((today.getTime() - fDate.getTime()) / (1000 * 3600 * 24));
+                  const isReadyWean = ageDays >= 24;
+
+                  return (
+                    <div
+                      key={lit.id}
+                      style={{
+                        backgroundColor: "#fff",
+                        borderRadius: "14px",
+                        padding: "16px",
+                        border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <span style={{ fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+                            Lô nái {lit.sow_ear_tag}
+                          </span>
+                          <span style={{ marginLeft: "8px", fontSize: "12px", color: "#64748b" }}>
+                            ({lit.litter_code})
+                          </span>
+                        </div>
+                        <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>
+                          {lit.alive_born} con sống
+                        </span>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                        Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`}
+
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "10px 0" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#f1f5f9", fontWeight: "600" }}>
+                          Chuồng mẹ: {sow?.current_pen_code || "Chưa rõ"}
+                        </span>
+                        <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: isReadyWean ? "#fff7ed" : "#f1f5f9", color: isReadyWean ? "#ea580c" : "#334155", fontWeight: "700" }}>
+                          {ageDays} ngày tuổi {isReadyWean && "🔔 (Sắp/Quá hạn cai sữa)"}
+                        </span>
                       </div>
+
+                      <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                        Ngày đẻ: <strong>{lit.farrow_date}</strong> | Hạn cai sữa: <strong>{lit.weaning_date}</strong>
+                      </div>
+
+                      <button
+                        onClick={() => handleWeanLitter(lit)}
+                        style={{
+                          width: "100%",
+                          padding: "9px",
+                          borderRadius: "8px",
+                          border: "none",
+                          backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
+                          color: "#fff",
+                          fontSize: "13px",
+                          fontWeight: "800",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ✓ Xác nhận Cai sữa đàn này
+                      </button>
                     </div>
-                    <div style={{ fontSize: "20px" }}>{task.is_completed ? "🟢" : "⚪"}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 2. QUẢN LÝ NÁI */}
-      {currentMenu === "SOW" && (
-        <div style={{ padding: "16px" }}>
-          <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto", paddingBottom: "4px" }}>
-            {[
-              { id: "ALL", label: `Tất cả (${sowCount})` },
-              { id: "CHUA", label: `Đang chửa (${sowChua})` },
-              { id: "NUOICON", label: `Nuôi con (${sowNuoiCon})` },
-              { id: "CHOPHOI", label: `Chờ phối (${sowChoPhoi})` },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setSubFilter(tab.id)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "20px",
-                  border: "none",
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  backgroundColor: subFilter === tab.id ? "#db2777" : "#fff",
-                  color: subFilter === tab.id ? "#fff" : "#475569",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {sowList.filter((p) => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
-          </div>
-        </div>
-      )}
-
-      {/* 3. QUẢN LÝ ĐỰC */}
-      {currentMenu === "BOAR" && (
-        <div style={{ padding: "16px" }}>
-          <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>
-            ĐÀN ĐỰC GIỐNG ({boarCount} CON)
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {boarList.map(renderPigCard)}
-          </div>
-        </div>
-      )}
-
-      {/* 4. QUẢN LÝ LỢN CON THEO LÔ */}
-      {currentMenu === "PIGLET" && (
-        <div style={{ padding: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-            <span style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a" }}>
-              ĐANG NUÔI: {activeLitters.length} LÔ ({totalPigletsCount} CON)
-            </span>
-          </div>
-
-          {activeLitters.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "24px", background: "#fff", borderRadius: "12px", color: "#94a3b8" }}>
-              Hiện tại không có lô lợn con nào theo mẹ.
+        {/* 5. LỢN THỊT */}
+        {currentMenu === "MEAT" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>
+              ĐÀN LỢN THỊT ({meatCount} CON)
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {activeLitters.map((lit) => {
-                const sow = pigs.find((p) => p.ear_tag === lit.sow_ear_tag);
-                const today = new Date();
-                const fDate = new Date(lit.farrow_date);
-                const ageDays = Math.floor((today.getTime() - fDate.getTime()) / (1000 * 3600 * 24));
-                const isReadyWean = ageDays >= 24;
-
-                return (
-                  <div
-                    key={lit.id}
-                    style={{
-                      backgroundColor: "#fff",
-                      borderRadius: "14px",
-                      padding: "16px",
-                      border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <span style={{ fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-                          Lô nái {lit.sow_ear_tag}
-                        </span>
-                        <span style={{ marginLeft: "8px", fontSize: "12px", color: "#64748b" }}>
-                          ({lit.litter_code})
-                        </span>
-                      </div>
-                      <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>
-                        {lit.alive_born} con sống
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "10px 0" }}>
-                      <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#f1f5f9", fontWeight: "600" }}>
-                        Chuồng mẹ: {sow?.current_pen_code || "Chưa rõ"}
-                      </span>
-                      <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: isReadyWean ? "#fff7ed" : "#f1f5f9", color: isReadyWean ? "#ea580c" : "#334155", fontWeight: "700" }}>
-                        {ageDays} ngày tuổi {isReadyWean && "🔔 (Sắp/Quá hạn cai sữa)"}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-                      Ngày đẻ: <strong>{lit.farrow_date}</strong> | Hạn cai sữa: <strong>{lit.weaning_date}</strong>
-                    </div>
-
-                    <button
-                      onClick={() => handleWeanLitter(lit)}
-                      style={{
-                        width: "100%",
-                        padding: "9px",
-                        borderRadius: "8px",
-                        border: "none",
-                        backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
-                        color: "#fff",
-                        fontSize: "13px",
-                        fontWeight: "800",
-                        cursor: "pointer"
-                      }}
-                    >
-                      ✓ Xác nhận Cai sữa đàn này
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 5. LỢN THỊT */}
-      {currentMenu === "MEAT" && (
-        <div style={{ padding: "16px" }}>
-          <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>
-            ĐÀN LỢN THỊT ({meatCount} CON)
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {meatList.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "20px", background: "#fff", borderRadius: "12px", color: "#94a3b8" }}>Chưa có lợn thịt.</div>
-            ) : (
-              meatList.map(renderPigCard)
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 6. TRA CỨU */}
-      {currentMenu === "SEARCH" && (
-        <div style={{ padding: "16px" }}>
-          <input
-            type="text"
-            placeholder="Gõ số tai, chuồng, giống..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "14px", boxSizing: "border-box", marginBottom: "14px" }}
-          />
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {pigs
-              .filter(p => !isIndividualPiglet(p))
-              .filter((p) => {
-                const q = searchQuery.toLowerCase();
-                return p.ear_tag?.toLowerCase().includes(q) || p.breed_id?.toLowerCase().includes(q) || p.current_pen_code?.toLowerCase().includes(q);
-              })
-              .map(renderPigCard)}
-          </div>
-        </div>
-      )}
-
-      {/* 7. CÀI ĐẶT DANH MỤC */}
-      {currentMenu === "SETTINGS" && (
-        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-            <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-              {config.breeds.map((b) => (
-                <span key={b} style={{ padding: "4px 10px", borderRadius: "20px", background: "#f1f5f9", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                  {b}
-                  <span onClick={() => saveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
-                </span>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input placeholder="Thêm giống mới..." value={newBreedInput} onChange={(e) => setNewBreedInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-              <button onClick={() => { if (newBreedInput.trim() && !config.breeds.includes(newBreedInput.trim())) { saveConfig({ ...config, breeds: [...config.breeds, newBreedInput.trim()] }); setNewBreedInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {meatList.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "20px", background: "#fff", borderRadius: "12px", color: "#94a3b8" }}>Chưa có lợn thịt.</div>
+              ) : (
+                meatList.map(renderPigCard)
+              )}
             </div>
           </div>
+        )}
 
-          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-            <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-              {config.stages.map((st) => (
-                <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                  {st}
-                  <span onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
-                </span>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input placeholder="Thêm trạng thái..." value={newStageInput} onChange={(e) => setNewStageInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-              <button onClick={() => { if (newStageInput.trim() && !config.stages.includes(newStageInput.trim())) { saveConfig({ ...config, stages: [...config.stages, newStageInput.trim()] }); setNewStageInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+        {/* 6. TRA CỨU */}
+        {currentMenu === "SEARCH" && (
+          <div style={{ padding: "16px" }}>
+            <input
+              type="text"
+              placeholder="Gõ số tai, chuồng, giống..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "14px", boxSizing: "border-box", marginBottom: "14px" }}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {pigs
+                .filter(p => !isIndividualPiglet(p))
+                .filter((p) => {
+                  const q = searchQuery.toLowerCase();
+                  return p.ear_tag?.toLowerCase().includes(q) || p.breed_id?.toLowerCase().includes(q) || p.current_pen_code?.toLowerCase().includes(q);
+                })
+                .map(renderPigCard)}
             </div>
           </div>
+        )}
 
-          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-            <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-              {config.pens.map((pen) => (
-                <span key={pen} style={{ padding: "4px 10px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                  {pen}
-                  <span onClick={() => saveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
-                </span>
-              ))}
+        {/* 7. CÀI ĐẶT DANH MỤC */}
+        {currentMenu === "SETTINGS" && (
+          <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+                {config.breeds.map((b) => (
+                  <span key={b} style={{ padding: "4px 10px", borderRadius: "20px", background: "#f1f5f9", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                    {b}
+                    <span onClick={() => saveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input placeholder="Thêm giống mới..." value={newBreedInput} onChange={(e) => setNewBreedInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
+                <button onClick={() => { if (newBreedInput.trim() && !config.breeds.includes(newBreedInput.trim())) { saveConfig({ ...config, breeds: [...config.breeds, newBreedInput.trim()] }); setNewBreedInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input placeholder="Mã ô chuồng..." value={newPenInput} onChange={(e) => setNewPenInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-              <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { saveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+                {config.stages.map((st) => (
+                  <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                    {st}
+                    <span onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input placeholder="Thêm trạng thái..." value={newStageInput} onChange={(e) => setNewStageInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
+                <button onClick={() => { if (newStageInput.trim() && !config.stages.includes(newStageInput.trim())) { saveConfig({ ...config, stages: [...config.stages, newStageInput.trim()] }); setNewStageInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+              </div>
+            </div>
+
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+                {config.pens.map((pen) => (
+                  <span key={pen} style={{ padding: "4px 10px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                    {pen}
+                    <span onClick={() => saveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input placeholder="Mã ô chuồng..." value={newPenInput} onChange={(e) => setNewPenInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
+                <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { saveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* FOOTER: KHOẢNG ĐỆM 1CM VÀ DÒNG CHỮ KÝ */}
+      <footer style={{ marginTop: "40px", paddingBottom: "24px", textAlign: "center" }}>
+        <p style={{ margin: 0, fontSize: "12px", fontWeight: "700", color: "#94a3b8", letterSpacing: "0.4px" }}>
+          Appweb Trại Lợn Nà Roác - NPT: Quang Dự
+        </p>
+      </footer>
 
       {/* MODAL SỬA CÁ THỂ VỚI DROPDOWN TOÀN DIỆN */}
       {editingPig && (
@@ -1041,68 +1016,6 @@ export default function FarmApp() {
                 <button type="submit" disabled={isSavingEdit} style={{ padding: "8px 18px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>
                   {isSavingEdit ? "Đang lưu..." : "Lưu Thay Đổi"}
                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL THÊM CÔNG VIỆC NHANH */}
-      {showAddTaskModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-              <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800" }}>Thêm Việc Cần Làm</h3>
-              <button onClick={() => setShowAddTaskModal(false)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer" }}>✕</button>
-            </div>
-            <form onSubmit={handleCreateTask} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>NỘI DUNG CÔNG VIỆC *</label>
-                <input
-                  required
-                  placeholder="Ví dụ: Tiêm sắt, tiêm dịch tả, đảo chuồng..."
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>PHÂN LOẠI</label>
-                  <select
-                    value={newTask.category}
-                    onChange={(e) => setNewTask({ ...newTask, category: e.target.value as any })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                  >
-                    <option value="REPRO">Sinh sản</option>
-                    <option value="VET">Vaccine & Thú y</option>
-                    <option value="WEAN">Cai sữa</option>
-                    <option value="GENERAL">Chung</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>HẠN XỬ LÝ</label>
-                  <input
-                    type="date"
-                    required
-                    value={newTask.due_date}
-                    onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>LIÊN QUAN ĐẾN SỐ TAI (TÙY CHỌN)</label>
-                <input
-                  placeholder="HL01, HL02..."
-                  value={newTask.related_tag}
-                  onChange={(e) => setNewTask({ ...newTask, related_tag: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" }}>
-                <button type="button" onClick={() => setShowAddTaskModal(false)} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
-                <button type="submit" style={{ padding: "8px 16px", borderRadius: "6px", background: "#0f172a", color: "#fff", border: "none", fontWeight: "700" }}>Tạo việc</button>
               </div>
             </form>
           </div>
