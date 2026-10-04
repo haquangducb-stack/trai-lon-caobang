@@ -898,26 +898,26 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* THANH ĐÁY CỐ ĐỊNH - ÉP SÁT MÉP PHẢI ĐỂ NÉ LOGO NETLIFY BÊN TRÁI */}
+      {/* THANH ĐÁY CỐ ĐỊNH - ÉP HẲN SANG BÊN TRÁI ĐỂ TRÁNH CỤC NETLIFY Ở BÊN PHẢI */}
       <footer
         style={{
           position: "fixed",
           bottom: 0,
           left: 0,
           right: 0,
-          height: "38px",
+          height: "36px",
           backgroundColor: "rgba(253, 248, 251, 0.95)",
           backdropFilter: "blur(6px)",
           borderTop: "1px solid #f1e5f0",
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-end", // Ép toàn bộ nội dung dạt hết về bên phải
-          paddingRight: "20px",        // Cách mép phải 20px cho thoáng mắt
-          zIndex: 999,                 // Nổi lên trên cùng
+          justifyContent: "flex-start", // ĐẨY HOÀN TOÀN SANG BÊN TRÁI
+          paddingLeft: "16px",          // CÁCH MÉP TRÁI 16PX
+          zIndex: 40,
           maxWidth: "480px",
           margin: "0 auto",
           boxSizing: "border-box",
-          pointerEvents: "none"        // Không chặn cảm ứng của màn hình
+          pointerEvents: "none"
         }}
       >
         <span
