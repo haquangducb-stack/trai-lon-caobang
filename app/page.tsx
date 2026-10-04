@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Plus, AlertTriangle, RefreshCw } from "lucide-react";
 
-// Tự kết nối trực tiếp, không phụ thuộc file ngoài
+// Tự fallback an toàn tránh lỗi lúc Vercel build
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -13,7 +13,7 @@ interface Pig {
   id: string;
   ear_tag: string;
   breed_id: string;
-  sex: "MALE" | "FEMALE";
+  sex: string;
   stage: string;
   status: string;
   current_pen_code: string;
@@ -35,16 +35,25 @@ export default function FarmApp() {
   const [inbreedingAlert, setInbreedingAlert] = useState<string | null>(null);
   const [savingMating, setSavingMating] = useState(false);
 
+  // Hàm nhận diện Lợn Cái linh hoạt (chấp nhận cả Cái, Nu, Female...)
+  const isFemale = (sex: string) => {
+    if (!sex) return false;
+    const s = sex.toLowerCase();
+    return s.includes("cái") || s.includes("cai") || s.includes("female") || s === "f";
+  };
+
+  // Hàm nhận diện Lợn Đực linh hoạt (chấp nhận cả Đực, Duc, Male...)
+  const isMale = (sex: string) => {
+    if (!sex) return false;
+    const s = sex.toLowerCase();
+    return s.includes("đực") || s.includes("duc") || s.includes("male") || s === "m";
+  };
+
   const fetchPigs = async () => {
     setLoading(true);
-    if (!supabaseUrl || !supabaseAnonKey) {
-      setLoading(false);
-      return;
-    }
     const { data, error } = await supabase
       .from("pigs")
       .select("*")
-      .eq("status", "ACTIVE")
       .order("created_at", { ascending: false });
 
     if (!error && data) {
@@ -57,6 +66,7 @@ export default function FarmApp() {
     fetchPigs();
   }, []);
 
+  // Kiểm tra trùng huyết / cận huyết
   useEffect(() => {
     if (!selectedSow || !selectedBoar) {
       setInbreedingAlert(null);
@@ -68,7 +78,7 @@ export default function FarmApp() {
 
     if (sow && boar) {
       if (sow.sire_ear_tag && sow.sire_ear_tag === boar.ear_tag) {
-        setInbreedingAlert("CẢNH BÁO NGUY HIỂM: Đực là BỐ của Nái!");
+        setInbreedingAlert("CẢNH BÁO NGUY HIỂM: Đực giống chính là BỐ của Nái!");
         return;
       }
       if (
@@ -82,6 +92,7 @@ export default function FarmApp() {
     }
   }, [selectedSow, selectedBoar, pigs]);
 
+  // Lưu phối giống và tự tạo lịch kiểm tra thai sau 21 ngày
   const handleSaveMating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSow || !selectedBoar) return;
@@ -105,7 +116,7 @@ export default function FarmApp() {
     if (!insemError) {
       await supabase
         .from("pigs")
-        .update({ stage: "DA_PHOI" })
+        .update({ stage: "Đã phối" })
         .eq("ear_tag", selectedSow);
 
       const taskDate = new Date(matingDate);
@@ -119,7 +130,7 @@ export default function FarmApp() {
         },
       ]);
 
-      alert("Ghi nhận phối thành công! Đã tự động sinh lịch kiểm tra thai sau 21 ngày.");
+      alert(`Ghi nhận phối thành công! Ngày dự đẻ: ${expectedFarrow}. Đã sinh lịch kiểm tra lốc sau 21 ngày.`);
       setShowMatingModal(false);
       setSelectedSow("");
       setSelectedBoar("");
@@ -130,26 +141,32 @@ export default function FarmApp() {
     setSavingMating(false);
   };
 
+  // Thống kê nhanh
   const totalPigs = pigs.length;
-  const totalSows = pigs.filter((p) => p.sex === "FEMALE").length;
-  const totalBoars = pigs.filter((p) => p.sex === "MALE").length;
-  const pregnantSows = pigs.filter((p) => p.stage === "CHUA" || p.stage === "DA_PHOI").length;
+  const totalSows = pigs.filter((p) => isFemale(p.sex)).length;
+  const totalBoars = pigs.filter((p) => isMale(p.sex)).length;
 
   const filteredPigs = pigs.filter((pig) => {
-    const matchSearch = pig.ear_tag.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchSearch = pig.ear_tag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        pig.breed_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         pig.current_pen_code?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchSex = filterSex === "ALL" || pig.sex === filterSex;
+    
+    let matchSex = true;
+    if (filterSex === "FEMALE") matchSex = isFemale(pig.sex);
+    if (filterSex === "MALE") matchSex = isMale(pig.sex);
+
     return matchSearch && matchSex;
   });
 
   return (
-    <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "15px" }}>
+    <div style={{ maxWidth: "1050px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
+      {/* Tiêu đề */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "16px" }}>
         <div>
-          <h1 style={{ fontSize: "22px", fontWeight: "bold", margin: 0, color: "#1e293b" }}>
+          <h1 style={{ fontSize: "22px", fontWeight: "bold", margin: 0, color: "#0f172a" }}>
             Trại Sản Xuất Nông Nghiệp Nà Roác
           </h1>
-          <p style={{ margin: "5px 0 0 0", color: "#64748b", fontSize: "14px" }}>
+          <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: "14px" }}>
             Trung tâm Khuyến nông & Giống nông lâm nghiệp Cao Bằng
           </p>
         </div>
@@ -169,18 +186,15 @@ export default function FarmApp() {
         </div>
       </div>
 
+      {/* Thẻ thống kê */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px", margin: "20px 0" }}>
         <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Tổng đàn</div>
-          <div style={{ fontSize: "24px", fontWeight: "bold", color: "#0f172a", marginTop: "6px" }}>{totalPigs} cá thể</div>
+          <div style={{ fontSize: "24px", fontWeight: "bold", color: "#0f172a", marginTop: "6px" }}>{totalPigs} con</div>
         </div>
         <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-          <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Tổng nái</div>
+          <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Lợn Nái / Hậu bị</div>
           <div style={{ fontSize: "24px", fontWeight: "bold", color: "#059669", marginTop: "6px" }}>{totalSows} con</div>
-        </div>
-        <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-          <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Nái chửa / Đã phối</div>
-          <div style={{ fontSize: "24px", fontWeight: "bold", color: "#2563eb", marginTop: "6px" }}>{pregnantSows} con</div>
         </div>
         <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Đực giống</div>
@@ -188,11 +202,12 @@ export default function FarmApp() {
         </div>
       </div>
 
+      {/* Bộ lọc và Danh sách lợn */}
       <div style={{ background: "#fff", borderRadius: "8px", border: "1px solid #e2e8f0", overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "12px" }}>
+        <div style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "12px", flexWrap: "wrap" }}>
           <input
             type="text"
-            placeholder="Tìm theo số tai, chuồng..."
+            placeholder="Tìm theo số tai, giống, chuồng..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", width: "260px" }}
@@ -208,51 +223,60 @@ export default function FarmApp() {
           </select>
         </div>
 
-        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
-          <thead>
-            <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}>
-              <th style={{ padding: "12px 16px" }}>Số tai</th>
-              <th style={{ padding: "12px 16px" }}>Giống</th>
-              <th style={{ padding: "12px 16px" }}>Giới tính</th>
-              <th style={{ padding: "12px 16px" }}>Giai đoạn</th>
-              <th style={{ padding: "12px 16px" }}>Chuồng</th>
-              <th style={{ padding: "12px 16px" }}>Cân nặng (kg)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Đang tải dữ liệu từ trại...</td></tr>
-            ) : filteredPigs.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Chưa có cá thể nào hoặc chưa kết nối Supabase Key.</td></tr>
-            ) : (
-              filteredPigs.map((pig) => (
-                <tr key={pig.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: "bold" }}>{pig.ear_tag}</td>
-                  <td style={{ padding: "12px 16px" }}>{pig.breed_id}</td>
-                  <td style={{ padding: "12px 16px" }}>{pig.sex === "FEMALE" ? "Cái" : "Đực"}</td>
-                  <td style={{ padding: "12px 16px" }}>{pig.stage}</td>
-                  <td style={{ padding: "12px 16px" }}>{pig.current_pen_code || "-"}</td>
-                  <td style={{ padding: "12px 16px" }}>{pig.current_weight_kg || "-"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
+            <thead>
+              <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #e2e8f0" }}>
+                <th style={{ padding: "12px 16px" }}>Số tai</th>
+                <th style={{ padding: "12px 16px" }}>Giống</th>
+                <th style={{ padding: "12px 16px" }}>Giới tính</th>
+                <th style={{ padding: "12px 16px" }}>Giai đoạn</th>
+                <th style={{ padding: "12px 16px" }}>Chuồng / Ô</th>
+                <th style={{ padding: "12px 16px" }}>Khối lượng (kg)</th>
+                <th style={{ padding: "12px 16px" }}>Số tai Bố</th>
+                <th style={{ padding: "12px 16px" }}>Số tai Mẹ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Đang tải dữ liệu từ trại...</td></tr>
+              ) : filteredPigs.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Không có cá thể nào.</td></tr>
+              ) : (
+                filteredPigs.map((pig) => (
+                  <tr key={pig.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "12px 16px", fontWeight: "bold", color: "#0f172a" }}>{pig.ear_tag}</td>
+                    <td style={{ padding: "12px 16px" }}>{pig.breed_id || "-"}</td>
+                    <td style={{ padding: "12px 16px" }}>{pig.sex || "-"}</td>
+                    <td style={{ padding: "12px 16px" }}>{pig.stage || "-"}</td>
+                    <td style={{ padding: "12px 16px" }}>{pig.current_pen_code || "-"}</td>
+                    <td style={{ padding: "12px 16px" }}>{pig.current_weight_kg ? `${pig.current_weight_kg} kg` : "-"}</td>
+                    <td style={{ padding: "12px 16px", color: "#64748b" }}>{pig.sire_ear_tag || "-"}</td>
+                    <td style={{ padding: "12px 16px", color: "#64748b" }}>{pig.dam_ear_tag || "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* Hộp thoại ghi nhận phối giống */}
       {showMatingModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "10px", width: "100%", maxWidth: "420px" }}>
-            <h3 style={{ margin: "0 0 8px 0" }}>Ghi nhận Phối Giống</h3>
-            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>Tự tính ngày dự sinh 114 ngày và cảnh báo trùng huyết</p>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", zIndex: 50 }}>
+          <div style={{ background: "#fff", padding: "24px", borderRadius: "10px", width: "100%", maxWidth: "440px" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: "18px" }}>Ghi nhận Phối Giống</h3>
+            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748b" }}>Tự tính ngày đẻ (+114 ngày) và kiểm tra cận huyết</p>
 
             <form onSubmit={handleSaveMating} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "bold", marginBottom: "4px" }}>CHỌN LỢN NÁI</label>
                 <select required value={selectedSow} onChange={(e) => setSelectedSow(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                  <option value="">-- Chọn nái --</option>
-                  {pigs.filter((p) => p.sex === "FEMALE").map((sow) => (
-                    <option key={sow.id} value={sow.ear_tag}>{sow.ear_tag} (Ô: {sow.current_pen_code})</option>
+                  <option value="">-- Chọn nái phối --</option>
+                  {pigs.filter((p) => isFemale(p.sex)).map((sow) => (
+                    <option key={sow.id} value={sow.ear_tag}>
+                      {sow.ear_tag} ({sow.breed_id || "Giống"} - Ô: {sow.current_pen_code || "Chưa có"})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -260,22 +284,24 @@ export default function FarmApp() {
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "bold", marginBottom: "4px" }}>CHỌN ĐỰC GIỐNG</label>
                 <select required value={selectedBoar} onChange={(e) => setSelectedBoar(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                  <option value="">-- Chọn đực --</option>
-                  {pigs.filter((p) => p.sex === "MALE").map((boar) => (
-                    <option key={boar.id} value={boar.ear_tag}>{boar.ear_tag}</option>
+                  <option value="">-- Chọn đực giống --</option>
+                  {pigs.filter((p) => isMale(p.sex)).map((boar) => (
+                    <option key={boar.id} value={boar.ear_tag}>
+                      {boar.ear_tag} ({boar.breed_id || "Đực"})
+                    </option>
                   ))}
                 </select>
               </div>
 
               {inbreedingAlert && (
-                <div style={{ padding: "10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "12px", display: "flex", gap: "8px" }}>
+                <div style={{ padding: "10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "12px", display: "flex", gap: "8px", alignItems: "center" }}>
                   <AlertTriangle size={18} />
                   <span>{inbreedingAlert}</span>
                 </div>
               )}
 
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: "bold", marginBottom: "4px" }}>NGÀY PHỐI</label>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "bold", marginBottom: "4px" }}>NGÀY PHỐI GIỐNG</label>
                 <input type="date" required value={matingDate} onChange={(e) => setMatingDate(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
 
