@@ -17,6 +17,15 @@ interface Pig {
   notes?: string;
 }
 
+interface Insemination {
+  id: string;
+  sow_ear_tag: string;
+  boar_ear_tag: string;
+  mating_date: string;
+  expected_farrow_date: string;
+  status: string;
+}
+
 interface FarrowingLitter {
   id: string;
   litter_code: string;
@@ -24,6 +33,7 @@ interface FarrowingLitter {
   farrow_date: string;
   alive_born: number;
   weaning_date: string;
+  notes?: string;
   status?: string;
 }
 
@@ -32,7 +42,9 @@ interface FarmTask {
   title: string;
   due_date: string;
   related_tag: string;
+  category: "REPRO" | "VET" | "WEAN" | "GENERAL";
   is_completed: boolean;
+  is_auto?: boolean;
 }
 
 interface FarmConfig {
@@ -43,17 +55,19 @@ interface FarmConfig {
 
 export default function FarmApp() {
   const [pigs, setPigs] = useState<Pig[]>([]);
+  const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
-  const [tasks, setTasks] = useState<FarmTask[]>([]);
+  const [dbTasks, setDbTasks] = useState<FarmTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Phân hệ điều hướng
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
+  const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Cấu hình danh mục Dropdown
+  // Cấu hình Dropdown
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -66,9 +80,9 @@ export default function FarmApp() {
 
   // Modal Thêm việc thủ công
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "" });
+  const [newTask, setNewTask] = useState({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "", category: "GENERAL" });
 
-  // Input cấu hình danh mục cài đặt
+  // Input cấu hình cài đặt
   const [newBreedInput, setNewBreedInput] = useState("");
   const [newStageInput, setNewStageInput] = useState("");
   const [newPenInput, setNewPenInput] = useState("");
@@ -85,15 +99,17 @@ export default function FarmApp() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [pRes, tRes, farRes, penRes] = await Promise.all([
+      const [pRes, tRes, farRes, insemRes, penRes] = await Promise.all([
         supabase.from("pigs").select("*").order("created_at", { ascending: false }),
         supabase.from("farm_tasks").select("*").order("due_date", { ascending: true }),
         supabase.from("farrowings").select("*").order("farrow_date", { ascending: false }),
+        supabase.from("inseminations").select("*").order("mating_date", { ascending: false }),
         supabase.from("pens").select("pen_code").order("pen_code", { ascending: true })
       ]);
       if (pRes.data) setPigs(pRes.data);
-      if (tRes.data) setTasks(tRes.data);
+      if (tRes.data) setDbTasks(tRes.data);
       if (farRes.data) setLitters(farRes.data);
+      if (insemRes.data) setInseminations(insemRes.data);
       if (penRes.data && penRes.data.length > 0) {
         const penCodes = Array.from(new Set([...config.pens, ...penRes.data.map((p: any) => p.pen_code)]));
         setConfig(prev => ({ ...prev, pens: penCodes }));
@@ -117,13 +133,11 @@ export default function FarmApp() {
     localStorage.setItem("farm_config", JSON.stringify(newCfg));
   };
 
-  // Chuẩn hóa lọc
   const normalize = (text?: string) => {
     if (!text) return "";
     return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
   };
 
-  // Lọc cá thể trưởng thành (Bỏ toàn bộ lợn con lẻ ra khỏi danh sách đàn)
   const isIndividualPiglet = (pig: Pig) => {
     const st = normalize(pig.stage);
     const tag = (pig.ear_tag || "").toUpperCase();
@@ -159,17 +173,16 @@ export default function FarmApp() {
   const boarList = pigs.filter(isBoar);
   const meatList = pigs.filter(isMeat);
 
-  // QUẢN LÝ LỢN CON THEO LÔ: Hiển thị toàn bộ các lô đang nuôi con
+  // QUẢN LÝ LỢN CON THEO LÔ (Active Litters)
   const activeLitters = litters.filter((lit) => {
     const noteStr = (lit.notes || "").toLowerCase();
     const stStr = (lit.status || "").toLowerCase();
-    // Bỏ qua nếu đã ghi chú rõ ràng là đã cai sữa
     return !noteStr.includes("da cai") && !stStr.includes("da cai");
   });
 
   const totalPigletsCount = activeLitters.reduce((sum, lit) => sum + (lit.alive_born || 0), 0);
 
-  // Số lượng tổng hợp
+  // Thống kê tổng quan
   const sowCount = sowList.length;
   const sowChua = sowList.filter((p) => checkSowState(p) === "CHUA").length;
   const sowNuoiCon = sowList.filter((p) => checkSowState(p) === "NUOICON").length;
@@ -178,37 +191,191 @@ export default function FarmApp() {
   const meatCount = meatList.length;
   const totalCount = sowCount + boarCount + meatCount + totalPigletsCount;
 
-  // HỆ THỐNG VIỆC CẦN LÀM (GỒM CẢ CẢNH BÁO TỰ ĐỘNG CAI SỮA)
-  const displayTasks = useMemo(() => {
-    const list = [...tasks];
+  // ENGINE CHUYÊN GIA THÚ Y 20 NĂM: TỰ ĐỘNG TÍNH TOÁN LỊCH KỸ THUẬT & VACCINE
+  const fullTasks = useMemo(() => {
+    const autoList: FarmTask[] = [];
     const today = new Date();
 
-    // Tự sinh nhắc việc cai sữa vào danh sách công việc nếu lợn con đến ngày
-    activeLitters.forEach((lit) => {
-      if (lit.farrow_date) {
-        const fDate = new Date(lit.farrow_date);
-        const ageDays = Math.floor((today.getTime() - fDate.getTime()) / (1000 * 3600 * 24));
+    const addDays = (dStr: string, days: number) => {
+      const d = new Date(dStr);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split("T")[0];
+    };
 
-        if (ageDays >= 24) {
-          const isOverdue = ageDays >= 28;
-          const autoTitle = `${isOverdue ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa cho đàn con nái ${lit.sow_ear_tag} (${lit.alive_born} con, ${ageDays} ngày tuổi)`;
-          
-          // Kiểm tra xem đã có task này chưa để tránh hiển thị trùng
-          if (!list.some(t => t.related_tag === lit.sow_ear_tag && t.title.includes("Cai sữa"))) {
-            list.unshift({
-              id: `auto-wean-${lit.id}`,
-              title: autoTitle,
-              due_date: lit.weaning_date || today.toISOString().split("T")[0],
-              related_tag: lit.sow_ear_tag,
-              is_completed: false
-            });
-          }
-        }
+    const diffDays = (dStr: string) => {
+      const d = new Date(dStr);
+      return Math.floor((today.getTime() - d.getTime()) / (1000 * 3600 * 24));
+    };
+
+    // 1. QUY TRÌNH NÁI PHỐI & MANG THAI (Theo bảng inseminations)
+    inseminations.forEach((ins) => {
+      if (!ins.mating_date) return;
+      const daysAfterMating = diffDays(ins.mating_date);
+
+      // A. Kiểm tra lốc chu kỳ 1 (Ngày 18 - 22)
+      if (daysAfterMating >= 16 && daysAfterMating <= 25) {
+        autoList.push({
+          id: `auto-loc1-${ins.id}`,
+          title: `[SINH SẢN] Kiểm tra lốc chu kỳ 1 (21 ngày) nái ${ins.sow_ear_tag}`,
+          due_date: addDays(ins.mating_date, 21),
+          related_tag: ins.sow_ear_tag,
+          category: "REPRO",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // B. Khám thai / Siêu âm (Ngày 38 - 42)
+      if (daysAfterMating >= 35 && daysAfterMating <= 45) {
+        autoList.push({
+          id: `auto-thai2-${ins.id}`,
+          title: `[SINH SẢN] Khám thai lần 2 (40 ngày) nái ${ins.sow_ear_tag}`,
+          due_date: addDays(ins.mating_date, 40),
+          related_tag: ins.sow_ear_tag,
+          category: "REPRO",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // C. Nái chửa ngày 85: Tiêm phòng E.Coli ngừa tiêu chảy phân trắng lợn con
+      if (daysAfterMating >= 80 && daysAfterMating <= 90) {
+        autoList.push({
+          id: `auto-ecoli-${ins.id}`,
+          title: `[VACCINE] Tiêm E.Coli phòng tiêu chảy phân trắng cho nái ${ins.sow_ear_tag}`,
+          due_date: addDays(ins.mating_date, 85),
+          related_tag: ins.sow_ear_tag,
+          category: "VET",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // D. Nái ngày 107: Chuyển lên chuồng đẻ & giảm cám
+      if (daysAfterMating >= 104 && daysAfterMating <= 112) {
+        autoList.push({
+          id: `auto-chuongde-${ins.id}`,
+          title: `[CHUẨN BỊ ĐẺ] Chuyển nái ${ins.sow_ear_tag} lên chuồng đẻ & sát trùng vú`,
+          due_date: addDays(ins.mating_date, 107),
+          related_tag: ins.sow_ear_tag,
+          category: "REPRO",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // E. Dự đẻ (Ngày 114)
+      if (daysAfterMating >= 110 && daysAfterMating <= 118) {
+        autoList.push({
+          id: `auto-dude-${ins.id}`,
+          title: `⚠️ [TRỰC ĐẺ] Nái ${ins.sow_ear_tag} dự kiến đẻ (Hạn 114 ngày)`,
+          due_date: ins.expected_farrow_date || addDays(ins.mating_date, 114),
+          related_tag: ins.sow_ear_tag,
+          category: "REPRO",
+          is_completed: false,
+          is_auto: true
+        });
       }
     });
 
-    return list;
-  }, [tasks, activeLitters]);
+    // 2. QUY TRÌNH THÚ Y & VACCINE LỢN CON THEO LÔ (Theo activeLitters)
+    activeLitters.forEach((lit) => {
+      if (!lit.farrow_date) return;
+      const ageDays = diffDays(lit.farrow_date);
+
+      // Ngày 3: Tiêm sắt lần 1 + Nhỏ cầu trùng
+      if (ageDays >= 1 && ageDays <= 6) {
+        autoList.push({
+          id: `auto-fe1-${lit.id}`,
+          title: `[THÚ Y] Tiêm Sắt lần 1 & Nhỏ Cầu Trùng cho đàn con nái ${lit.sow_ear_tag}`,
+          due_date: addDays(lit.farrow_date, 3),
+          related_tag: lit.sow_ear_tag,
+          category: "VET",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // Ngày 10: Tiêm Sắt lần 2 + Tiêm phòng Suyễn (Mycoplasma) mũi 1
+      if (ageDays >= 7 && ageDays <= 13) {
+        autoList.push({
+          id: `auto-suyen1-${lit.id}`,
+          title: `[VACCINE] Tiêm Sắt lần 2 & Suyễn mũi 1 cho đàn con nái ${lit.sow_ear_tag}`,
+          due_date: addDays(lit.farrow_date, 10),
+          related_tag: lit.sow_ear_tag,
+          category: "VET",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // Ngày 14: Tiêm Tai xanh (PRRS) nhược độc
+      if (ageDays >= 12 && ageDays <= 18) {
+        autoList.push({
+          id: `auto-prrs-${lit.id}`,
+          title: `[VACCINE] Tiêm Tai Xanh (PRRS) đàn con nái ${lit.sow_ear_tag}`,
+          due_date: addDays(lit.farrow_date, 14),
+          related_tag: lit.sow_ear_tag,
+          category: "VET",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // Ngày 21: Tiêm Dịch tả lợn cổ điển lần 1
+      if (ageDays >= 19 && ageDays <= 25) {
+        autoList.push({
+          id: `auto-csf-${lit.id}`,
+          title: `[VACCINE] Tiêm Dịch Tả lợn mũi 1 cho đàn con nái ${lit.sow_ear_tag}`,
+          due_date: addDays(lit.farrow_date, 21),
+          related_tag: lit.sow_ear_tag,
+          category: "VET",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+
+      // Ngày 24 - 28: Cai sữa
+      if (ageDays >= 24) {
+        const isOverdue = ageDays >= 28;
+        autoList.push({
+          id: `auto-wean-${lit.id}`,
+          title: `${isOverdue ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${lit.alive_born} con, ${ageDays} ngày tuổi)`,
+          due_date: lit.weaning_date || addDays(lit.farrow_date, 28),
+          related_tag: lit.sow_ear_tag,
+          category: "WEAN",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+    });
+
+    // 3. QUY TRÌNH HẬU BỊ & NÁI CHỜ PHỐI
+    sowList.forEach((sow) => {
+      const st = normalize(sow.stage);
+      if (st.includes("hau bi") || st.includes("cho phoi")) {
+        // Tự nhắc kiểm tra chịu đực hàng ngày
+        autoList.push({
+          id: `auto-heat-${sow.id}`,
+          title: `[THEO DÕI ĐỘNG DỤC] Ép đực dò nái kiểm tra chịu đực: ${sow.ear_tag} (Ô: ${sow.current_pen_code || "—"})`,
+          due_date: today.toISOString().split("T")[0],
+          related_tag: sow.ear_tag,
+          category: "REPRO",
+          is_completed: false,
+          is_auto: true
+        });
+      }
+    });
+
+    // Hợp nhất danh sách việc tự động và việc thủ công trong database
+    return [...autoList, ...dbTasks];
+  }, [inseminations, activeLitters, sowList, dbTasks]);
+
+  // Bộ lọc danh mục công việc
+  const filteredTasks = fullTasks.filter((t) => {
+    if (taskCategoryFilter === "ALL") return true;
+    return t.category === taskCategoryFilter;
+  });
 
   // Cập nhật thông tin cá thể
   const handleUpdatePig = async (e: React.FormEvent) => {
@@ -241,12 +408,9 @@ export default function FarmApp() {
 
   // Cai sữa nguyên lô
   const handleWeanLitter = async (litter: FarrowingLitter) => {
-    if (!confirm(`Xác nhận cai sữa cho toàn bộ đàn con của nái ${litter.sow_ear_tag}? Nái sẽ tự chuyển sang 'Chờ phối'.`)) return;
+    if (!confirm(`Xác nhận cai sữa cho đàn con nái ${litter.sow_ear_tag}? Nái sẽ chuyển sang 'Chờ phối' để ép giống lại.`)) return;
 
-    // 1. Chuyển nái mẹ sang Chờ phối
     await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", litter.sow_ear_tag);
-
-    // 2. Đánh dấu lứa đẻ đã cai sữa
     await supabase.from("farrowings").update({ notes: "Đã cai sữa", weaning_date: new Date().toISOString().split("T")[0] }).eq("id", litter.id);
 
     alert(`Đã hoàn tất cai sữa đàn con nái ${litter.sow_ear_tag}!`);
@@ -263,22 +427,36 @@ export default function FarmApp() {
         title: newTask.title.trim(),
         due_date: newTask.due_date,
         related_tag: newTask.related_tag.trim() || null,
+        category: newTask.category
       }
     ]);
 
     if (!error) {
       setShowAddTaskModal(false);
-      setNewTask({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "" });
+      setNewTask({ title: "", due_date: new Date().toISOString().split("T")[0], related_tag: "", category: "GENERAL" });
       fetchData();
     }
   };
 
-  const toggleTask = async (id: string, st: boolean) => {
-    if (id.startsWith("auto-wean-")) {
-      alert("Để hoàn thành việc này, hãy vào phân hệ LỢN CON và bấm nút 'Xác nhận cai sữa'!");
+  const toggleTask = async (task: FarmTask) => {
+    if (task.is_auto) {
+      if (task.category === "WEAN") {
+        alert("Để hoàn thành việc này, hãy vào phân hệ LỢN CON và bấm 'Xác nhận cai sữa'!");
+        return;
+      }
+      // Lưu task tự động này vào db dạng đã hoàn thành
+      await supabase.from("farm_tasks").insert([
+        {
+          title: task.title,
+          due_date: task.due_date,
+          related_tag: task.related_tag,
+          is_completed: true
+        }
+      ]);
+      fetchData();
       return;
     }
-    await supabase.from("farm_tasks").update({ is_completed: !st }).eq("id", id);
+    await supabase.from("farm_tasks").update({ is_completed: !task.is_completed }).eq("id", task.id);
     fetchData();
   };
 
@@ -365,7 +543,7 @@ export default function FarmApp() {
                 { key: "PIGLET", label: "Lợn con (Theo lô)", icon: "🍼" },
                 { key: "MEAT", label: "Lợn thịt", icon: "🥩" },
                 { key: "SEARCH", label: "Tra cứu cá thể", icon: "🔍" },
-                { key: "SETTINGS", label: "Cài đặt danh mục", icon: "⚙️️" },
+                { key: "SETTINGS", label: "Cài đặt danh mục", icon: "⚙️" },
               ].map((item) => {
                 const isActive = currentMenu === item.key;
                 return (
@@ -401,7 +579,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 1. TỔNG QUAN */}
+      {/* 1. MÀN HÌNH TỔNG QUAN */}
       {currentMenu === "OVERVIEW" && (
         <div style={{ padding: "16px" }}>
           
@@ -450,11 +628,11 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* CÔNG VIỆC CẦN LÀM (ĐÃ TÍCH HỢP TỰ ĐỘNG CẢNH BÁO CAI SỮA) */}
+          {/* DANH SÁCH VIỆC CẦN LÀM & LỊCH THÚ Y TỰ ĐỘNG */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
-                CÔNG VIỆC CẦN LÀM ({displayTasks.filter(t => !t.is_completed).length})
+                LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t.is_completed).length})
               </h3>
               <button
                 onClick={() => setShowAddTaskModal(true)}
@@ -464,31 +642,59 @@ export default function FarmApp() {
               </button>
             </div>
 
-            {displayTasks.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "16px", color: "#94a3b8", fontSize: "13px" }}>Không có lịch việc tồn đọng.</div>
+            {/* Bộ lọc loại công việc */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+              {[
+                { id: "ALL", label: "Tất cả" },
+                { id: "REPRO", label: "Sinh sản & Động dục" },
+                { id: "VET", label: "Vaccine & Thú y" },
+                { id: "WEAN", label: "Cai sữa" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setTaskCategoryFilter(tab.id)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: "16px",
+                    border: "none",
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0",
+                    color: taskCategoryFilter === tab.id ? "#fff" : "#475569"
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {filteredTasks.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "16px", color: "#94a3b8", fontSize: "13px" }}>Không có lịch việc trong mục này.</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {displayTasks.map((task) => (
+                {filteredTasks.map((task) => (
                   <div
                     key={task.id}
-                    onClick={() => toggleTask(task.id, task.is_completed)}
+                    onClick={() => toggleTask(task)}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
                       cursor: "pointer",
-                      background: task.title.includes("QUÁ HẠN") ? "#fef2f2" : "#fff",
+                      background: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#fef2f2" : "#fff",
                       padding: "10px 14px",
                       borderRadius: "10px",
-                      border: task.title.includes("QUÁ HẠN") ? "1px solid #fecaca" : "1px solid #f1e5f0"
+                      border: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "1px solid #fecaca" : "1px solid #f1e5f0"
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: "14px", fontWeight: "700", color: task.title.includes("QUÁ HẠN") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>
+                      <div style={{ fontSize: "13px", fontWeight: "700", color: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>
                         {task.title}
                       </div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                        Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Nái: ${task.related_tag})`}
+                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                        Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`}
                       </div>
                     </div>
                     <div style={{ fontSize: "20px" }}>{task.is_completed ? "🟢" : "⚪"}</div>
@@ -549,7 +755,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. QUẢN LÝ LỢN CON THEO LÔ (GỌN GÀNG, KHÔNG DÀI DÒNG) */}
+      {/* 4. QUẢN LÝ LỢN CON THEO LÔ */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -671,10 +877,9 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 7. CÀI ĐẶT DANH MỤC DROPDOWN */}
+      {/* 7. CÀI ĐẶT DANH MỤC */}
       {currentMenu === "SETTINGS" && (
         <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          
           <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
             <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -722,7 +927,6 @@ export default function FarmApp() {
               <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { saveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
             </div>
           </div>
-
         </div>
       )}
 
@@ -862,15 +1066,30 @@ export default function FarmApp() {
                   style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                 />
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>HẠN XỬ LÝ</label>
-                <input
-                  type="date"
-                  required
-                  value={newTask.due_date}
-                  onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>PHÂN LOẠI</label>
+                  <select
+                    value={newTask.category}
+                    onChange={(e) => setNewTask({ ...newTask, category: e.target.value as any })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                  >
+                    <option value="REPRO">Sinh sản</option>
+                    <option value="VET">Vaccine & Thú y</option>
+                    <option value="WEAN">Cai sữa</option>
+                    <option value="GENERAL">Chung</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>HẠN XỬ LÝ</label>
+                  <input
+                    type="date"
+                    required
+                    value={newTask.due_date}
+                    onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                  />
+                </div>
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>LIÊN QUAN ĐẾN SỐ TAI (TÙY CHỌN)</label>
