@@ -49,14 +49,30 @@ export default function FarmApp() {
     return s.includes("đực") || s.includes("duc") || s.includes("male") || s === "m";
   };
 
+  const [debugMsg, setDebugMsg] = useState<string>("");
+
   const fetchPigs = async () => {
     setLoading(true);
+    setDebugMsg("");
+    
+    // Kiểm tra xem Key từ Vercel có được nạp vào không
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
+      setDebugMsg("LỖI: Web chưa nhận được NEXT_PUBLIC_SUPABASE_URL từ Vercel!");
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("pigs")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (error) {
+      setDebugMsg("LỖI TỪ SUPABASE: " + error.message);
+    } else if (data) {
+      if (data.length === 0) {
+        setDebugMsg("KẾT NỐI THÀNH CÔNG, NHƯNG BẢNG 'pigs' ĐANG TRỐNG 0 CON (Chưa import dữ liệu thành công vào bảng pigs).");
+      }
       setPigs(data);
     }
     setLoading(false);
@@ -241,8 +257,12 @@ export default function FarmApp() {
               {loading ? (
                 <tr><td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Đang tải dữ liệu từ trại...</td></tr>
               ) : filteredPigs.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Không có cá thể nào.</td></tr>
-              ) : (
+              <tr>
+                <td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#b91c1c", fontWeight: "bold" }}>
+                  {debugMsg || "Chưa có dữ liệu nào phù hợp với bộ lọc."}
+                </td>
+              </tr>
+            ) : (
                 filteredPigs.map((pig) => (
                   <tr key={pig.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                     <td style={{ padding: "12px 16px", fontWeight: "bold", color: "#0f172a" }}>{pig.ear_tag}</td>
