@@ -898,11 +898,37 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* FOOTER: KHOẢNG ĐỆM 1CM VÀ DÒNG CHỮ KÝ */}
-      <footer style={{ marginTop: "40px", paddingBottom: "24px", textAlign: "center" }}>
-        <p style={{ margin: 0, fontSize: "12px", fontWeight: "700", color: "#94a3b8", letterSpacing: "0.4px" }}>
-          Appweb Trại Lợn Nà Roác - NPT: Quang Dự
-        </p>
+      {/* THANH CỐ ĐỊNH Ở ĐÁY (ALWAYS ON BOTTOM) - LỆCH HOÀN TOÀN VỀ BÊN PHẢI */}
+      <footer
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "38px",
+          backgroundColor: "rgba(253, 248, 251, 0.95)",
+          backdropFilter: "blur(6px)",
+          borderTop: "1px solid #f1e5f0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          paddingRight: "16px",
+          zIndex: 50,
+          maxWidth: "480px",
+          margin: "0 auto",
+          boxSizing: "border-box"
+        }}
+      >
+        <span
+          style={{
+            fontSize: "12px",
+            fontWeight: "700",
+            color: "#64748b",
+            letterSpacing: "0.3px"
+          }}
+        >
+          AppWeb: Trại Lợn Nà Roác
+        </span>
       </footer>
 
       {/* MODAL SỬA CÁ THỂ VỚI DROPDOWN TOÀN DIỆN */}
