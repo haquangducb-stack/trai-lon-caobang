@@ -159,11 +159,12 @@ export default function FarmApp() {
   const boarList = pigs.filter(isBoar);
   const meatList = pigs.filter(isMeat);
 
-  // QUẢN LÝ LỢN CON THEO LÔ (TỪ BẢNG FARROWINGS)
-  // Lấy các lô đang nuôi con (mẹ đang ở trạng thái Nuôi con hoặc chưa cai sữa)
+  // QUẢN LÝ LỢN CON THEO LÔ: Hiển thị toàn bộ các lô đang nuôi con
   const activeLitters = litters.filter((lit) => {
-    const sow = pigs.find((p) => p.ear_tag === lit.sow_ear_tag);
-    return !lit.status?.includes("Đã cai") && (!sow || normalize(sow.stage).includes("nuoi con") || !sow.stage);
+    const noteStr = (lit.notes || "").toLowerCase();
+    const stStr = (lit.status || "").toLowerCase();
+    // Bỏ qua nếu đã ghi chú rõ ràng là đã cai sữa
+    return !noteStr.includes("da cai") && !stStr.includes("da cai");
   });
 
   const totalPigletsCount = activeLitters.reduce((sum, lit) => sum + (lit.alive_born || 0), 0);
