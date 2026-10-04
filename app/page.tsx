@@ -2,23 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
-import {
-  Menu,
-  X,
-  Info,
-  List,
-  Search,
-  Smile,
-  Star,
-  Wrench,
-  FileText,
-  Settings,
-  CheckCircle2,
-  Circle,
-  Plus,
-  HeartHandshake,
-  Baby
-} from "lucide-react";
 
 interface Pig {
   id: string;
@@ -42,9 +25,8 @@ interface FarmTask {
 export default function FarmApp() {
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [tasks, setTasks] = useState<FarmTask[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "HERD" | "SOW" | "BOAR" | "SEARCH">("OVERVIEW");
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "HERD" | "SEARCH">("OVERVIEW");
   const [searchQuery, setSearchQuery] = useState("");
 
   const supabase = useMemo(() => {
@@ -57,7 +39,6 @@ export default function FarmApp() {
   }, []);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const [pRes, tRes] = await Promise.all([
         supabase.from("pigs").select("*").order("created_at", { ascending: false }),
@@ -68,14 +49,12 @@ export default function FarmApp() {
     } catch (e) {
       console.error(e);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
   }, [supabase]);
 
-  // Phân loại Đực / Cái tuyệt đối
   const isFemale = (s?: string) => {
     if (!s) return false;
     const str = s.toLowerCase();
@@ -89,10 +68,9 @@ export default function FarmApp() {
     return str.includes("đực") || str.includes("duc") || str === "m" || str === "male" || str.includes("boar");
   };
 
-  // Logic đếm số liệu thống kê chuẩn theo thực tế trại
   const totalCount = pigs.length;
 
-  // 1. NÁI
+  // NÁI
   const sowList = pigs.filter((p) => isFemale(p.sex) && !(p.stage || "").toLowerCase().includes("theo mẹ"));
   const sowCount = sowList.length;
   const sowChua = sowList.filter((p) => (p.stage || "").toLowerCase().includes("chửa") || (p.stage || "").toLowerCase().includes("phối")).length;
@@ -102,24 +80,23 @@ export default function FarmApp() {
     return !st.includes("chửa") && !st.includes("phối") && !st.includes("nuôi con") && !st.includes("đẻ");
   }).length;
 
-  // 2. ĐỰC GIỐNG
+  // ĐỰC GIỐNG
   const boarList = pigs.filter((p) => isMale(p.sex) && !(p.stage || "").toLowerCase().includes("theo mẹ"));
   const boarCount = boarList.length;
 
-  // 3. LỢN CON
+  // LỢN CON
   const pigletList = pigs.filter((p) => {
     const st = (p.stage || "").toLowerCase();
-    return st.includes("theo mẹ") || st.includes("lợn con") || (p.ear_tag && p.ear_tag.includes("-C"));
+    return st.includes("theo mẹ") || (p.ear_tag && p.ear_tag.includes("-C"));
   });
   const pigletCount = pigletList.length;
   const pigletTheoMe = pigletList.filter((p) => (p.stage || "").toLowerCase().includes("theo mẹ") || !p.stage).length;
   const pigletCaiSua = pigletList.filter((p) => (p.stage || "").toLowerCase().includes("cai sữa")).length;
 
-  // 4. LỢN THỊT
+  // LỢN THỊT
   const meatList = pigs.filter((p) => (p.stage || "").toLowerCase().includes("thịt"));
   const meatCount = meatList.length;
 
-  // Hoàn thành tác vụ
   const toggleTask = async (id: string, st: boolean) => {
     await supabase.from("farm_tasks").update({ is_completed: !st }).eq("id", id);
     fetchData();
@@ -128,33 +105,31 @@ export default function FarmApp() {
   return (
     <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative" }}>
       
-      {/* THANH ĐẦU TRANG VỚI MENU BURGER */}
+      {/* THANH ĐẦU TRANG */}
       <header style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff" }}>
         <button
           onClick={() => setIsSidebarOpen(true)}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center" }}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", fontSize: "22px", lineHeight: "1" }}
         >
-          <Menu size={24} color="#1e1b4b" />
+          ☰
         </button>
         <h1 style={{ fontSize: "19px", fontWeight: "900", margin: 0, letterSpacing: "0.5px", color: "#1e1b4b" }}>
           {currentMenu === "OVERVIEW" && "TỔNG QUAN"}
           {currentMenu === "HERD" && "TỔNG ĐÀN"}
-          {currentMenu === "SOW" && "QUẢN LÝ NÁI"}
-          {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
           {currentMenu === "SEARCH" && "TRA CỨU"}
         </h1>
       </header>
 
-      {/* DRAWER MENU TRƯỢT TỪ BÊN TRÁI (GIỐNG ẢNH 2) */}
+      {/* DRAWER MENU TRƯỢT TỪ BÊN TRÁI (APPTRAILON) */}
       {isSidebarOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
           <div
             onClick={() => setIsSidebarOpen(false)}
             style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }}
           />
-          <div style={{ width: "290px", backgroundColor: "#ffffff", height: "100%", zIndex: 101, display: "flex", flexDirection: "column", padding: "20px 14px", boxShadow: "4px 0 16px rgba(0,0,0,0.1)" }}>
+          <div style={{ width: "280px", backgroundColor: "#ffffff", height: "100%", zIndex: 101, display: "flex", flexDirection: "column", padding: "20px 14px", boxShadow: "4px 0 16px rgba(0,0,0,0.1)" }}>
             
-            <div style={{ padding: "12px 14px 24px 14px", borderBottom: "1px solid #f1f5f9" }}>
+            <div style={{ padding: "12px 14px 20px 14px", borderBottom: "1px solid #f1f5f9" }}>
               <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "900", color: "#5b21b6", letterSpacing: "1px" }}>
                 APPTRAILON
               </h2>
@@ -162,21 +137,21 @@ export default function FarmApp() {
 
             <nav style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "16px" }}>
               {[
-                { key: "OVERVIEW", label: "Tổng quan", icon: <Info size={19} /> },
-                { key: "HERD", label: "Tổng đàn", icon: <List size={19} /> },
-                { key: "SEARCH", label: "Tra cứu", icon: <Search size={19} /> },
-                { key: "SOW", label: "Quản lý nái", icon: <Smile size={19} /> },
-                { key: "BOAR", label: "Quản lý đực", icon: <Star size={19} /> },
-                { key: "VET", label: "Thú y", icon: <Wrench size={19} /> },
-                { key: "REPORT", label: "Báo cáo", icon: <FileText size={19} /> },
-                { key: "SETTING", label: "Cài đặt", icon: <Settings size={19} /> },
+                { key: "OVERVIEW", label: "Tổng quan", icon: "ℹ️" },
+                { key: "HERD", label: "Tổng đàn", icon: "📋" },
+                { key: "SEARCH", label: "Tra cứu", icon: "🔍" },
+                { key: "SOW", label: "Quản lý nái", icon: "🐷" },
+                { key: "BOAR", label: "Quản lý đực", icon: "🐗" },
+                { key: "VET", label: "Thú y", icon: "💉" },
+                { key: "REPORT", label: "Báo cáo", icon: "📊" },
+                { key: "SETTING", label: "Cài đặt", icon: "⚙️" },
               ].map((item) => {
                 const isActive = currentMenu === item.key;
                 return (
                   <button
                     key={item.key}
                     onClick={() => {
-                      if (item.key === "OVERVIEW" || item.key === "HERD" || item.key === "SOW" || item.key === "BOAR" || item.key === "SEARCH") {
+                      if (item.key === "OVERVIEW" || item.key === "HERD" || item.key === "SEARCH") {
                         setCurrentMenu(item.key as any);
                       }
                       setIsSidebarOpen(false);
@@ -184,9 +159,9 @@ export default function FarmApp() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "14px",
+                      gap: "12px",
                       padding: "12px 16px",
-                      borderRadius: "14px",
+                      borderRadius: "12px",
                       border: "none",
                       backgroundColor: isActive ? "#ede9fe" : "transparent",
                       color: isActive ? "#5b21b6" : "#334155",
@@ -196,7 +171,7 @@ export default function FarmApp() {
                       textAlign: "left"
                     }}
                   >
-                    {item.icon}
+                    <span>{item.icon}</span>
                     <span>{item.label}</span>
                   </button>
                 );
@@ -206,27 +181,27 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MÀN HÌNH TỔNG QUAN (GIỐNG ẢNH 1 CHÍNH XÁC) */}
+      {/* MÀN HÌNH TỔNG QUAN */}
       {currentMenu === "OVERVIEW" && (
         <div style={{ padding: "20px 16px" }}>
-          <h2 style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b", margin: "0 0 16px 0", letterSpacing: "0.2px" }}>
+          <h2 style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b", margin: "0 0 16px 0" }}>
             TỔNG QUAN TRẠI
           </h2>
 
-          {/* KHỐI XÁM: TỔNG ĐÀN */}
+          {/* KHỐI TỔNG ĐÀN */}
           <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "18px 20px", marginBottom: "14px" }}>
             <span style={{ fontSize: "21px", fontWeight: "900", color: "#1e1b4b" }}>
               TỔNG ĐÀN: {totalCount} con
             </span>
           </div>
 
-          {/* LƯỚI 4 THẺ MÀU (NÁI, ĐỰC, LỢN CON, LỢN THỊT) */}
+          {/* LƯỚI 4 THẺ MÀU */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "26px" }}>
             
-            {/* THẺ HỒNG: NÁI */}
-            <div style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {/* THẺ NÁI */}
+            <div style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "16px" }}>
               <div style={{ fontSize: "13px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
-              <div style={{ fontSize: "26px", fontWeight: "900", color: "#e11d48", lineHeight: "1.1" }}>
+              <div style={{ fontSize: "26px", fontWeight: "900", color: "#e11d48", lineHeight: "1.2" }}>
                 {sowCount} con
               </div>
               <div style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: "1.6" }}>
@@ -236,10 +211,10 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ XANH DƯƠNG: ĐỰC GIỐNG */}
-            <div style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {/* THẺ ĐỰC GIỐNG */}
+            <div style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "16px" }}>
               <div style={{ fontSize: "13px", fontWeight: "800", color: "#2563eb" }}>ĐỰC GIỐNG</div>
-              <div style={{ fontSize: "26px", fontWeight: "900", color: "#2563eb", lineHeight: "1.1" }}>
+              <div style={{ fontSize: "26px", fontWeight: "900", color: "#2563eb", lineHeight: "1.2" }}>
                 {boarCount} con
               </div>
               <div style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: "1.6" }}>
@@ -247,10 +222,10 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ XANH LÁ: LỢN CON */}
-            <div style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {/* THẺ LỢN CON */}
+            <div style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "16px" }}>
               <div style={{ fontSize: "13px", fontWeight: "800", color: "#16a34a" }}>LỢN CON</div>
-              <div style={{ fontSize: "26px", fontWeight: "900", color: "#16a34a", lineHeight: "1.1" }}>
+              <div style={{ fontSize: "26px", fontWeight: "900", color: "#16a34a", lineHeight: "1.2" }}>
                 {pigletCount} con
               </div>
               <div style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: "1.6" }}>
@@ -259,10 +234,10 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ XÁM NÂU: LỢN THỊT */}
-            <div style={{ backgroundColor: "#f6f1f2", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {/* THẺ LỢN THỊT */}
+            <div style={{ backgroundColor: "#f6f1f2", borderRadius: "16px", padding: "16px" }}>
               <div style={{ fontSize: "13px", fontWeight: "800", color: "#854d0e" }}>LỢN THỊT</div>
-              <div style={{ fontSize: "26px", fontWeight: "900", color: "#854d0e", lineHeight: "1.1" }}>
+              <div style={{ fontSize: "26px", fontWeight: "900", color: "#854d0e", lineHeight: "1.2" }}>
                 {meatCount} con
               </div>
               <div style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: "1.6" }}>
@@ -272,7 +247,7 @@ export default function FarmApp() {
 
           </div>
 
-          {/* PHẦN CÔNG VIỆC CẦN LÀM */}
+          {/* CÔNG VIỆC CẦN LÀM */}
           <div>
             <h3 style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b", margin: "0 0 16px 0" }}>
               CÔNG VIỆC CẦN LÀM
@@ -280,7 +255,7 @@ export default function FarmApp() {
 
             {tasks.length === 0 ? (
               <div style={{ textAlign: "center", padding: "20px", color: "#94a3b8", fontSize: "13px" }}>
-                Không có việc gấp cần làm hôm nay.
+                Không có việc gấp cần làm.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -305,12 +280,8 @@ export default function FarmApp() {
                       </div>
                     </div>
 
-                    <div>
-                      {task.is_completed ? (
-                        <CheckCircle2 size={24} color="#22c55e" fill="#22c55e" stroke="#fff" />
-                      ) : (
-                        <Circle size={24} color="#22c55e" strokeWidth={2} />
-                      )}
+                    <div style={{ fontSize: "22px", color: "#22c55e", lineHeight: 1 }}>
+                      {task.is_completed ? "🟢" : "⚪"}
                     </div>
                   </div>
                 ))}
@@ -320,11 +291,11 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MÀN HÌNH TỔNG ĐÀN (XEM CHI TIẾT CẢ ĐÀN BAO GỒM 19 LỢN CON) */}
+      {/* MÀN HÌNH TỔNG ĐÀN */}
       {currentMenu === "HERD" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "14px", fontWeight: "800", marginBottom: "12px", color: "#64748b" }}>
-            DANH SÁCH CHI TIẾT ({pigs.length} CÁ THỂ)
+            DANH SÁCH TỔNG ĐÀN ({pigs.length} CON)
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {pigs.map((pig) => (
@@ -336,10 +307,10 @@ export default function FarmApp() {
                   </span>
                 </div>
                 <div style={{ fontSize: "13px", color: "#475569", marginTop: "6px" }}>
-                  Giống: <strong>{pig.breed_id || "Chưa rõ"}</strong> | Giai đoạn: <strong style={{ color: "#059669" }}>{pig.stage || "—"}</strong>
+                  Giống: <strong>{pig.breed_id || "—"}</strong> | Giai đoạn: <strong style={{ color: "#059669" }}>{pig.stage || "—"}</strong>
                 </div>
                 <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                  Chuồng: {pig.current_pen_code || "—"} | Khối lượng: {pig.current_weight_kg ? `${pig.current_weight_kg}kg` : "—"}
+                  Ô chuồng: {pig.current_pen_code || "—"} | Khối lượng: {pig.current_weight_kg ? `${pig.current_weight_kg}kg` : "—"}
                 </div>
               </div>
             ))}
