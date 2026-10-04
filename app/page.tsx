@@ -1,13 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Plus, AlertTriangle, RefreshCw } from "lucide-react";
-
-// Tự fallback an toàn tránh lỗi lúc Vercel build
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Pig {
   id: string;
@@ -25,9 +20,10 @@ interface Pig {
 export default function FarmApp() {
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [debugMsg, setDebugMsg] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSex, setFilterSex] = useState<string>("ALL");
-  
+
   const [showMatingModal, setShowMatingModal] = useState(false);
   const [selectedSow, setSelectedSow] = useState("");
   const [selectedBoar, setSelectedBoar] = useState("");
@@ -35,54 +31,64 @@ export default function FarmApp() {
   const [inbreedingAlert, setInbreedingAlert] = useState<string | null>(null);
   const [savingMating, setSavingMating] = useState(false);
 
-  // Hàm nhận diện Lợn Cái linh hoạt (chấp nhận cả Cái, Nu, Female...)
+  // Tự động làm sạch URL: cắt sạch /rest/v1, /rest, / nếu vô tình dính vào
+  const supabase = useMemo(() => {
+    let rawUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      "https://eqlegigaftimjdmyuofg.supabase.co";
+    
+    // Chuẩn hóa xóa sạch khoảng trắng và đuôi thừa
+    rawUrl = rawUrl.trim();
+    rawUrl = rawUrl.replace(/\/rest(\/v1)?\/?$/, "");
+    rawUrl = rawUrl.replace(/\/+$/, "");
+
+    const rawKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig";
+
+    return createClient(rawUrl, rawKey.trim());
+  }, []);
+
   const isFemale = (sex: string) => {
     if (!sex) return false;
     const s = sex.toLowerCase();
     return s.includes("cái") || s.includes("cai") || s.includes("female") || s === "f";
   };
 
-  // Hàm nhận diện Lợn Đực linh hoạt (chấp nhận cả Đực, Duc, Male...)
   const isMale = (sex: string) => {
     if (!sex) return false;
     const s = sex.toLowerCase();
     return s.includes("đực") || s.includes("duc") || s.includes("male") || s === "m";
   };
 
-  const [debugMsg, setDebugMsg] = useState<string>("");
-
   const fetchPigs = async () => {
     setLoading(true);
     setDebugMsg("");
-    
-    // Kiểm tra xem Key từ Vercel có được nạp vào không
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")) {
-      setDebugMsg("LỖI: Web chưa nhận được NEXT_PUBLIC_SUPABASE_URL từ Vercel!");
-      setLoading(false);
-      return;
-    }
 
-    const { data, error } = await supabase
-      .from("pigs")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("pigs")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      setDebugMsg("LỖI TỪ SUPABASE: " + error.message);
-    } else if (data) {
-      if (data.length === 0) {
-        setDebugMsg("KẾT NỐI THÀNH CÔNG, NHƯNG BẢNG 'pigs' ĐANG TRỐNG 0 CON (Chưa import dữ liệu thành công vào bảng pigs).");
+      if (error) {
+        setDebugMsg("LỖI TỪ SUPABASE: " + error.message);
+      } else if (data) {
+        if (data.length === 0) {
+          setDebugMsg("ĐÃ KẾT NỐI SUPABASE THÀNH CÔNG, NHƯNG BẢNG 'pigs' ĐANG CÓ 0 CON.");
+        }
+        setPigs(data);
       }
-      setPigs(data);
+    } catch (err: any) {
+      setDebugMsg("LỖI KẾT NỐI: " + (err.message || String(err)));
     }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchPigs();
-  }, []);
+  }, [supabase]);
 
-  // Kiểm tra trùng huyết / cận huyết
   useEffect(() => {
     if (!selectedSow || !selectedBoar) {
       setInbreedingAlert(null);
@@ -108,7 +114,6 @@ export default function FarmApp() {
     }
   }, [selectedSow, selectedBoar, pigs]);
 
-  // Lưu phối giống và tự tạo lịch kiểm tra thai sau 21 ngày
   const handleSaveMating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSow || !selectedBoar) return;
@@ -146,7 +151,7 @@ export default function FarmApp() {
         },
       ]);
 
-      alert(`Ghi nhận phối thành công! Ngày dự đẻ: ${expectedFarrow}. Đã sinh lịch kiểm tra lốc sau 21 ngày.`);
+      alert(`Ghi nhận phối thành công! Dự sinh: ${expectedFarrow}. Đã tạo lịch kiểm tra thai sau 21 ngày.`);
       setShowMatingModal(false);
       setSelectedSow("");
       setSelectedBoar("");
@@ -157,16 +162,16 @@ export default function FarmApp() {
     setSavingMating(false);
   };
 
-  // Thống kê nhanh
   const totalPigs = pigs.length;
   const totalSows = pigs.filter((p) => isFemale(p.sex)).length;
   const totalBoars = pigs.filter((p) => isMale(p.sex)).length;
 
   const filteredPigs = pigs.filter((pig) => {
-    const matchSearch = pig.ear_tag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        pig.breed_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        pig.current_pen_code?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+    const matchSearch =
+      pig.ear_tag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pig.breed_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pig.current_pen_code?.toLowerCase().includes(searchTerm.toLowerCase());
+
     let matchSex = true;
     if (filterSex === "FEMALE") matchSex = isFemale(pig.sex);
     if (filterSex === "MALE") matchSex = isMale(pig.sex);
@@ -176,7 +181,6 @@ export default function FarmApp() {
 
   return (
     <div style={{ maxWidth: "1050px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
-      {/* Tiêu đề */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "16px" }}>
         <div>
           <h1 style={{ fontSize: "22px", fontWeight: "bold", margin: 0, color: "#0f172a" }}>
@@ -202,7 +206,6 @@ export default function FarmApp() {
         </div>
       </div>
 
-      {/* Thẻ thống kê */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px", margin: "20px 0" }}>
         <div style={{ background: "#fff", padding: "16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase" }}>Tổng đàn</div>
@@ -218,7 +221,6 @@ export default function FarmApp() {
         </div>
       </div>
 
-      {/* Bộ lọc và Danh sách lợn */}
       <div style={{ background: "#fff", borderRadius: "8px", border: "1px solid #e2e8f0", overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", gap: "12px", flexWrap: "wrap" }}>
           <input
@@ -257,12 +259,12 @@ export default function FarmApp() {
               {loading ? (
                 <tr><td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Đang tải dữ liệu từ trại...</td></tr>
               ) : filteredPigs.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#b91c1c", fontWeight: "bold" }}>
-                  {debugMsg || "Chưa có dữ liệu nào phù hợp với bộ lọc."}
-                </td>
-              </tr>
-            ) : (
+                <tr>
+                  <td colSpan={8} style={{ padding: "24px", textAlign: "center", color: debugMsg.includes("LỖI") ? "#b91c1c" : "#059669", fontWeight: "bold" }}>
+                    {debugMsg || "Không có cá thể nào phù hợp với bộ lọc."}
+                  </td>
+                </tr>
+              ) : (
                 filteredPigs.map((pig) => (
                   <tr key={pig.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                     <td style={{ padding: "12px 16px", fontWeight: "bold", color: "#0f172a" }}>{pig.ear_tag}</td>
@@ -281,7 +283,6 @@ export default function FarmApp() {
         </div>
       </div>
 
-      {/* Hộp thoại ghi nhận phối giống */}
       {showMatingModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", zIndex: 50 }}>
           <div style={{ background: "#fff", padding: "24px", borderRadius: "10px", width: "100%", maxWidth: "440px" }}>
