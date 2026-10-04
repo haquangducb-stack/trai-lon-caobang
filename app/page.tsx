@@ -14,7 +14,6 @@ interface Pig {
   stage: string;
   status: string;
   current_pen_code: string;
-  current_weight_kg: number | null;
   sire_ear_tag?: string;
   dam_ear_tag?: string;
   notes?: string;
@@ -77,7 +76,7 @@ export default function FarmApp() {
     fetchData();
   }, [supabase]);
 
-  // Chuẩn hóa xóa dấu tiếng Việt phục vụ kiểm tra logic
+  // Chuẩn hóa xóa dấu tiếng Việt phục vụ lọc logic
   const normalize = (text?: string) => {
     if (!text) return "";
     return text
@@ -88,27 +87,27 @@ export default function FarmApp() {
       .trim();
   };
 
-  // 1. Nhận diện Lợn con
+  // 1. Lợn con
   const isPiglet = (pig: Pig) => {
     const st = normalize(pig.stage);
     const tag = (pig.ear_tag || "").toUpperCase();
     return st.includes("theo me") || st.includes("lon con") || tag.includes("-C") || tag.includes("CON");
   };
 
-  // 2. Nhận diện Lợn thịt
+  // 2. Lợn thịt
   const isMeat = (pig: Pig) => {
     const st = normalize(pig.stage);
     return st.includes("thit") || st.includes("thuong pham");
   };
 
-  // 3. Phân biệt Lợn Nái / Cái
+  // 3. Lợn Nái
   const isSow = (pig: Pig) => {
     if (isPiglet(pig) || isMeat(pig)) return false;
     const sx = normalize(pig.sex);
     return sx === "cai" || sx === "c" || sx === "female" || sx === "f" || sx.includes("nai");
   };
 
-  // 4. Phân biệt Đực giống
+  // 4. Đực giống
   const isBoar = (pig: Pig) => {
     if (isPiglet(pig) || isMeat(pig)) return false;
     if (isSow(pig)) return false;
@@ -116,7 +115,7 @@ export default function FarmApp() {
     return sx === "duc" || sx === "d" || sx === "male" || sx === "m" || sx.includes("giong");
   };
 
-  // Phân loại giai đoạn Nái chính xác 100%
+  // Trạng thái nái
   const checkSowState = (pig: Pig): "CHUA" | "NUOICON" | "CHOPHOI" => {
     const st = normalize(pig.stage);
     if (st.includes("chua") || st.includes("phoi") || st.includes("mang thai")) {
@@ -128,13 +127,13 @@ export default function FarmApp() {
     return "CHOPHOI";
   };
 
-  // Danh sách các phân hệ
+  // Danh sách
   const sowList = pigs.filter(isSow);
   const boarList = pigs.filter(isBoar);
   const pigletList = pigs.filter(isPiglet);
   const meatList = pigs.filter(isMeat);
 
-  // Thống kê chi tiết
+  // Số liệu
   const totalCount = pigs.length;
   const sowCount = sowList.length;
   const sowChua = sowList.filter((p) => checkSowState(p) === "CHUA").length;
@@ -147,7 +146,7 @@ export default function FarmApp() {
   const pigletCaiSua = pigletList.filter((p) => normalize(p.stage).includes("cai sua")).length;
   const meatCount = meatList.length;
 
-  // Xử lý cập nhật thông tin lợn trực tiếp
+  // Cập nhật cá thể
   const handleUpdatePig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPig) return;
@@ -161,7 +160,6 @@ export default function FarmApp() {
         sex: editingPig.sex,
         stage: editingPig.stage,
         current_pen_code: editingPig.current_pen_code?.trim() || null,
-        current_weight_kg: editingPig.current_weight_kg ? Number(editingPig.current_weight_kg) : null,
         sire_ear_tag: editingPig.sire_ear_tag?.trim() || null,
         dam_ear_tag: editingPig.dam_ear_tag?.trim() || null,
         notes: editingPig.notes?.trim() || null,
@@ -177,7 +175,7 @@ export default function FarmApp() {
     setIsSavingEdit(false);
   };
 
-  // Lưu phối giống
+  // Phối giống
   const handleSaveMating = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSow || !selectedBoar) return;
@@ -198,10 +196,8 @@ export default function FarmApp() {
     ]);
 
     if (!error) {
-      // Đổi trạng thái nái sang Đang chửa
       await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", selectedSow);
 
-      // Tự sinh nhắc việc 21 ngày
       const task21 = new Date(matingDate);
       task21.setDate(task21.getDate() + 21);
       await supabase.from("farm_tasks").insert([
@@ -212,7 +208,7 @@ export default function FarmApp() {
         }
       ]);
 
-      alert(`Đã ghi nhận phối giống nái ${selectedSow}! Tự động đổi trạng thái sang 'Đang chửa'.`);
+      alert(`Đã ghi nhận phối nái ${selectedSow}! Đổi sang 'Đang chửa'.`);
       setShowMatingModal(false);
       setSelectedSow("");
       setSelectedBoar("");
@@ -225,7 +221,7 @@ export default function FarmApp() {
     fetchData();
   };
 
-  // Render thẻ cá thể có thể bấm vào sửa
+  // Render thẻ cá thể (Đã gỡ bỏ toàn bộ cân nặng)
   const renderPigCard = (pig: Pig) => (
     <div
       key={pig.id}
@@ -245,7 +241,7 @@ export default function FarmApp() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
         <span style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "12px", background: "#f3e8ff", color: "#6b21a8" }}>
-          Chạm để sửa ✎
+          Sửa ✎
         </span>
       </div>
 
@@ -260,11 +256,6 @@ export default function FarmApp() {
         <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
           {pig.stage || "Bình thường"}
         </span>
-        {pig.current_weight_kg && (
-          <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#fffbeb", color: "#b45309", fontWeight: "600" }}>
-            {pig.current_weight_kg} kg
-          </span>
-        )}
       </div>
 
       <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: "6px", marginTop: "4px", fontSize: "11px", color: "#64748b", display: "flex", justifyContent: "space-between" }}>
@@ -296,7 +287,7 @@ export default function FarmApp() {
         </h1>
       </header>
 
-      {/* DRAWER MENU ĐIỀU HƯỚNG */}
+      {/* DRAWER MENU */}
       {isSidebarOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
           <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
@@ -350,7 +341,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 1. MÀN HÌNH TỔNG QUAN (DASHBOARD) */}
+      {/* 1. TỔNG QUAN */}
       {currentMenu === "OVERVIEW" && (
         <div style={{ padding: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
@@ -363,17 +354,13 @@ export default function FarmApp() {
             </button>
           </div>
 
-          {/* Hộp Tổng Đàn */}
           <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
             <span style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b" }}>
               TỔNG ĐÀN: {totalCount} con
             </span>
           </div>
 
-          {/* 4 Thẻ Màu điều hướng trực tiếp sang từng phân hệ */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
-            
-            {/* THẺ NÁI */}
             <div
               onClick={() => { setCurrentMenu("SOW"); setSubFilter("ALL"); }}
               style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}
@@ -387,7 +374,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ ĐỰC GIỐNG */}
             <div
               onClick={() => { setCurrentMenu("BOAR"); setSubFilter("ALL"); }}
               style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "14px", cursor: "pointer" }}
@@ -399,7 +385,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ LỢN CON */}
             <div
               onClick={() => { setCurrentMenu("PIGLET"); setSubFilter("ALL"); }}
               style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}
@@ -412,7 +397,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* THẺ LỢN THỊT */}
             <div
               onClick={() => { setCurrentMenu("MEAT"); setSubFilter("ALL"); }}
               style={{ backgroundColor: "#f6f1f2", borderRadius: "16px", padding: "14px", cursor: "pointer" }}
@@ -423,10 +407,8 @@ export default function FarmApp() {
                 <div>• Đang nuôi vỗ béo</div>
               </div>
             </div>
-
           </div>
 
-          {/* CÔNG VIỆC CẦN LÀM */}
           <div>
             <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: "0 0 12px 0" }}>
               CÔNG VIỆC CẦN LÀM ({tasks.filter(t => !t.is_completed).length})
@@ -454,10 +436,9 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 2. PHÂN HỆ QUẢN LÝ NÁI */}
+      {/* 2. QUẢN LÝ NÁI */}
       {currentMenu === "SOW" && (
         <div style={{ padding: "16px" }}>
-          {/* Thanh lọc trạng thái nái */}
           <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto", paddingBottom: "4px" }}>
             {[
               { id: "ALL", label: `Tất cả (${sowCount})` },
@@ -497,7 +478,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 3. PHÂN HỆ QUẢN LÝ ĐỰC */}
+      {/* 3. QUẢN LÝ ĐỰC */}
       {currentMenu === "BOAR" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>
@@ -509,7 +490,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. PHÂN HỆ LỢN CON */}
+      {/* 4. LỢN CON */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ display: "flex", gap: "6px", marginBottom: "14px" }}>
@@ -544,7 +525,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 5. PHÂN HỆ LỢN THỊT */}
+      {/* 5. LỢN THỊT */}
       {currentMenu === "MEAT" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>
@@ -591,7 +572,7 @@ export default function FarmApp() {
           <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
             <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "800" }}>Trại Nà Roác - Cao Bằng</h3>
             <p style={{ margin: 0, fontSize: "13px", color: "#64748b", lineHeight: "1.6" }}>
-              Hệ thống tự động liên kết phả hệ, sinh nhắc việc phối giống (21 ngày) và ngày dự sinh (114 ngày).
+              Tự động hóa theo dõi chu kỳ: Đang chửa (114 ngày), Thử lốc (21 ngày).
             </p>
             <div style={{ marginTop: "14px" }}>
               <button
@@ -605,13 +586,13 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL SỬA TOÀN BỘ THÔNG TIN CÁ THỂ (IN-PLACE EDITING) */}
+      {/* MODAL SỬA CÁ THỂ (ĐÃ LƯỢC BỎ CÂN NẶNG) */}
       {editingPig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "420px", maxHeight: "90vh", overflowY: "auto", padding: "20px", boxShadow: "0 10px 25px rgba(0,0,0,0.15)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
               <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800", color: "#0f172a" }}>
-                Sửa thông tin: {editingPig.ear_tag}
+                Sửa cá thể: {editingPig.ear_tag}
               </h3>
               <button onClick={() => setEditingPig(null)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer" }}>✕</button>
             </div>
@@ -649,32 +630,22 @@ export default function FarmApp() {
                 </div>
               </div>
 
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "3px" }}>GIAI ĐOẠN / TRẠNG THÁI</label>
-                <input
-                  value={editingPig.stage || ""}
-                  placeholder="Ví dụ: Đang chửa, Nuôi con, Hậu bị, Theo mẹ..."
-                  onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
-              </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "3px" }}>CHUỒNG / Ô</label>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "3px" }}>GIAI ĐOẠN / TRẠNG THÁI</label>
                   <input
-                    value={editingPig.current_pen_code || ""}
-                    onChange={(e) => setEditingPig({ ...editingPig, current_pen_code: e.target.value })}
+                    value={editingPig.stage || ""}
+                    placeholder="Đang chửa, Nuôi con..."
+                    onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })}
                     style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "3px" }}>CÂN NẶNG (KG)</label>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", marginBottom: "3px" }}>CHUỒNG / Ô</label>
                   <input
-                    type="number"
-                    step="0.1"
-                    value={editingPig.current_weight_kg || ""}
-                    onChange={(e) => setEditingPig({ ...editingPig, current_weight_kg: e.target.value ? parseFloat(e.target.value) : null })}
+                    value={editingPig.current_pen_code || ""}
+                    placeholder="CA1, CB2..."
+                    onChange={(e) => setEditingPig({ ...editingPig, current_pen_code: e.target.value })}
                     style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
                   />
                 </div>
@@ -729,7 +700,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL PHỐI GIỐNG NHANH */}
+      {/* MODAL PHỐI GIỐNG */}
       {showMatingModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "400px", padding: "20px" }}>
