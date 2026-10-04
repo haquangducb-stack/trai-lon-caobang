@@ -898,7 +898,7 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* THANH CỐ ĐỊNH Ở ĐÁY (ALWAYS ON BOTTOM) - LỆCH HOÀN TOÀN VỀ BÊN PHẢI */}
+      {/* THANH ĐÁY CỐ ĐỊNH - ÉP SÁT MÉP PHẢI ĐỂ NÉ LOGO NETLIFY BÊN TRÁI */}
       <footer
         style={{
           position: "fixed",
@@ -911,26 +911,28 @@ export default function FarmApp() {
           borderTop: "1px solid #f1e5f0",
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-end",
-          paddingRight: "16px",
-          zIndex: 50,
+          justifyContent: "flex-end", // Ép toàn bộ nội dung dạt hết về bên phải
+          paddingRight: "20px",        // Cách mép phải 20px cho thoáng mắt
+          zIndex: 999,                 // Nổi lên trên cùng
           maxWidth: "480px",
           margin: "0 auto",
-          boxSizing: "border-box"
+          boxSizing: "border-box",
+          pointerEvents: "none"        // Không chặn cảm ứng của màn hình
         }}
       >
         <span
           style={{
             fontSize: "12px",
-            fontWeight: "700",
+            fontWeight: "800",
             color: "#64748b",
-            letterSpacing: "0.3px"
+            letterSpacing: "0.3px",
+            whiteSpace: "nowrap"
           }}
         >
           AppWeb: Trại Lợn Nà Roác
         </span>
       </footer>
-
+      
       {/* MODAL SỬA CÁ THỂ VỚI DROPDOWN TOÀN DIỆN */}
       {editingPig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
