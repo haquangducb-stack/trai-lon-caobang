@@ -1,8 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
-import { Plus, AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+import { Plus, AlertTriangle, RefreshCw } from "lucide-react";
+
+// Tự kết nối trực tiếp, không phụ thuộc file ngoài
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Pig {
   id: string;
@@ -32,6 +37,10 @@ export default function FarmApp() {
 
   const fetchPigs = async () => {
     setLoading(true);
+    if (!supabaseUrl || !supabaseAnonKey) {
+      setLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from("pigs")
       .select("*")
@@ -214,7 +223,7 @@ export default function FarmApp() {
             {loading ? (
               <tr><td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Đang tải dữ liệu từ trại...</td></tr>
             ) : filteredPigs.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Chưa có cá thể nào.</td></tr>
+              <tr><td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>Chưa có cá thể nào hoặc chưa kết nối Supabase Key.</td></tr>
             ) : (
               filteredPigs.map((pig) => (
                 <tr key={pig.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
