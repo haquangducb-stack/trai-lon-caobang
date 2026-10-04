@@ -85,17 +85,20 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  // Hàm chuẩn hóa giới tính dứt khoát 100%
-  const getCleanSex = (sexStr: string): "FEMALE" | "MALE" | "OTHER" => {
-    if (!sexStr) return "OTHER";
+  // Nhận diện chuẩn xác tuyệt đối: Phân loại nhị phân không trùng lặp
+  const isFemale = (sexStr: string) => {
+    if (!sexStr) return false;
     const s = sexStr.trim().toLowerCase();
-    if (s === "cái" || s === "cai" || s === "female" || s === "f" || s.startsWith("nái")) {
-      return "FEMALE";
-    }
-    if (s === "đực" || s === "duc" || s === "male" || s === "m") {
-      return "MALE";
-    }
-    return "OTHER";
+    // Chấp nhận: cái, nái, female, f, c (viết tắt Cái)
+    return s.includes("cái") || s.includes("cai") || s.includes("nái") || s === "female" || s === "f" || s === "c";
+  };
+
+  const isMale = (sexStr: string) => {
+    if (!sexStr) return false;
+    // Không phải cái thì xét đực: đực, duc, male, m, d (viết tắt Đực)
+    if (isFemale(sexStr)) return false; // Tuyệt đối loại trừ nếu đã là cái!
+    const s = sexStr.trim().toLowerCase();
+    return s.includes("đực") || s.includes("duc") || s === "male" || s === "m" || s === "d" || s.includes("boar");
   };
 
   const isFemale = (sex: string) => getCleanSex(sex) === "FEMALE";
@@ -438,7 +441,7 @@ export default function FarmApp() {
                         backgroundColor: female ? "#fce7f3" : "#e0f2fe",
                         color: female ? "#be185d" : "#0369a1"
                       }}>
-                        {female ? "♀ LỢN CÁI" : "♂ LỢN ĐỰC"}
+                        {female ? "♀ LỢN CÁI" : "♂ LỢN ĐỰC"} ({pig.sex})
                       </span>
                     </div>
 
