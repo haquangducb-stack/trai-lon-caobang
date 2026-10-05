@@ -638,15 +638,15 @@ export default function FarmApp() {
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
             {/* KHU VỰC NHÂN SỰ & PHÂN QUYỀN */}
-            {profile?.role === "ADMIN" ? (
-              <AdminUserManager
-                supabase={supabase}
-                currentUserId={user?.id}
-                allProfiles={allProfiles}
-                onRefresh={loadAllProfiles}
-                onLog={logAction}
-              />
-            ) : (
+            {(profile?.role === "ADMIN" || user?.email?.toLowerCase() === "haquangdu.cb@gmail.com") ? (
+  <AdminUserManager
+    supabase={supabase}
+    currentUserId={user?.id}
+    allProfiles={allProfiles}
+    onRefresh={loadAllProfiles}
+    onLog={logAction}
+  />
+) : (
               <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "12px", border: "1px solid #f1e5f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: "14px", fontWeight: "800", color: "#1e1b4b" }}>Quản lý Nhân sự & Phân quyền</div>
