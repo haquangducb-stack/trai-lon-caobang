@@ -76,7 +76,7 @@ export default function FarmApp() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
 
-  // Modal Auth & Đổi mật khẩu
+  // Auth Modals
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -86,7 +86,7 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Thêm tài khoản Admin
+  // Admin Add User
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -94,6 +94,7 @@ export default function FarmApp() {
   const [newRole, setNewRole] = useState<"STAFF" | "ADMIN">("STAFF");
   const [addMsg, setAddMsg] = useState("");
 
+  // Data states
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -101,13 +102,12 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Phân hệ điều hướng
+  // Navigation
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Cấu hình Dropdown
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Lan lai Hương", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -246,7 +246,7 @@ export default function FarmApp() {
     e.preventDefault();
     setChangePwdMsg("");
     if (newPassword.length < 6) {
-      setChangePwdMsg("Mật khẩu mới phải từ 6 ký tự!");
+      setChangePwdMsg("Mật khẩu phải từ 6 ký tự trở lên!");
       return;
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -264,7 +264,7 @@ export default function FarmApp() {
     e.preventDefault();
     setAddMsg("");
     if (newPwd.length < 6) {
-      setAddMsg("Mật khẩu phải từ 6 ký tự!");
+      setAddMsg("Mật khẩu phải từ 6 ký tự trở lên!");
       return;
     }
     try {
@@ -279,7 +279,7 @@ export default function FarmApp() {
       } else if (data && typeof data === "object" && (data as any).success === false) {
         setAddMsg("Lỗi: " + (data as any).message);
       } else {
-        await logAction("CREATE_USER", newEmail, `Admin tạo tài khoản mới quyền ${newRole}`);
+        await logAction("CREATE_USER", newEmail, `Admin tạo tài khoản quyền ${newRole}`);
         alert("Đã tạo tài khoản nhân viên thành công!");
         setShowAddUser(false);
         setNewEmail("");
@@ -295,7 +295,7 @@ export default function FarmApp() {
   const handleToggleRole = async (target: UserProfile) => {
     if (!target?.id) return;
     const nextRole = target.role === "ADMIN" ? "STAFF" : "ADMIN";
-    if (!confirm(`Xác nhận đổi quyền của ${target.email} thành ${nextRole}?`)) return;
+    if (!confirm(`Xác nhận đổi vai trò của ${target.email} thành ${nextRole}?`)) return;
     await supabase.from("user_profiles").update({ role: nextRole }).eq("id", target.id);
     await logAction("UPDATE_ROLE", target.email, `Đổi vai trò thành ${nextRole}`);
     loadAllProfiles();
@@ -356,7 +356,6 @@ export default function FarmApp() {
   const meatList = (pigs || []).filter(isMeat);
   const activeLitters = (litters || []).filter(l => !(l?.notes || "").toLowerCase().includes("da cai"));
 
-  // Thuật toán lập lịch thú y tự động
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
     const today = new Date();
