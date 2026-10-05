@@ -24,9 +24,10 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
   const [newPassword, setNewPassword] = useState("");
   const [newFullName, setNewFullName] = useState("");
   const [newRole, setNewRole] = useState<"STAFF" | "ADMIN">("STAFF");
+  const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const profilesList = allProfiles || [];
+  const profilesList = Array.isArray(allProfiles) ? allProfiles : [];
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,38 +37,50 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
       return;
     }
 
-    const { data, error } = await supabase.rpc("admin_create_user", {
-      new_email: newEmail.trim().toLowerCase(),
-      new_password: newPassword.trim(),
-      new_full_name: newFullName.trim() || newEmail.split("@")[0],
-      new_role: newRole
-    });
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_create_user", {
+        new_email: newEmail.trim().toLowerCase(),
+        new_password: newPassword.trim(),
+        new_full_name: newFullName.trim() || newEmail.split("@")[0],
+        new_role: newRole
+      });
 
-    if (error) {
-      setMsg("Lỗi: " + error.message);
-    } else if (data && !data.success) {
-      setMsg("Lỗi: " + data.message);
-    } else {
-      await onLog("CREATE_USER", newEmail, `Admin tạo tài khoản mới quyền ${newRole}`);
-      alert("Đã tạo tài khoản nhân viên mới thành công!");
-      setShowAddUser(false);
-      setNewEmail("");
-      setNewPassword("");
-      setNewFullName("");
-      onRefresh();
+      if (error) {
+        setMsg("Lỗi: " + error.message);
+      } else if (data && typeof data === "object" && (data as any).success === false) {
+        setMsg("Lỗi: " + (data as any).message);
+      } else {
+        await onLog("CREATE_USER", newEmail, `Tạo tài khoản mới quyền ${newRole}`);
+        alert("Đã tạo tài khoản thành công!");
+        setShowAddUser(false);
+        setNewEmail("");
+        setNewPassword("");
+        setNewFullName("");
+        onRefresh();
+      }
+    } catch (err: any) {
+      setMsg("Lỗi ngoại lệ: " + (err?.message || "Không xác định"));
     }
+    setLoading(false);
   };
 
   const handleToggleRole = async (target: UserProfile) => {
+    if (!target?.id) return;
     const nextRole = target.role === "ADMIN" ? "STAFF" : "ADMIN";
     if (!confirm(`Xác nhận đổi vai trò của ${target.email} thành ${nextRole}?`)) return;
 
-    await supabase.from("user_profiles").update({ role: nextRole }).eq("id", target.id);
-    await onLog("UPDATE_ROLE", target.email, `Đổi vai trò thành ${nextRole}`);
-    onRefresh();
+    try {
+      await supabase.from("user_profiles").update({ role: nextRole }).eq("id", target.id);
+      await onLog("UPDATE_ROLE", target.email, `Đổi vai trò thành ${nextRole}`);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleToggleBan = async (target: UserProfile) => {
+    if (!target?.id) return;
     if (target.id === currentUserId) {
       alert("Không thể tự khóa tài khoản của chính mình!");
       return;
@@ -76,9 +89,13 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
     const actionName = nextStatus ? "Mở khóa" : "Khóa (Ban)";
     if (!confirm(`Xác nhận ${actionName} tài khoản ${target.email}?`)) return;
 
-    await supabase.from("user_profiles").update({ is_active: nextStatus }).eq("id", target.id);
-    await onLog("BAN_USER", target.email, `${actionName} tài khoản`);
-    onRefresh();
+    try {
+      await supabase.from("user_profiles").update({ is_active: nextStatus }).eq("id", target.id);
+      await onLog("BAN_USER", target.email, `${actionName} tài khoản`);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -132,15 +149,19 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
               <option value="STAFF">Kỹ thuật viên (Staff)</option>
               <option value="ADMIN">Quản trị viên (Admin)</option>
             </select>
-            <button type="submit" style={{ marginLeft: "auto", padding: "7px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}>
-              Tạo Ngay
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ marginLeft: "auto", padding: "7px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
+            >
+              {loading ? "Đang tạo..." : "Tạo Ngay"}
             </button>
           </div>
         </form>
       )}
 
       {profilesList.length === 0 ? (
-        <div style={{ fontSize: "12px", color: "#94a3b8", textAlign: "center", padding: "10px" }}>Đang tải danh sách tài khoản...</div>
+        <div style={{ fontSize: "12px", color: "#94a3b8", textAlign: "center", padding: "10px" }}>Chưa có danh sách nhân sự hoặc đang tải...</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {profilesList.map((p) => (
@@ -151,7 +172,7 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
                   {!p.is_active && <span style={{ marginLeft: "6px", color: "#ef4444", fontSize: "11px" }}>[BỊ KHÓA]</span>}
                 </div>
                 <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                  Quyền: <strong style={{ color: p.role === "ADMIN" ? "#b45309" : "#0369a1" }}>{p.role}</strong>
+                  Quyền: <strong style={{ color: p.role === "ADMIN" ? "#b45309" : "#0369a1" }}>{p.role || "STAFF"}</strong>
                 </div>
               </div>
 
