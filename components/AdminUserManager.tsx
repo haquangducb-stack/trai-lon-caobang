@@ -26,6 +26,8 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
   const [newRole, setNewRole] = useState<"STAFF" | "ADMIN">("STAFF");
   const [msg, setMsg] = useState("");
 
+  const profilesList = allProfiles || [];
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg("");
@@ -137,38 +139,42 @@ export const AdminUserManager: React.FC<AdminUserManagerProps> = ({
         </form>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {allProfiles.map((p) => (
-          <div key={p.id} style={{ padding: "10px", borderRadius: "8px", background: p.is_active ? "#f8fafc" : "#fef2f2", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>
-                {p.full_name ? `${p.full_name} (${p.email})` : p.email}
-                {!p.is_active && <span style={{ marginLeft: "6px", color: "#ef4444", fontSize: "11px" }}>[BỊ KHÓA]</span>}
+      {profilesList.length === 0 ? (
+        <div style={{ fontSize: "12px", color: "#94a3b8", textAlign: "center", padding: "10px" }}>Đang tải danh sách tài khoản...</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {profilesList.map((p) => (
+            <div key={p.id} style={{ padding: "10px", borderRadius: "8px", background: p.is_active ? "#f8fafc" : "#fef2f2", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>
+                  {p.full_name ? `${p.full_name} (${p.email})` : p.email}
+                  {!p.is_active && <span style={{ marginLeft: "6px", color: "#ef4444", fontSize: "11px" }}>[BỊ KHÓA]</span>}
+                </div>
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                  Quyền: <strong style={{ color: p.role === "ADMIN" ? "#b45309" : "#0369a1" }}>{p.role}</strong>
+                </div>
               </div>
-              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                Quyền: <strong style={{ color: p.role === "ADMIN" ? "#b45309" : "#0369a1" }}>{p.role}</strong>
-              </div>
-            </div>
 
-            {p.id !== currentUserId && (
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  onClick={() => handleToggleRole(p)}
-                  style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-                >
-                  {p.role === "ADMIN" ? "Hạ Staff" : "Lên Admin"}
-                </button>
-                <button
-                  onClick={() => handleToggleBan(p)}
-                  style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: p.is_active ? "#ef4444" : "#10b981", color: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-                >
-                  {p.is_active ? "Khóa" : "Mở"}
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              {p.id !== currentUserId && (
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button
+                    onClick={() => handleToggleRole(p)}
+                    style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                  >
+                    {p.role === "ADMIN" ? "Hạ Staff" : "Lên Admin"}
+                  </button>
+                  <button
+                    onClick={() => handleToggleBan(p)}
+                    style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: p.is_active ? "#ef4444" : "#10b981", color: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                  >
+                    {p.is_active ? "Khóa" : "Mở"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
