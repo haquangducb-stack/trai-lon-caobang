@@ -56,17 +56,42 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  const loadProfile = async (uEmail: string) => {
-    const { data } = await supabase.from("user_profiles").select("*").eq("email", uEmail).single();
+  const loadProfile = async (uEmail: string, uId?: string) => {
+    const cleanEmail = (uEmail || "").trim().toLowerCase();
+
+    // 1. Kiểm tra trong database
+    let userProf: UserProfile | null = null;
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .or(`email.ilike.${cleanEmail},id.eq.${uId || "00000000-0000-00-00-00-00-000000000000"}`)
+      .maybeSingle();
+
     if (data) {
-      if (!data.is_active) {
+      userProf = data;
+    }
+
+    // 2. CƠ CHẾ DỰ PHÒNG CỨNG: Ép quyền Admin vĩnh viễn cho email của anh
+    if (cleanEmail === "haquangdu.cb@gmail.com") {
+      userProf = {
+        id: uId || userProf?.id || "admin-root",
+        email: cleanEmail,
+        full_name: "Hà Quang Dự",
+        role: "ADMIN",
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+    }
+
+    if (userProf) {
+      if (!userProf.is_active) {
         alert("Tài khoản đã bị khóa!");
         await supabase.auth.signOut();
         setUser(null);
         setProfile(null);
         return;
       }
-      setProfile(data);
+      setProfile(userProf);
     }
   };
 
@@ -102,13 +127,13 @@ export default function FarmApp() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user?.email) loadProfile(session.user.email);
+      if (session?.user?.email) loadProfile(session.user.email, session.user.id);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user?.email) {
-        loadProfile(session.user.email);
+        loadProfile(session.user.email, session.user.id);
       } else {
         setProfile(null);
       }
@@ -119,17 +144,23 @@ export default function FarmApp() {
   }, [supabase]);
 
   useEffect(() => {
-    if (profile?.role === "ADMIN") {
-      loadAllProfiles();
-    }
-  }, [profile]);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user?.email) loadProfile(session.user.email, session.user.id);
+    });
 
-  const logAction = async (actionType: string, targetId: string, details: string) => {
-    const operator = profile?.email || user?.email || "Khách";
-    await supabase.from("audit_logs").insert([
-      { action_type: actionType, target_id: targetId, performed_by: operator, details }
-    ]);
-  };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user?.email) {
+        loadProfile(session.user.email, session.user.id);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    fetchData();
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
