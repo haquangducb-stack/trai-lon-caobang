@@ -187,9 +187,9 @@ export default function FarmApp() {
   const meatCount = meatList.length;
   const totalCount = sowCount + boarCount + meatCount + totalPigletsCount;
 
-  // ENGINE CHUYÊN GIA THÚ Y: TỰ ĐỘNG TÍNH TOÁN LỊCH KỸ THUẬT & VACCINE
+  // ENGINE CHUYÊN GIA THÚ Y - CÓ CƠ CHẾ CHỐNG TRÙNG LẶP (DEDUPLICATION)
   const fullTasks = useMemo(() => {
-    const autoList: FarmTask[] = [];
+    const taskMap = new Map<string, FarmTask>();
     const today = new Date();
 
     const addDays = (dStr: string, days: number) => {
@@ -203,15 +203,25 @@ export default function FarmApp() {
       return Math.floor((today.getTime() - d.getTime()) / (1000 * 3600 * 24));
     };
 
-    // 1. QUY TRÌNH NÁI PHỐI & MANG THAI
-    inseminations.forEach((ins) => {
+    // 1. QUY TRÌNH NÁI PHỐI & MANG THAI (Lọc chỉ lấy 1 bản ghi phối giống mới nhất cho từng nái)
+    const latestInsemBySow = new Map<string, Insemination>();
+    inseminations.forEach(ins => {
+      if (!ins.sow_ear_tag) return;
+      const current = latestInsemBySow.get(ins.sow_ear_tag);
+      if (!current || new Date(ins.mating_date) > new Date(current.mating_date)) {
+        latestInsemBySow.set(ins.sow_ear_tag, ins);
+      }
+    });
+
+    latestInsemBySow.forEach((ins) => {
       if (!ins.mating_date) return;
       const daysAfterMating = diffDays(ins.mating_date);
 
-      // Kiểm tra lốc chu kỳ 1 (Ngày 18 - 22)
+      // A. Kiểm tra lốc chu kỳ 1 (Ngày 18 - 22)
       if (daysAfterMating >= 16 && daysAfterMating <= 25) {
-        autoList.push({
-          id: `auto-loc1-${ins.id}`,
+        const key = `loc1-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[SINH SẢN] Kiểm tra lốc chu kỳ 1 (21 ngày) nái ${ins.sow_ear_tag}`,
           due_date: addDays(ins.mating_date, 21),
           related_tag: ins.sow_ear_tag,
@@ -221,10 +231,11 @@ export default function FarmApp() {
         });
       }
 
-      // Khám thai / Siêu âm (Ngày 38 - 42)
+      // B. Khám thai / Siêu âm (Ngày 38 - 42)
       if (daysAfterMating >= 35 && daysAfterMating <= 45) {
-        autoList.push({
-          id: `auto-thai2-${ins.id}`,
+        const key = `thai2-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[SINH SẢN] Khám thai lần 2 (40 ngày) nái ${ins.sow_ear_tag}`,
           due_date: addDays(ins.mating_date, 40),
           related_tag: ins.sow_ear_tag,
@@ -234,10 +245,11 @@ export default function FarmApp() {
         });
       }
 
-      // Nái chửa ngày 85: Tiêm phòng E.Coli ngừa tiêu chảy phân trắng
+      // C. Nái chửa ngày 85: Tiêm phòng E.Coli ngừa tiêu chảy phân trắng
       if (daysAfterMating >= 80 && daysAfterMating <= 90) {
-        autoList.push({
-          id: `auto-ecoli-${ins.id}`,
+        const key = `ecoli-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[VACCINE] Tiêm E.Coli phòng tiêu chảy phân trắng cho nái ${ins.sow_ear_tag}`,
           due_date: addDays(ins.mating_date, 85),
           related_tag: ins.sow_ear_tag,
@@ -247,10 +259,11 @@ export default function FarmApp() {
         });
       }
 
-      // Nái ngày 107: Chuyển lên chuồng đẻ & giảm cám
+      // D. Nái ngày 107: Chuyển lên chuồng đẻ & giảm cám
       if (daysAfterMating >= 104 && daysAfterMating <= 112) {
-        autoList.push({
-          id: `auto-chuongde-${ins.id}`,
+        const key = `chuongde-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[CHUẨN BỊ ĐẺ] Chuyển nái ${ins.sow_ear_tag} lên chuồng đẻ & sát trùng vú`,
           due_date: addDays(ins.mating_date, 107),
           related_tag: ins.sow_ear_tag,
@@ -260,10 +273,11 @@ export default function FarmApp() {
         });
       }
 
-      // Dự đẻ (Ngày 114)
+      // E. Dự đẻ (Ngày 114)
       if (daysAfterMating >= 110 && daysAfterMating <= 118) {
-        autoList.push({
-          id: `auto-dude-${ins.id}`,
+        const key = `dude-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `⚠️ [TRỰC ĐẺ] Nái ${ins.sow_ear_tag} dự kiến đẻ (Hạn 114 ngày)`,
           due_date: ins.expected_farrow_date || addDays(ins.mating_date, 114),
           related_tag: ins.sow_ear_tag,
@@ -279,10 +293,10 @@ export default function FarmApp() {
       if (!lit.farrow_date) return;
       const ageDays = diffDays(lit.farrow_date);
 
-      // Ngày 3: Tiêm sắt lần 1 + Nhỏ cầu trùng
       if (ageDays >= 1 && ageDays <= 6) {
-        autoList.push({
-          id: `auto-fe1-${lit.id}`,
+        const key = `fe1-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[THÚ Y] Tiêm Sắt lần 1 & Nhỏ Cầu Trùng cho đàn con nái ${lit.sow_ear_tag}`,
           due_date: addDays(lit.farrow_date, 3),
           related_tag: lit.sow_ear_tag,
@@ -292,10 +306,10 @@ export default function FarmApp() {
         });
       }
 
-      // Ngày 10: Tiêm Sắt lần 2 + Tiêm phòng Suyễn (Mycoplasma) mũi 1
       if (ageDays >= 7 && ageDays <= 13) {
-        autoList.push({
-          id: `auto-suyen1-${lit.id}`,
+        const key = `suyen1-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[VACCINE] Tiêm Sắt lần 2 & Suyễn mũi 1 cho đàn con nái ${lit.sow_ear_tag}`,
           due_date: addDays(lit.farrow_date, 10),
           related_tag: lit.sow_ear_tag,
@@ -305,10 +319,10 @@ export default function FarmApp() {
         });
       }
 
-      // Ngày 14: Tiêm Tai xanh (PRRS)
       if (ageDays >= 12 && ageDays <= 18) {
-        autoList.push({
-          id: `auto-prrs-${lit.id}`,
+        const key = `prrs-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[VACCINE] Tiêm Tai Xanh (PRRS) đàn con nái ${lit.sow_ear_tag}`,
           due_date: addDays(lit.farrow_date, 14),
           related_tag: lit.sow_ear_tag,
@@ -318,10 +332,10 @@ export default function FarmApp() {
         });
       }
 
-      // Ngày 21: Tiêm Dịch tả lợn cổ điển lần 1
       if (ageDays >= 19 && ageDays <= 25) {
-        autoList.push({
-          id: `auto-csf-${lit.id}`,
+        const key = `csf-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[VACCINE] Tiêm Dịch Tả lợn mũi 1 cho đàn con nái ${lit.sow_ear_tag}`,
           due_date: addDays(lit.farrow_date, 21),
           related_tag: lit.sow_ear_tag,
@@ -331,11 +345,11 @@ export default function FarmApp() {
         });
       }
 
-      // Ngày 24 - 28: Cai sữa
       if (ageDays >= 24) {
         const isOverdue = ageDays >= 28;
-        autoList.push({
-          id: `auto-wean-${lit.id}`,
+        const key = `wean-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `${isOverdue ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${lit.alive_born} con, ${ageDays} ngày tuổi)`,
           due_date: lit.weaning_date || addDays(lit.farrow_date, 28),
           related_tag: lit.sow_ear_tag,
@@ -350,8 +364,9 @@ export default function FarmApp() {
     sowList.forEach((sow) => {
       const st = normalize(sow.stage);
       if (st.includes("hau bi") || st.includes("cho phoi")) {
-        autoList.push({
-          id: `auto-heat-${sow.id}`,
+        const key = `heat-${sow.ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[THEO DÕI ĐỘNG DỤC] Ép đực dò nái kiểm tra chịu đực: ${sow.ear_tag} (Ô: ${sow.current_pen_code || "—"})`,
           due_date: today.toISOString().split("T")[0],
           related_tag: sow.ear_tag,
@@ -362,16 +377,21 @@ export default function FarmApp() {
       }
     });
 
-    return [...autoList, ...dbTasks];
+    // Nạp các việc thủ công từ DB mà chưa bị trùng
+    dbTasks.forEach((dt) => {
+      if (!taskMap.has(dt.title)) {
+        taskMap.set(dt.title, dt);
+      }
+    });
+
+    return Array.from(taskMap.values());
   }, [inseminations, activeLitters, sowList, dbTasks]);
 
-  // Bộ lọc danh mục công việc
   const filteredTasks = fullTasks.filter((t) => {
     if (taskCategoryFilter === "ALL") return true;
     return t.category === taskCategoryFilter;
   });
 
-  // Cập nhật thông tin cá thể
   const handleUpdatePig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPig) return;
@@ -400,7 +420,6 @@ export default function FarmApp() {
     setIsSavingEdit(false);
   };
 
-  // Cai sữa nguyên lô
   const handleWeanLitter = async (litter: FarrowingLitter) => {
     if (!confirm(`Xác nhận cai sữa cho đàn con nái ${litter.sow_ear_tag}? Nái sẽ chuyển sang 'Chờ phối' để ép giống lại.`)) return;
 
@@ -476,9 +495,10 @@ export default function FarmApp() {
   );
 
   return (
-    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative", boxSizing: "border-box" }}>
       
-      <div>
+      {/* KHỐI NỘI DUNG CHÍNH (CÓ PADDING BOTTOM 50PX ĐỂ KHÔNG BỊ FOOTER CHE KHUẤT KHI VUỐT HẾT TRANG) */}
+      <div style={{ paddingBottom: "50px" }}>
         {/* HEADER */}
         <header style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: 0, zIndex: 30 }}>
           <button
@@ -601,9 +621,9 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* DANH SÁCH VIỆC CẦN LÀM & LỊCH THÚ Y TỰ ĐỘNG */}
+            {/* DANH SÁCH VIỆC CẦN LÀM & LỊCH THÚ Y TỰ ĐỘNG (ĐÃ KHỬ TRÙNG LẶP 100%) */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <div style={{ marginBottom: "8px" }}>
                 <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
                   LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t.is_completed).length})
                 </h3>
@@ -898,7 +918,7 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* THANH ĐÁY CỐ ĐỊNH - ÉP HẲN SANG BÊN TRÁI ĐỂ TRÁNH CỤC NETLIFY Ở BÊN PHẢI */}
+      {/* THANH FOOTER CỐ ĐỊNH Ở ĐÁY - NẰM HOÀN TOÀN BÊN TRÁI, NÉ HUY HIỆU NETLIFY */}
       <footer
         style={{
           position: "fixed",
@@ -911,8 +931,8 @@ export default function FarmApp() {
           borderTop: "1px solid #f1e5f0",
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-start", // ĐẨY HOÀN TOÀN SANG BÊN TRÁI
-          paddingLeft: "16px",          // CÁCH MÉP TRÁI 16PX
+          justifyContent: "flex-start",
+          paddingLeft: "16px",
           zIndex: 40,
           maxWidth: "480px",
           margin: "0 auto",
@@ -932,7 +952,7 @@ export default function FarmApp() {
           AppWeb: Trại Lợn Nà Roác
         </span>
       </footer>
-      
+
       {/* MODAL SỬA CÁ THỂ VỚI DROPDOWN TOÀN DIỆN */}
       {editingPig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
