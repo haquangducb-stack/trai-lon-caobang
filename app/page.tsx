@@ -86,7 +86,7 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Tạo tài khoản mới bởi Admin
+  // Thêm tài khoản Admin
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -118,7 +118,6 @@ export default function FarmApp() {
   const [newStageInput, setNewStageInput] = useState("");
   const [newPenInput, setNewPenInput] = useState("");
 
-  // Modal Sửa cá thể
   const [editingPig, setEditingPig] = useState<Pig | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -156,7 +155,7 @@ export default function FarmApp() {
   const loadAllProfiles = async () => {
     try {
       const { data } = await supabase.from("user_profiles").select("*").order("created_at", { ascending: false });
-      if (data) setAllProfiles(data);
+      if (data && Array.isArray(data)) setAllProfiles(data);
     } catch (e) {
       console.error(e);
     }
@@ -202,7 +201,6 @@ export default function FarmApp() {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // Kiểm tra quyền Admin an toàn tuyệt đối
   const isAdmin = useMemo(() => {
     return profile?.role === "ADMIN" || user?.email?.toLowerCase().trim() === "haquangdu.cb@gmail.com";
   }, [profile, user]);
@@ -353,9 +351,9 @@ export default function FarmApp() {
     return st.includes("chua") || st.includes("phoi") ? "CHUA" : st.includes("nuoi con") ? "NUOICON" : "CHOPHOI";
   };
 
-  const sowList = pigs.filter(isSow);
-  const boarList = pigs.filter(isBoar);
-  const meatList = pigs.filter(isMeat);
+  const sowList = (pigs || []).filter(isSow);
+  const boarList = (pigs || []).filter(isBoar);
+  const meatList = (pigs || []).filter(isMeat);
   const activeLitters = (litters || []).filter(l => !(l?.notes || "").toLowerCase().includes("da cai"));
 
   // Thuật toán lập lịch thú y tự động
@@ -653,7 +651,7 @@ export default function FarmApp() {
               ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {sowList.filter((p) => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
+              {sowList.filter(p => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
             </div>
           </div>
         )}
