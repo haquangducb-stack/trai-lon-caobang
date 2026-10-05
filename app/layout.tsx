@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "App Trại Lợn Nà Roác",
-  description: "Quản lý đàn lợn và lịch thú y tự động",
+  description: "Quản lý đàn lợn và lịch kỹ thuật tự động",
 };
 
 export default function RootLayout({
