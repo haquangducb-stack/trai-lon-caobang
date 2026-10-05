@@ -27,13 +27,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newStageInput, setNewStageInput] = useState("");
   const [newPenInput, setNewPenInput] = useState("");
 
+  const safeBreeds = config?.breeds || [];
+  const safeStages = config?.stages || [];
+  const safePens = config?.pens || [];
+  const safeLogs = auditLogs || [];
+
   return (
     <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
       {isAdmin ? (
         <AdminUserManager
           supabase={supabase}
           currentUserId={currentUserId}
-          allProfiles={allProfiles}
+          allProfiles={allProfiles || []}
           onRefresh={onRefreshProfiles}
           onLog={onLog}
         />
@@ -57,17 +62,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
         <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-          {config.breeds.map((b) => (
+          {safeBreeds.map((b) => (
             <span key={b} style={{ padding: "4px 10px", borderRadius: "20px", background: "#f1f5f9", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
               {b}
-              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
+              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, breeds: safeBreeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
             </span>
           ))}
         </div>
         {isLoggedIn && (
           <div style={{ display: "flex", gap: "8px" }}>
             <input placeholder="Thêm giống mới..." value={newBreedInput} onChange={(e) => setNewBreedInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-            <button onClick={() => { if (newBreedInput.trim() && !config.breeds.includes(newBreedInput.trim())) { onSaveConfig({ ...config, breeds: [...config.breeds, newBreedInput.trim()] }); setNewBreedInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+            <button onClick={() => { if (newBreedInput.trim() && !safeBreeds.includes(newBreedInput.trim())) { onSaveConfig({ ...config, breeds: [...safeBreeds, newBreedInput.trim()] }); setNewBreedInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
           </div>
         )}
       </div>
@@ -76,17 +81,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
         <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-          {config.stages.map((st) => (
+          {safeStages.map((st) => (
             <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
               {st}
-              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, stages: config.stages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
+              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, stages: safeStages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
             </span>
           ))}
         </div>
         {isLoggedIn && (
           <div style={{ display: "flex", gap: "8px" }}>
             <input placeholder="Thêm trạng thái..." value={newStageInput} onChange={(e) => setNewStageInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-            <button onClick={() => { if (newStageInput.trim() && !config.stages.includes(newStageInput.trim())) { onSaveConfig({ ...config, stages: [...config.stages, newStageInput.trim()] }); setNewStageInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+            <button onClick={() => { if (newStageInput.trim() && !safeStages.includes(newStageInput.trim())) { onSaveConfig({ ...config, stages: [...safeStages, newStageInput.trim()] }); setNewStageInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
           </div>
         )}
       </div>
@@ -95,17 +100,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
         <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-          {config.pens.map((pen) => (
+          {safePens.map((pen) => (
             <span key={pen} style={{ padding: "4px 10px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
               {pen}
-              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
+              {isLoggedIn && <span onClick={() => onSaveConfig({ ...config, pens: safePens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444" }}>✕</span>}
             </span>
           ))}
         </div>
         {isLoggedIn && (
           <div style={{ display: "flex", gap: "8px" }}>
             <input placeholder="Mã ô chuồng..." value={newPenInput} onChange={(e) => setNewPenInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-            <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { onSaveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
+            <button onClick={() => { if (newPenInput.trim() && !safePens.includes(newPenInput.trim())) { onSaveConfig({ ...config, pens: [...safePens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700" }}>+ Thêm</button>
           </div>
         )}
       </div>
@@ -113,17 +118,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       {/* NHẬT KÝ THAO TÁC */}
       <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
         <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Gần Đây</h4>
-        {auditLogs.length === 0 ? (
+        {safeLogs.length === 0 ? (
           <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có lịch sử thao tác nào.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "200px", overflowY: "auto" }}>
-            {auditLogs.map((log) => (
+            {safeLogs.map((log) => (
               <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
-                  <span>{log.performed_by}</span>
-                  <span>{new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span>{log.performed_by || "Ẩn danh"}</span>
+                  <span>{log.created_at ? new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
                 </div>
-                <div style={{ color: "#334155", marginTop: "2px" }}>{log.details}</div>
+                <div style={{ color: "#334155", marginTop: "2px" }}>{log.details || ""}</div>
               </div>
             ))}
           </div>
