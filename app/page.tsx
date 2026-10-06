@@ -47,15 +47,6 @@ interface FarmTask {
   is_auto?: boolean;
 }
 
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string;
-  role: "ADMIN" | "STAFF";
-  is_active: boolean;
-  created_at: string;
-}
-
 interface AuditLog {
   id: string;
   action_type: string;
@@ -74,8 +65,6 @@ interface FarmConfig {
 export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
 
   // Auth Modals
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -86,14 +75,6 @@ export default function FarmApp() {
   const [showChangePwdModal, setShowChangePwdModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
-
-  // Admin Add User
-  const [showAddUser, setShowAddUser] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newPwd, setNewPwd] = useState("");
-  const [newFullName, setNewFullName] = useState("");
-  const [newRole, setNewRole] = useState<"STAFF" | "ADMIN">("STAFF");
-  const [addMsg, setAddMsg] = useState("");
 
   // Data states
   const [pigs, setPigs] = useState<Pig[]>([]);
@@ -135,37 +116,6 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  const loadProfile = async (uEmail: string) => {
-    if (!uEmail) return;
-    const cleanEmail = uEmail.trim().toLowerCase();
-    try {
-      const { data } = await supabase.from("user_profiles").select("*").ilike("email", cleanEmail).maybeSingle();
-      if (data) {
-        setProfile(data);
-      } else if (cleanEmail === "haquangdu.cb@gmail.com") {
-        setProfile({
-          id: "admin-root",
-          email: cleanEmail,
-          full_name: "Hà Quang Dự",
-          role: "ADMIN",
-          is_active: true,
-          created_at: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const loadAllProfiles = async () => {
-    try {
-      const { data } = await supabase.from("user_profiles").select("*").order("created_at", { ascending: false });
-      if (data && Array.isArray(data)) setAllProfiles(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const fetchData = async () => {
     try {
       const [pRes, tRes, farRes, insemRes, penRes, logRes] = await Promise.all([
@@ -193,31 +143,20 @@ export default function FarmApp() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user?.email) loadProfile(session.user.email);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user?.email) loadProfile(session.user.email);
-      else setProfile(null);
     });
 
     fetchData();
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  const isAdmin = useMemo(() => {
-    return profile?.role === "ADMIN" || user?.email?.toLowerCase().trim() === "haquangdu.cb@gmail.com";
-  }, [profile, user]);
-
-  useEffect(() => {
-    if (isAdmin) loadAllProfiles();
-  }, [isAdmin]);
-
   const logAction = async (actionType: string, targetId: string, details: string) => {
     try {
       await supabase.from("audit_logs").insert([
-        { action_type: actionType, target_id: targetId, performed_by: profile?.email || user?.email || "Khách", details }
+        { action_type: actionType, target_id: targetId, performed_by: user?.email || "Khách", details }
       ]);
       fetchData();
     } catch (e) {
@@ -228,14 +167,13 @@ export default function FarmApp() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: authEmail.trim(),
       password: authPassword.trim()
     });
     if (error) {
       setAuthError(error.message);
-    } else if (data.user?.email) {
-      await loadProfile(data.user.email);
+    } else {
       setShowAuthModal(false);
       setAuthPassword("");
     }
@@ -244,7 +182,6 @@ export default function FarmApp() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setProfile(null);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -263,61 +200,6 @@ export default function FarmApp() {
       setShowChangePwdModal(false);
       setNewPassword("");
     }
-  };
-
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddMsg("");
-    if (newPwd.length < 6) {
-      setAddMsg("Mật khẩu phải từ 6 ký tự trở lên!");
-      return;
-    }
-    try {
-      const { data, error } = await supabase.rpc("admin_create_user", {
-        new_email: newEmail.trim().toLowerCase(),
-        new_password: newPwd.trim(),
-        new_full_name: newFullName.trim() || newEmail.split("@")[0],
-        new_role: newRole
-      });
-      if (error) {
-        setAddMsg("Lỗi: " + error.message);
-      } else if (data && typeof data === "object" && (data as any).success === false) {
-        setAddMsg("Lỗi: " + (data as any).message);
-      } else {
-        await logAction("CREATE_USER", newEmail, `Admin tạo tài khoản quyền ${newRole}`);
-        alert("Đã tạo tài khoản nhân viên thành công!");
-        setShowAddUser(false);
-        setNewEmail("");
-        setNewPwd("");
-        setNewFullName("");
-        loadAllProfiles();
-      }
-    } catch (err: any) {
-      setAddMsg("Lỗi: " + (err?.message || "Không thể tạo"));
-    }
-  };
-
-  const handleToggleRole = async (target: UserProfile) => {
-    if (!target?.id) return;
-    const nextRole = target.role === "ADMIN" ? "STAFF" : "ADMIN";
-    if (!confirm(`Xác nhận đổi vai trò của ${target.email} thành ${nextRole}?`)) return;
-    await supabase.from("user_profiles").update({ role: nextRole }).eq("id", target.id);
-    await logAction("UPDATE_ROLE", target.email, `Đổi vai trò thành ${nextRole}`);
-    loadAllProfiles();
-  };
-
-  const handleToggleBan = async (target: UserProfile) => {
-    if (!target?.id) return;
-    if (target.id === user?.id) {
-      alert("Không thể tự khóa tài khoản của chính mình!");
-      return;
-    }
-    const nextStatus = !target.is_active;
-    const actionName = nextStatus ? "Mở khóa" : "Khóa (Ban)";
-    if (!confirm(`Xác nhận ${actionName} tài khoản ${target.email}?`)) return;
-    await supabase.from("user_profiles").update({ is_active: nextStatus }).eq("id", target.id);
-    await logAction("BAN_USER", target.email, `${actionName} tài khoản`);
-    loadAllProfiles();
   };
 
   const saveConfig = (newCfg: FarmConfig) => {
@@ -363,7 +245,6 @@ export default function FarmApp() {
   const meatList = (pigs || []).filter(isMeat);
   const activeLitters = (litters || []).filter(l => !(l?.notes || "").toLowerCase().includes("da cai"));
 
-  // Bọc an toàn ngày tháng tránh sập React
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
     const t = new Date(dStr).getTime();
@@ -450,7 +331,7 @@ export default function FarmApp() {
   };
 
   const handleWeanLitter = async (litter: FarrowingLitter) => {
-    if (!user) return alert("Chỉ kỹ thuật viên mới có quyền cai sữa!");
+    if (!user) return alert("Vui lòng đăng nhập tài khoản để thực hiện!");
     if (!confirm(`Xác nhận cai sữa cho đàn con nái ${litter.sow_ear_tag}?`)) return;
     await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", litter.sow_ear_tag);
     await supabase.from("farrowings").update({ notes: "Đã cai sữa", weaning_date: new Date().toISOString().split("T")[0] }).eq("id", litter.id);
@@ -460,8 +341,8 @@ export default function FarmApp() {
   };
 
   const toggleTask = async (task: FarmTask) => {
-    if (!user) return alert("Vui lòng đăng nhập để thao tác!");
-    if (task.is_auto && task.category === "WEAN") return alert("Hãy vào tab Lợn con để xác nhận cai sữa!");
+    if (!user) return alert("Vui lòng đăng nhập để hoàn thành việc!");
+    if (task.is_auto && task.category === "WEAN") return alert("Hãy vào tab Lợn con để bấm 'Xác nhận cai sữa'!");
     if (task.is_auto) {
       await supabase.from("farm_tasks").insert([{ title: task.title, due_date: task.due_date, related_tag: task.related_tag, is_completed: true }]);
     } else {
@@ -477,7 +358,7 @@ export default function FarmApp() {
     <div
       key={pig.id}
       onClick={() => {
-        if (!user) return alert("Chế độ khách chỉ có quyền xem!");
+        if (!user) return alert("Chế độ khách chỉ có quyền xem! Hãy đăng nhập để sửa.");
         setEditingPig({ ...pig });
       }}
       style={{
@@ -546,7 +427,7 @@ export default function FarmApp() {
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
               {currentMenu === "SEARCH" && "TRA CỨU"}
-              {currentMenu === "SETTINGS" && "CÀI ĐẶT & NHÂN SỰ"}
+              {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
             </h1>
           </div>
           <div style={{ display: "flex", gap: "6px" }}>
@@ -568,7 +449,7 @@ export default function FarmApp() {
             <div style={{ width: "260px", backgroundColor: "#fff", height: "100%", zIndex: 101, padding: "20px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
               <h2 style={{ margin: 0, color: "#5b21b6" }}>APPTRAILON</h2>
               <div style={{ fontSize: "11px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "8px" }}>
-                {user ? `${user.email} (${isAdmin ? "Admin" : "Kỹ thuật"})` : "👀 Chế độ Khách"}
+                {user ? `👤 ${user.email}` : "👀 Chế độ Khách (Chỉ xem)"}
               </div>
               {[
                 { k: "OVERVIEW", l: "Tổng quan", icon: "📊" },
@@ -577,7 +458,7 @@ export default function FarmApp() {
                 { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
-                { k: "SETTINGS", l: "Cài đặt & Nhân sự", icon: "⚙️" },
+                { k: "SETTINGS", l: "Cài đặt & Danh mục", icon: "⚙️" },
               ].map(item => (
                 <button
                   key={item.k}
@@ -739,86 +620,20 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. CÀI ĐẶT & QUẢN LÝ NHÂN SỰ */}
+        {/* 7. CÀI ĐẶT & DANH MỤC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
-            {/* KHU VỰC QUẢN TRỊ ADMIN */}
-            {isAdmin ? (
-              <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #fed7aa" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                  <h4 style={{ margin: 0, fontSize: "15px", fontWeight: "900", color: "#c2410c" }}>
-                    👑 Quản Lý Nhân Sự & Tài Khoản
-                  </h4>
-                  <button
-                    onClick={() => setShowAddUser(!showAddUser)}
-                    style={{ padding: "5px 10px", borderRadius: "8px", background: "#ea580c", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
-                  >
-                    {showAddUser ? "Đóng Form" : "+ Thêm Nhân Viên"}
-                  </button>
-                </div>
-
-                {showAddUser && (
-                  <form onSubmit={handleCreateUser} style={{ background: "#fff7ed", padding: "12px", borderRadius: "10px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ fontSize: "12px", fontWeight: "800", color: "#9a3412" }}>CẤP TÀI KHOẢN MỚI TRỰC TIẾP</div>
-                    {addMsg && <div style={{ fontSize: "11px", color: "#ef4444" }}>{addMsg}</div>}
-                    <input type="email" required placeholder="Email nhân viên..." value={newEmail} onChange={(e) => setNewEmail(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #fdba74", fontSize: "12px" }} />
-                    <input type="text" placeholder="Họ và tên..." value={newFullName} onChange={(e) => setNewFullName(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #fdba74", fontSize: "12px" }} />
-                    <input type="password" required placeholder="Mật khẩu (>= 6 ký tự)..." value={newPwd} onChange={(e) => setNewPwd(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #fdba74", fontSize: "12px" }} />
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <select value={newRole} onChange={(e) => setNewRole(e.target.value as any)} style={{ padding: "6px", borderRadius: "6px", border: "1px solid #fdba74", fontSize: "12px" }}>
-                        <option value="STAFF">Kỹ thuật viên</option>
-                        <option value="ADMIN">Quản trị viên</option>
-                      </select>
-                      <button type="submit" style={{ marginLeft: "auto", padding: "7px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}>
-                        Tạo Ngay
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {(allProfiles || []).map((p) => (
-                    <div key={p.id} style={{ padding: "10px", borderRadius: "8px", background: p.is_active ? "#f8fafc" : "#fef2f2", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>
-                          {p.full_name ? `${p.full_name} (${p.email})` : p.email}
-                          {!p.is_active && <span style={{ marginLeft: "6px", color: "#ef4444", fontSize: "11px" }}>[BỊ KHÓA]</span>}
-                        </div>
-                        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                          Quyền: <strong style={{ color: p.role === "ADMIN" ? "#b45309" : "#0369a1" }}>{p.role}</strong>
-                        </div>
-                      </div>
-
-                      {p.id !== user?.id && (
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          <button onClick={() => handleToggleRole(p)} style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>
-                            {p.role === "ADMIN" ? "Hạ Staff" : "Lên Admin"}
-                          </button>
-                          <button onClick={() => handleToggleBan(p)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: p.is_active ? "#ef4444" : "#10b981", color: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>
-                            {p.is_active ? "Khóa" : "Mở"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            {/* THÔNG TIN TÀI KHOẢN */}
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
+              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
+                {user ? `Đang đăng nhập: ${user.email}` : "Chế độ xem tự do (Khách)"}
               </div>
-            ) : (
-              <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "12px", border: "1px solid #f1e5f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: "14px", fontWeight: "800", color: "#1e1b4b" }}>Quản lý Nhân sự & Phân quyền</div>
-                  <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                    {user ? "Chỉ tài khoản Quản trị viên (Admin) mới có quyền truy cập." : "Vui lòng đăng nhập tài khoản Admin."}
-                  </div>
-                </div>
-                {!user && (
-                  <button onClick={() => setShowAuthModal(true)} style={{ padding: "6px 12px", borderRadius: "8px", background: "#5b21b6", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>
-                    Đăng nhập
-                  </button>
-                )}
+              <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                * Để thêm hoặc khóa tài khoản nhân sự, vui lòng thao tác trực tiếp trên bảng điều khiển Supabase Authentication.
               </div>
-            )}
+            </div>
 
             {/* DANH MỤC GIỐNG */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
