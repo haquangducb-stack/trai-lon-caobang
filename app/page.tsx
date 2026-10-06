@@ -72,6 +72,7 @@ interface FarmConfig {
 }
 
 export default function FarmApp() {
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
@@ -120,6 +121,10 @@ export default function FarmApp() {
 
   const [editingPig, setEditingPig] = useState<Pig | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const supabase = useMemo(() => {
     let rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co";
@@ -246,7 +251,7 @@ export default function FarmApp() {
     e.preventDefault();
     setChangePwdMsg("");
     if (newPassword.length < 6) {
-      setChangePwdMsg("Mật khẩu phải từ 6 ký tự trở lên!");
+      setChangePwdMsg("Mật khẩu mới phải từ 6 ký tự trở lên!");
       return;
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -317,7 +322,9 @@ export default function FarmApp() {
 
   const saveConfig = (newCfg: FarmConfig) => {
     setConfig(newCfg);
-    localStorage.setItem("farm_config", JSON.stringify(newCfg));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("farm_config", JSON.stringify(newCfg));
+    }
   };
 
   const normalize = (text?: string) => {
@@ -356,24 +363,35 @@ export default function FarmApp() {
   const meatList = (pigs || []).filter(isMeat);
   const activeLitters = (litters || []).filter(l => !(l?.notes || "").toLowerCase().includes("da cai"));
 
+  // Bọc an toàn ngày tháng tránh sập React
+  const safeDateDiff = (dStr?: string) => {
+    if (!dStr) return -999;
+    const t = new Date(dStr).getTime();
+    if (isNaN(t)) return -999;
+    return Math.floor((new Date().getTime() - t) / (1000 * 3600 * 24));
+  };
+
+  const safeAddDays = (dStr: string, days: number) => {
+    if (!dStr) return "";
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return "";
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  };
+
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
-    const today = new Date();
-    const diff = (dStr: string) => Math.floor((today.getTime() - new Date(dStr).getTime()) / (1000 * 3600 * 24));
-    const addD = (dStr: string, days: number) => {
-      const d = new Date(dStr);
-      d.setDate(d.getDate() + days);
-      return d.toISOString().split("T")[0];
-    };
 
     (inseminations || []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
-      const d = diff(ins.mating_date);
+      const d = safeDateDiff(ins.mating_date);
+      if (d === -999) return;
+
       if (d >= 16 && d <= 25) {
         taskMap.set(`l1-${ins.sow_ear_tag}`, {
           id: `l1-${ins.sow_ear_tag}`,
           title: `[SINH SẢN] Kiểm tra lốc chu kỳ 1 (21 ngày) nái ${ins.sow_ear_tag}`,
-          due_date: addD(ins.mating_date, 21),
+          due_date: safeAddDays(ins.mating_date, 21),
           related_tag: ins.sow_ear_tag,
           category: "REPRO",
           is_completed: false,
@@ -384,7 +402,7 @@ export default function FarmApp() {
         taskMap.set(`cd-${ins.sow_ear_tag}`, {
           id: `cd-${ins.sow_ear_tag}`,
           title: `[CHUẨN BỊ ĐẺ] Chuyển nái ${ins.sow_ear_tag} lên chuồng đẻ & sát trùng vú`,
-          due_date: addD(ins.mating_date, 107),
+          due_date: safeAddDays(ins.mating_date, 107),
           related_tag: ins.sow_ear_tag,
           category: "REPRO",
           is_completed: false,
@@ -395,12 +413,14 @@ export default function FarmApp() {
 
     activeLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
-      const age = diff(lit.farrow_date);
+      const age = safeDateDiff(lit.farrow_date);
+      if (age === -999) return;
+
       if (age >= 24) {
         taskMap.set(`w-${lit.sow_ear_tag}`, {
           id: `w-${lit.sow_ear_tag}`,
           title: `${age >= 28 ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${lit.alive_born || 0} con)`,
-          due_date: lit.weaning_date || addD(lit.farrow_date, 28),
+          due_date: lit.weaning_date || safeAddDays(lit.farrow_date, 28),
           related_tag: lit.sow_ear_tag,
           category: "WEAN",
           is_completed: false,
@@ -502,6 +522,14 @@ export default function FarmApp() {
       </div>
     </div>
   );
+
+  if (!mounted) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#fdf8fb", fontFamily: "sans-serif" }}>
+        Đang tải Trại Lợn Nà Roác...
+      </div>
+    );
+  }
 
   return (
     <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative" }}>
@@ -650,7 +678,7 @@ export default function FarmApp() {
               ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {sowList.filter(p => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
+              {sowList.filter((p) => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
             </div>
           </div>
         )}
@@ -670,7 +698,7 @@ export default function FarmApp() {
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {activeLitters.map((lit) => {
                 const sow = pigs.find((p) => p.ear_tag === lit.sow_ear_tag);
-                const ageDays = Math.floor((new Date().getTime() - new Date(lit.farrow_date).getTime()) / (1000 * 3600 * 24));
+                const ageDays = safeDateDiff(lit.farrow_date);
                 const isReadyWean = ageDays >= 24;
                 return (
                   <div key={lit.id} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "16px", border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0" }}>
@@ -679,7 +707,7 @@ export default function FarmApp() {
                       <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>{lit.alive_born} con</span>
                     </div>
                     <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
-                      Chuồng: {sow?.current_pen_code || "—"} | {ageDays} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
+                      Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
                     </div>
                     {user && (
                       <button onClick={() => handleWeanLitter(lit)} style={{ width: "100%", padding: "9px", borderRadius: "8px", border: "none", backgroundColor: isReadyWean ? "#ea580c" : "#0f172a", color: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}>
@@ -856,15 +884,24 @@ export default function FarmApp() {
                 <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có lịch sử thao tác nào.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "200px", overflowY: "auto" }}>
-                  {(auditLogs || []).map((log) => (
-                    <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
-                        <span>{log.performed_by}</span>
-                        <span>{log.created_at ? new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                  {(auditLogs || []).map((log) => {
+                    let formattedTime = "";
+                    if (log.created_at) {
+                      const t = new Date(log.created_at);
+                      if (!isNaN(t.getTime())) {
+                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+                      }
+                    }
+                    return (
+                      <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
+                          <span>{log.performed_by}</span>
+                          <span>{formattedTime}</span>
+                        </div>
+                        <div style={{ color: "#334155", marginTop: "2px" }}>{log.details}</div>
                       </div>
-                      <div style={{ color: "#334155", marginTop: "2px" }}>{log.details}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
