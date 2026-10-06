@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient, User } from "@supabase/supabase-js";
 
 interface Pig {
@@ -66,7 +66,7 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Auth Modals
+  // Modal Auth & Doi MK
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -76,7 +76,7 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Data states
+  // Du lieu
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -84,7 +84,7 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Navigation
+  // Dieu huong
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
@@ -116,7 +116,18 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  const fetchData = async () => {
+  // Khai bao logAction dau tien de khong bi ReferenceError
+  const logAction = useCallback(async (actionType: string, targetId: string, details: string) => {
+    try {
+      await supabase.from("audit_logs").insert([
+        { action_type: actionType, target_id: targetId, performed_by: user?.email || "Khách", details }
+      ]);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [supabase, user]);
+
+  const fetchData = useCallback(async () => {
     try {
       const [pRes, tRes, farRes, insemRes, penRes, logRes] = await Promise.all([
         supabase.from("pigs").select("*").order("created_at", { ascending: false }),
@@ -126,19 +137,19 @@ export default function FarmApp() {
         supabase.from("pens").select("pen_code").order("pen_code", { ascending: true }),
         supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(20)
       ]);
-      if (pRes.data) setPigs(pRes.data);
-      if (tRes.data) setDbTasks(tRes.data);
-      if (farRes.data) setLitters(farRes.data);
-      if (insemRes.data) setInseminations(insemRes.data);
-      if (logRes.data) setAuditLogs(logRes.data);
-      if (penRes.data && penRes.data.length > 0) {
-        const penCodes = Array.from(new Set([...config.pens, ...penRes.data.map((p: any) => p.pen_code)]));
+      if (pRes?.data) setPigs(pRes.data);
+      if (tRes?.data) setDbTasks(tRes.data);
+      if (farRes?.data) setLitters(farRes.data);
+      if (insemRes?.data) setInseminations(insemRes.data);
+      if (logRes?.data) setAuditLogs(logRes.data);
+      if (penRes?.data && Array.isArray(penRes.data) && penRes.data.length > 0) {
+        const penCodes = Array.from(new Set([...config.pens, ...penRes.data.map((p: any) => p?.pen_code).filter(Boolean)]));
         setConfig(prev => ({ ...prev, pens: penCodes }));
       }
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [supabase, config.pens]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -151,18 +162,7 @@ export default function FarmApp() {
 
     fetchData();
     return () => subscription.unsubscribe();
-  }, [supabase]);
-
-  const logAction = async (actionType: string, targetId: string, details: string) => {
-    try {
-      await supabase.from("audit_logs").insert([
-        { action_type: actionType, target_id: targetId, performed_by: user?.email || "Khách", details }
-      ]);
-      fetchData();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  }, [supabase, fetchData]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +176,7 @@ export default function FarmApp() {
     } else {
       setShowAuthModal(false);
       setAuthPassword("");
+      fetchData();
     }
   };
 
@@ -199,51 +200,59 @@ export default function FarmApp() {
       alert("Đổi mật khẩu thành công!");
       setShowChangePwdModal(false);
       setNewPassword("");
+      fetchData();
     }
   };
 
   const saveConfig = (newCfg: FarmConfig) => {
     setConfig(newCfg);
     if (typeof window !== "undefined") {
-      localStorage.setItem("farm_config", JSON.stringify(newCfg));
+      try {
+        localStorage.setItem("farm_config", JSON.stringify(newCfg));
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
   const normalize = (text?: string) => {
     if (!text) return "";
-    return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
+    return String(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
   };
 
-  const isIndividualPiglet = (pig: Pig) => {
-    const tag = (pig?.ear_tag || "").toUpperCase();
+  const isIndividualPiglet = (pig?: Pig) => {
+    if (!pig) return false;
+    const tag = String(pig.ear_tag || "").toUpperCase();
     return tag.includes("-C") || tag.includes("CON");
   };
 
-  const isMeat = (pig: Pig) => {
-    if (isIndividualPiglet(pig)) return false;
-    return normalize(pig?.stage).includes("thit");
+  const isMeat = (pig?: Pig) => {
+    if (!pig || isIndividualPiglet(pig)) return false;
+    return normalize(pig.stage).includes("thit");
   };
 
-  const isSow = (pig: Pig) => {
-    if (isIndividualPiglet(pig) || isMeat(pig)) return false;
-    const sx = normalize(pig?.sex);
+  const isSow = (pig?: Pig) => {
+    if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
+    const sx = normalize(pig.sex);
     return sx.includes("cai") || sx === "c";
   };
 
-  const isBoar = (pig: Pig) => {
-    if (isIndividualPiglet(pig) || isMeat(pig) || isSow(pig)) return false;
+  const isBoar = (pig?: Pig) => {
+    if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isSow(pig)) return false;
     return true;
   };
 
-  const checkSowState = (pig: Pig) => {
-    const st = normalize(pig?.stage);
+  const checkSowState = (pig?: Pig) => {
+    if (!pig) return "CHOPHOI";
+    const st = normalize(pig.stage);
     return st.includes("chua") || st.includes("phoi") ? "CHUA" : st.includes("nuoi con") ? "NUOICON" : "CHOPHOI";
   };
 
-  const sowList = (pigs || []).filter(isSow);
-  const boarList = (pigs || []).filter(isBoar);
-  const meatList = (pigs || []).filter(isMeat);
-  const activeLitters = (litters || []).filter(l => !(l?.notes || "").toLowerCase().includes("da cai"));
+  const safePigs = Array.isArray(pigs) ? pigs : [];
+  const sowList = safePigs.filter(isSow);
+  const boarList = safePigs.filter(isBoar);
+  const meatList = safePigs.filter(isMeat);
+  const activeLitters = (Array.isArray(litters) ? litters : []).filter(l => !String(l?.notes || "").toLowerCase().includes("da cai"));
 
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
@@ -252,7 +261,7 @@ export default function FarmApp() {
     return Math.floor((new Date().getTime() - t) / (1000 * 3600 * 24));
   };
 
-  const safeAddDays = (dStr: string, days: number) => {
+  const safeAddDays = (dStr?: string, days: number = 0) => {
     if (!dStr) return "";
     const d = new Date(dStr);
     if (isNaN(d.getTime())) return "";
@@ -263,7 +272,7 @@ export default function FarmApp() {
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
-    (inseminations || []).forEach(ins => {
+    (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
       const d = safeDateDiff(ins.mating_date);
       if (d === -999) return;
@@ -300,7 +309,7 @@ export default function FarmApp() {
       if (age >= 24) {
         taskMap.set(`w-${lit.sow_ear_tag}`, {
           id: `w-${lit.sow_ear_tag}`,
-          title: `${age >= 28 ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${lit.alive_born || 0} con)`,
+          title: `${age >= 28 ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${Number(lit.alive_born || 0)} con)`,
           due_date: lit.weaning_date || safeAddDays(lit.farrow_date, 28),
           related_tag: lit.sow_ear_tag,
           category: "WEAN",
@@ -310,7 +319,7 @@ export default function FarmApp() {
       }
     });
 
-    (dbTasks || []).forEach(t => {
+    (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
       if (t?.title && !taskMap.has(t.title)) taskMap.set(t.title, t);
     });
 
@@ -351,7 +360,7 @@ export default function FarmApp() {
     fetchData();
   };
 
-  const totalPiglets = activeLitters.reduce((s, l) => s + (l?.alive_born || 0), 0);
+  const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
   const renderPigCard = (pig: Pig) => (
@@ -479,7 +488,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 1. TỔNG QUAN */}
+        {/* 1. TONG QUAN */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
@@ -525,7 +534,7 @@ export default function FarmApp() {
 
             <div>
               <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: "0 0 8px 0" }}>
-                LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t.is_completed).length})
+                LỊCH KỸ THUẬT & VIỆC CẦN LÀM ({filteredTasks.filter(t => !t?.is_completed).length})
               </h3>
               <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto" }}>
                 {[{ id: "ALL", label: "Tất cả" }, { id: "REPRO", label: "Sinh sản" }, { id: "VET", label: "Thú y" }, { id: "WEAN", label: "Cai sữa" }].map((tab) => (
@@ -537,9 +546,9 @@ export default function FarmApp() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {filteredTasks.map((task) => (
-                  <div key={task.id} onClick={() => toggleTask(task)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: user ? "pointer" : "not-allowed", background: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#fef2f2" : "#fff", padding: "10px 14px", borderRadius: "10px", border: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "1px solid #fecaca" : "1px solid #f1e5f0" }}>
+                  <div key={task.id} onClick={() => toggleTask(task)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: user ? "pointer" : "not-allowed", background: String(task.title).includes("QUÁ HẠN") || String(task.title).includes("TRỰC ĐẺ") ? "#fef2f2" : "#fff", padding: "10px 14px", borderRadius: "10px", border: String(task.title).includes("QUÁ HẠN") || String(task.title).includes("TRỰC ĐẺ") ? "1px solid #fecaca" : "1px solid #f1e5f0" }}>
                     <div>
-                      <div style={{ fontSize: "13px", fontWeight: "700", color: task.title.includes("QUÁ HẠN") || task.title.includes("TRỰC ĐẺ") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>{task.title}</div>
+                      <div style={{ fontSize: "13px", fontWeight: "700", color: String(task.title).includes("QUÁ HẠN") || String(task.title).includes("TRỰC ĐẺ") ? "#b91c1c" : "#1e1b4b", textDecoration: task.is_completed ? "line-through" : "none" }}>{task.title}</div>
                       <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`}</div>
                     </div>
                     <div style={{ fontSize: "20px" }}>{task.is_completed ? "🟢" : "⚪"}</div>
@@ -550,7 +559,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 2. QUẢN LÝ NÁI */}
+        {/* 2. QUAN LY NAI */}
         {currentMenu === "SOW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto" }}>
@@ -564,7 +573,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 3. QUẢN LÝ ĐỰC */}
+        {/* 3. QUAN LY DUC */}
         {currentMenu === "BOAR" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>ĐÀN ĐỰC GIỐNG ({boarList.length} CON)</div>
@@ -572,13 +581,13 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 4. LỢN CON THEO LÔ */}
+        {/* 4. LON CON THEO LO */}
         {currentMenu === "PIGLET" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a", marginBottom: "12px" }}>ĐANG NUÔI: {activeLitters.length} LÔ ({totalPiglets} CON)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {activeLitters.map((lit) => {
-                const sow = pigs.find((p) => p.ear_tag === lit.sow_ear_tag);
+                const sow = safePigs.find((p) => p.ear_tag === lit.sow_ear_tag);
                 const ageDays = safeDateDiff(lit.farrow_date);
                 const isReadyWean = ageDays >= 24;
                 return (
@@ -602,7 +611,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 5. LỢN THỊT */}
+        {/* 5. LON THIT */}
         {currentMenu === "MEAT" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>ĐÀN LỢN THỊT ({meatList.length} CON)</div>
@@ -610,32 +619,32 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TRA CỨU */}
+        {/* 6. TRA CUU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {pigs.filter(p => !isIndividualPiglet(p)).filter(p => (p.ear_tag || "").toLowerCase().includes(searchQuery.toLowerCase()) || (p.breed_id || "").toLowerCase().includes(searchQuery.toLowerCase())).map(renderPigCard)}
+              {safePigs.filter(p => !isIndividualPiglet(p)).filter(p => String(p?.ear_tag || "").toLowerCase().includes(searchQuery.toLowerCase()) || String(p?.breed_id || "").toLowerCase().includes(searchQuery.toLowerCase())).map(renderPigCard)}
             </div>
           </div>
         )}
 
-        {/* 7. CÀI ĐẶT & DANH MỤC */}
+        {/* 7. CAI DAT & DANH MUC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
-            {/* THÔNG TIN TÀI KHOẢN */}
+            {/* THONG TIN TAI KHOAN */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
               <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
                 {user ? `Đang đăng nhập: ${user.email}` : "Chế độ xem tự do (Khách)"}
               </div>
               <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                * Để thêm hoặc khóa tài khoản nhân sự, vui lòng thao tác trực tiếp trên bảng điều khiển Supabase Authentication.
+                * Việc thêm, xóa tài khoản được quản lý trực tiếp và bảo mật trên Supabase Authentication.
               </div>
             </div>
 
-            {/* DANH MỤC GIỐNG */}
+            {/* DANH MUC GIONG */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -654,7 +663,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* DANH MỤC GIAI ĐOẠN */}
+            {/* DANH MUC GIAI DOAN */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -673,7 +682,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* DANH MỤC Ô CHUỒNG */}
+            {/* DANH MUC O CHUONG */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -692,7 +701,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* NHẬT KÝ THAO TÁC */}
+            {/* NHAT KY THAO TAC */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Gần Đây</h4>
               {(auditLogs || []).length === 0 ? (
@@ -725,12 +734,12 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* FOOTER CỐ ĐỊNH Ở ĐÁY - LỆCH TRÁI */}
+      {/* FOOTER CO DINH O DAY */}
       <footer style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: "36px", backgroundColor: "rgba(253, 248, 251, 0.95)", borderTop: "1px solid #f1e5f0", display: "flex", alignItems: "center", justifyContent: "flex-start", paddingLeft: "16px", zIndex: 40, maxWidth: "480px", margin: "0 auto", pointerEvents: "none" }}>
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
 
-      {/* MODAL SỬA CÁ THỂ */}
+      {/* MODAL SUA CA THE */}
       {editingPig && user && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "400px", padding: "20px" }}>
@@ -784,7 +793,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL ĐĂNG NHẬP */}
+      {/* MODAL DANG NHAP */}
       {showAuthModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
@@ -802,7 +811,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL ĐỔI MẬT KHẨU */}
+      {/* MODAL DOI MAT KHAU */}
       {showChangePwdModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
