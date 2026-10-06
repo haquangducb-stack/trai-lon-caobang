@@ -86,12 +86,13 @@ export default function FarmApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Điều hướng
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "REPORT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Cấu hình danh mục (Ưu tiên đọc từ LocalStorage nếu có để không bị hồi phục lại cái cũ)
+  // Cấu hình danh mục
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Lan lai Hương", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -102,7 +103,7 @@ export default function FarmApp() {
   const [newStageInput, setNewStageInput] = useState("");
   const [newPenInput, setNewPenInput] = useState("");
 
-  // Modal Thêm lợn mới
+  // Modal Thêm lợn
   const [showAddPigModal, setShowAddPigModal] = useState(false);
   const [newPig, setNewPig] = useState<Partial<Pig>>({
     ear_tag: "",
@@ -121,11 +122,11 @@ export default function FarmApp() {
   const [editingPig, setEditingPig] = useState<Pig | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Modal Xử lý Công việc (Hoàn thành / Quá hạn / Gia hạn)
+  // Modal Xử lý Công việc
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Khởi tạo và nạp danh mục đã lưu
+  // Khởi tạo và nạp cấu hình LocalStorage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -170,7 +171,7 @@ export default function FarmApp() {
         supabase.from("farm_tasks").select("*").order("due_date", { ascending: true }),
         supabase.from("farrowings").select("*").order("farrow_date", { ascending: false }),
         supabase.from("inseminations").select("*").order("mating_date", { ascending: false }),
-        supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(20)
+        supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50)
       ]);
       if (pRes?.data) setPigs(pRes.data);
       if (tRes?.data) setDbTasks(tRes.data);
@@ -195,7 +196,6 @@ export default function FarmApp() {
     return () => subscription.unsubscribe();
   }, [supabase, fetchData]);
 
-  // Đăng nhập Username
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -243,7 +243,6 @@ export default function FarmApp() {
     }
   };
 
-  // Lưu danh mục cố định không bị reset
   const saveConfig = (newCfg: FarmConfig) => {
     setConfig(newCfg);
     if (typeof window !== "undefined") {
@@ -255,7 +254,6 @@ export default function FarmApp() {
     }
   };
 
-  // Xử lý Thêm Lợn Mới
   const handleCreatePig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
@@ -360,7 +358,6 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // Tổng hợp nhiệm vụ tự động và cơ sở dữ liệu
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -421,21 +418,28 @@ export default function FarmApp() {
   }, [inseminations, activeLitters, dbTasks]);
 
   const filteredTasks = fullTasks.filter(t => taskCategoryFilter === "ALL" || t?.category === taskCategoryFilter);
-
-  // Phân chia danh sách việc chưa làm & việc đã làm
   const pendingTasks = filteredTasks.filter(t => !t.is_completed);
   const completedTasks = filteredTasks.filter(t => t.is_completed);
 
-  // Mở modal xác nhận việc cần làm
   const handleTaskClick = (task: FarmTask) => {
     if (!user) return alert("Vui lòng đăng nhập để xử lý công việc!");
     setSelectedTask(task);
     setShowTaskModal(true);
   };
 
-  // Xác nhận ĐÃ LÀM XONG
+  // TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI NGAY TRÊN DIALOG XÁC NHẬN
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
+
+    // Nếu là việc cai sữa -> Tự động chuyển nái sang Chờ phối và cập nhật lô con
+    if (selectedTask.category === "WEAN" && selectedTask.related_tag) {
+      await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", selectedTask.related_tag);
+      await supabase.from("farrowings").update({
+        notes: "Đã cai sữa",
+        weaning_date: new Date().toISOString().split("T")[0]
+      }).eq("sow_ear_tag", selectedTask.related_tag);
+    }
+
     if (selectedTask.is_auto) {
       await supabase.from("farm_tasks").insert([{
         title: selectedTask.title,
@@ -447,13 +451,13 @@ export default function FarmApp() {
     } else {
       await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", selectedTask.id);
     }
-    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Hoàn thành việc: ${selectedTask.title}`);
+
+    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xác nhận xong việc: ${selectedTask.title}`);
     setShowTaskModal(false);
     setSelectedTask(null);
     fetchData();
   };
 
-  // BỎ QUA VIỆC QUÁ HẠN (Biến mất vĩnh viễn)
   const confirmDismissTask = async () => {
     if (!selectedTask) return;
     if (selectedTask.is_auto) {
@@ -473,13 +477,11 @@ export default function FarmApp() {
     fetchData();
   };
 
-  // GIA HẠN THÊM NGÀY (Làm tiếp, treo thêm 3 ngày)
   const confirmPostponeTask = async () => {
     if (!selectedTask) return;
     const newDueDate = safeAddDays(new Date().toISOString().split("T")[0], 3);
     const newTitle = selectedTask.title.replace("⚠️ QUÁ HẠN: ", "").replace("🔔 ", "") + " (Gia hạn)";
     if (selectedTask.is_auto) {
-      // Ẩn việc auto cũ đi và tạo việc mới với hạn mới
       await supabase.from("farm_tasks").insert([
         { title: selectedTask.title, due_date: selectedTask.due_date, related_tag: selectedTask.related_tag, is_dismissed: true, is_completed: false },
         { title: newTitle, due_date: newDueDate, related_tag: selectedTask.related_tag, is_completed: false, is_dismissed: false }
@@ -504,19 +506,169 @@ export default function FarmApp() {
     setIsSavingEdit(false);
   };
 
-  const handleWeanLitter = async (litter: FarrowingLitter) => {
-    if (!user) return alert("Vui lòng đăng nhập tài khoản để thực hiện!");
-    if (!confirm(`Xác nhận cai sữa cho đàn con nái ${litter.sow_ear_tag}?`)) return;
-    await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", litter.sow_ear_tag);
-    await supabase.from("farrowings").update({ notes: "Đã cai sữa", weaning_date: new Date().toISOString().split("T")[0] }).eq("id", litter.id);
-    await logAction("WEAN_LITTER", litter.sow_ear_tag, `Cai sữa ${litter.alive_born} con`);
-    alert("Đã cai sữa thành công!");
-    fetchData();
-  };
-
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
   const displayUser = user?.email?.replace("@trailon.local", "") || "";
+
+  // TÍNH NĂNG XUẤT BÁO CÁO WORD THEO YÊU CẦU
+  const handleExportWord = () => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, "0");
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const yy = String(today.getFullYear()).slice(-2);
+    const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
+
+    // Thống kê theo giống
+    const breedStats: Record<string, { total: number; sow: number; boar: number; meat: number }> = {};
+    config.breeds.forEach(b => {
+      breedStats[b] = { total: 0, sow: 0, boar: 0, meat: 0 };
+    });
+
+    safePigs.forEach(p => {
+      const b = p.breed_id || "Khác";
+      if (!breedStats[b]) breedStats[b] = { total: 0, sow: 0, boar: 0, meat: 0 };
+      breedStats[b].total += 1;
+      if (isSow(p)) breedStats[b].sow += 1;
+      else if (isBoar(p)) breedStats[b].boar += 1;
+      else if (isMeat(p)) breedStats[b].meat += 1;
+    });
+
+    // Lọc công việc và biến động trong số ngày đã chọn
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - reportDays);
+
+    const filteredLogs = auditLogs.filter(log => {
+      if (!log.created_at) return false;
+      return new Date(log.created_at) >= pastDate;
+    });
+
+    const recentCompletedTasks = completedTasks.filter(t => {
+      if (!t.due_date) return false;
+      return new Date(t.due_date) >= pastDate;
+    });
+
+    let contentHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Báo Cáo Hoạt Động Trại Lợn Nà Roác</title>
+        <style>
+          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; margin: 30px; }
+          h2, h3 { text-align: center; margin-bottom: 5px; }
+          .header-info { text-align: center; margin-bottom: 25px; font-style: italic; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
+          th, td { border: 1px solid #333; padding: 7px 10px; font-size: 11pt; text-align: left; }
+          th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
+          .highlight { font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <h2>TRẠI LỢN NÀ ROÁC</h2>
+        <h3>BÁO CÁO TỔNG HỢP VẬN HÀNH & BIẾN ĐỘNG ĐÀN (${reportDays} NGÀY QUA)</h3>
+        <div class='header-info'>Thời điểm lập báo cáo: Ngày ${dd}/${mm}/20${yy} | Người lập: ${displayUser || "Cán bộ kỹ thuật"}</div>
+
+        <p class='highlight'>I. TỔNG QUAN TỔNG ĐÀN HIỆN TẠI</p>
+        <p>- Tổng đàn toàn trại: <b>${grandTotal} con</b> (Nái: ${sowList.length} con, Đực: ${boarList.length} con, Lợn thịt: ${meatList.length} con, Lợn con theo mẹ: ${totalPiglets} con / ${activeLitters.length} lô).</p>
+        
+        <p class='highlight'>II. CƠ CẤU ĐÀN CHI TIẾT THEO TỪNG GIỐNG LỢN</p>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Giống Lợn</th>
+              <th>Nái Giống</th>
+              <th>Đực Giống</th>
+              <th>Lợn Thịt</th>
+              <th>Tổng Cá Thể</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(breedStats).map(([breed, stat], idx) => `
+              <tr>
+                <td style='text-align: center;'>${idx + 1}</td>
+                <td><b>${breed}</b></td>
+                <td style='text-align: center;'>${stat.sow}</td>
+                <td style='text-align: center;'>${stat.boar}</td>
+                <td style='text-align: center;'>${stat.meat}</td>
+                <td style='text-align: center;'><b>${stat.total}</b></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+
+        <p class='highlight'>III. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN TRONG ${reportDays} NGÀY QUA</p>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Nội Dung Công Việc</th>
+              <th>Cá Thể Liên Quan</th>
+              <th>Hạn Hoàn Thành</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recentCompletedTasks.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có việc kỹ thuật ghi nhận trong kỳ</td></tr>` :
+              recentCompletedTasks.map((t, idx) => `
+                <tr>
+                  <td style='text-align: center;'>${idx + 1}</td>
+                  <td>${t.title}</td>
+                  <td style='text-align: center;'>${t.related_tag || "Toàn trại"}</td>
+                  <td style='text-align: center;'>${t.due_date}</td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
+
+        <p class='highlight'>IV. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC HỆ THỐNG TRONG ${reportDays} NGÀY QUA</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Thời Gian</th>
+              <th>Người Thực Hiện</th>
+              <th>Hành Động</th>
+              <th>Chi Tiết Biến Động</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredLogs.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có biến động ghi nhận</td></tr>` :
+              filteredLogs.map(l => `
+                <tr>
+                  <td style='text-align: center;'>${l.created_at ? new Date(l.created_at).toLocaleString("vi-VN") : ""}</td>
+                  <td style='text-align: center;'>${l.performed_by}</td>
+                  <td style='text-align: center;'>${l.action_type}</td>
+                  <td>${l.details}</td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
+
+        <br/>
+        <table style='border: none; margin-top: 30px;'>
+          <tr style='border: none;'>
+            <td style='border: none; text-align: center; width: 50%;'></td>
+            <td style='border: none; text-align: center; width: 50%;'>
+              <b>NGƯỜI LẬP BÁO CÁO</b><br/>
+              <i>(Ký và ghi rõ họ tên)</i><br/><br/><br/><br/>
+              <b>${displayUser || "Kỹ sư phụ trách"}</b>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([contentHtml], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const renderPigCard = (pig: Pig) => (
     <div
@@ -590,6 +742,7 @@ export default function FarmApp() {
               {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
+              {currentMenu === "REPORT" && "XUẤT BÁO CÁO"}
               {currentMenu === "SEARCH" && "TRA CỨU"}
               {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
             </h1>
@@ -606,7 +759,7 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT BẤM THÊM LỢN MỚI CỐ ĐỊNH Ở MÀN HÌNH NÁI / ĐỰC / THỊT */}
+        {/* NÚT THÊM LỢN NHANH */}
         {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
           <div style={{ padding: "12px 16px 0 16px" }}>
             <button
@@ -619,14 +772,14 @@ export default function FarmApp() {
                 }));
                 setShowAddPigModal(true);
               }}
-              style={{ width: "100%", padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: "6px" }}
+              style={{ width: "100%", padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
             >
-              <span>+ Thêm cá thể lợn mới</span>
+              + Thêm cá thể lợn mới
             </button>
           </div>
         )}
 
-        {/* DRAWER MENU */}
+        {/* MENU TRƯỢT */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
             <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
@@ -641,6 +794,7 @@ export default function FarmApp() {
                 { k: "BOAR", l: "Quản lý đực", icon: "🐗" },
                 { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
+                { k: "REPORT", l: "Xuất báo cáo Word", icon: "📄" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
                 { k: "SETTINGS", l: "Cài đặt & Danh mục", icon: "⚙️" },
               ].map(item => (
@@ -722,11 +876,11 @@ export default function FarmApp() {
                 ))}
               </div>
 
-              {/* KHỐI 1: VIỆC CHƯA HOÀN THÀNH */}
+              {/* VIỆC CHƯA LÀM */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
                 {pendingTasks.length === 0 ? (
                   <div style={{ padding: "14px", textAlign: "center", background: "#fff", borderRadius: "10px", fontSize: "12px", color: "#64748b" }}>
-                    ✨ Tuyệt vời! Hiện tại không có công việc nào tồn đọng.
+                    ✨ Hiện tại không có công việc nào tồn đọng.
                   </div>
                 ) : (
                   pendingTasks.map((task) => {
@@ -756,7 +910,7 @@ export default function FarmApp() {
                 )}
               </div>
 
-              {/* KHỐI 2: VIỆC ĐÃ HOÀN THÀNH */}
+              {/* VIỆC ĐÃ LÀM XONG */}
               {completedTasks.length > 0 && (
                 <div>
                   <h4 style={{ fontSize: "14px", fontWeight: "800", color: "#047857", margin: "0 0 8px 0" }}>
@@ -827,11 +981,6 @@ export default function FarmApp() {
                     <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
                       Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
                     </div>
-                    {user && (
-                      <button onClick={() => handleWeanLitter(lit)} style={{ width: "100%", padding: "9px", borderRadius: "8px", border: "none", backgroundColor: isReadyWean ? "#ea580c" : "#0f172a", color: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}>
-                        ✓ Xác nhận Cai sữa đàn này
-                      </button>
-                    )}
                   </div>
                 );
               })}
@@ -847,7 +996,49 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TRA CỨU */}
+        {/* 6. PHÂN HỆ XUẤT BÁO CÁO WORD */}
+        {currentMenu === "REPORT" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #fed7aa", marginBottom: "16px" }}>
+              <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#c2410c" }}>
+                📄 Xuất Báo Cáo Hoạt Động Trại
+              </h3>
+              <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 14px 0", lineHeight: "1.5" }}>
+                Báo cáo tổng hợp số lượng cá thể theo từng giống, chi tiết trạng thái đàn, các công việc thú y/kỹ thuật đã hoàn thành và biến động trong kỳ.
+              </p>
+
+              <label style={{ fontSize: "12px", fontWeight: "800", color: "#334155" }}>Chọn khoảng thời gian báo cáo:</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "10px 0 16px 0" }}>
+                {[7, 10, 30].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setReportDays(d as any)}
+                    style={{
+                      padding: "10px", borderRadius: "8px", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer",
+                      background: reportDays === d ? "#ea580c" : "#f1f5f9",
+                      color: reportDays === d ? "#fff" : "#475569"
+                    }}
+                  >
+                    {d} ngày qua
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px", color: "#475569", marginBottom: "16px" }}>
+                Tên file xuất mẫu: <strong>baocao_{reportDays}ngay_dd_mm_yy.doc</strong>
+              </div>
+
+              <button
+                onClick={handleExportWord}
+                style={{ width: "100%", padding: "12px", borderRadius: "10px", background: "#2563eb", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+              >
+                <span>📥 Tải File Word (.doc) Ngay</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 7. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -857,18 +1048,14 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. CÀI ĐẶT & DANH MỤC */}
+        {/* 8. CÀI ĐẶT & DANH MỤC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
-            {/* THÔNG TIN TÀI KHOẢN */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
               <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
                 {user ? `Đang đăng nhập: ${displayUser}` : "Chế độ xem tự do (Khách)"}
-              </div>
-              <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                * Quản trị viên cấp/thêm tài khoản trực tiếp trong mục Authentication trên Supabase.
               </div>
             </div>
 
@@ -950,35 +1137,6 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* NHẬT KÝ THAO TÁC */}
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Gần Đây</h4>
-              {(auditLogs || []).length === 0 ? (
-                <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có lịch sử thao tác nào.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "200px", overflowY: "auto" }}>
-                  {(auditLogs || []).map((log) => {
-                    let formattedTime = "";
-                    if (log.created_at) {
-                      const t = new Date(log.created_at);
-                      if (!isNaN(t.getTime())) {
-                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-                      }
-                    }
-                    return (
-                      <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
-                          <span>{log.performed_by}</span>
-                          <span>{formattedTime}</span>
-                        </div>
-                        <div style={{ color: "#334155", marginTop: "2px" }}>{log.details}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
           </div>
         )}
       </div>
@@ -988,7 +1146,7 @@ export default function FarmApp() {
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
 
-      {/* MODAL THÊM CÁ THỂ LỢN MỚI */}
+      {/* MODAL THÊM CÁ THỂ LỢN */}
       {showAddPigModal && user && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "400px", padding: "20px" }}>
@@ -1052,7 +1210,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL XÁC NHẬN / GIA HẠN CÔNG VIỆC */}
+      {/* MODAL DIALOG XÁC NHẬN CÔNG VIỆC TRỰC TIẾP */}
       {showTaskModal && selectedTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "20px" }}>
@@ -1063,7 +1221,7 @@ export default function FarmApp() {
               {selectedTask.title}
             </div>
             <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>
-              Hạn thực hiện: <strong>{selectedTask.due_date}</strong> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
+              Hạn: <strong>{selectedTask.due_date}</strong> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
             </div>
 
             {String(selectedTask.title).includes("QUÁ HẠN") ? (
@@ -1089,7 +1247,7 @@ export default function FarmApp() {
             ) : (
               <div>
                 <div style={{ fontSize: "12px", color: "#475569", marginBottom: "16px" }}>
-                  Bạn đã hoàn thành công việc kỹ thuật này đúng quy trình chưa?
+                  Bấm xác nhận hệ thống sẽ tự động cập nhật trạng thái cá thể và hoàn tất công việc.
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
                   <button onClick={() => setShowTaskModal(false)} style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: "700" }}>
