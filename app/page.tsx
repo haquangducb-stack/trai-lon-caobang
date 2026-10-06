@@ -126,7 +126,6 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Khởi tạo và nạp cấu hình LocalStorage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -164,6 +163,7 @@ export default function FarmApp() {
     }
   }, [supabase, user]);
 
+  // Ngắt vòng lặp bằng cách không để config trong dependency
   const fetchData = useCallback(async () => {
     try {
       const [pRes, tRes, farRes, insemRes, logRes] = await Promise.all([
@@ -277,7 +277,7 @@ export default function FarmApp() {
       if (error) {
         alert("Lỗi thêm lợn: " + error.message);
       } else {
-        await logAction("CREATE_PIG", pigPayload.ear_tag, `Thêm mới cá thể ${pigPayload.ear_tag} (${pigPayload.breed_id})`);
+        await logAction("CREATE_PIG", pigPayload.ear_tag, `Thêm cá thể ${pigPayload.ear_tag} (${pigPayload.breed_id})`);
         alert(`Đã thêm thành công cá thể ${pigPayload.ear_tag}!`);
         setShowAddPigModal(false);
         setNewPig({
@@ -427,11 +427,9 @@ export default function FarmApp() {
     setShowTaskModal(true);
   };
 
-  // TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI NGAY TRÊN DIALOG XÁC NHẬN
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
 
-    // Nếu là việc cai sữa -> Tự động chuyển nái sang Chờ phối và cập nhật lô con
     if (selectedTask.category === "WEAN" && selectedTask.related_tag) {
       await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", selectedTask.related_tag);
       await supabase.from("farrowings").update({
@@ -452,7 +450,7 @@ export default function FarmApp() {
       await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", selectedTask.id);
     }
 
-    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xác nhận xong việc: ${selectedTask.title}`);
+    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`);
     setShowTaskModal(false);
     setSelectedTask(null);
     fetchData();
@@ -510,7 +508,7 @@ export default function FarmApp() {
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
   const displayUser = user?.email?.replace("@trailon.local", "") || "";
 
-  // TÍNH NĂNG XUẤT BÁO CÁO WORD THEO YÊU CẦU
+  // HÀM XUẤT BÁO CÁO WORD
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -518,7 +516,6 @@ export default function FarmApp() {
     const yy = String(today.getFullYear()).slice(-2);
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
 
-    // Thống kê theo giống
     const breedStats: Record<string, { total: number; sow: number; boar: number; meat: number }> = {};
     config.breeds.forEach(b => {
       breedStats[b] = { total: 0, sow: 0, boar: 0, meat: 0 };
@@ -533,7 +530,6 @@ export default function FarmApp() {
       else if (isMeat(p)) breedStats[b].meat += 1;
     });
 
-    // Lọc công việc và biến động trong số ngày đã chọn
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - reportDays);
 
@@ -759,26 +755,6 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT THÊM LỢN NHANH */}
-        {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
-          <div style={{ padding: "12px 16px 0 16px" }}>
-            <button
-              onClick={() => {
-                if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
-                setNewPig(prev => ({
-                  ...prev,
-                  sex: currentMenu === "BOAR" ? "Đực" : "Cái",
-                  stage: currentMenu === "MEAT" ? "Vỗ béo thịt" : currentMenu === "BOAR" ? "Đực giống" : "Hậu bị"
-                }));
-                setShowAddPigModal(true);
-              }}
-              style={{ width: "100%", padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
-            >
-              + Thêm cá thể lợn mới
-            </button>
-          </div>
-        )}
-
         {/* MENU TRƯỢT */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
@@ -820,8 +796,45 @@ export default function FarmApp() {
         {/* 1. TỔNG QUAN */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
-            <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
+            <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "20px", fontWeight: "900", color: "#1e1b4b" }}>TỔNG ĐÀN: {grandTotal} con</span>
+              {user && (
+                <button
+                  onClick={() => setShowAddPigModal(true)}
+                  style={{ padding: "6px 12px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "11px", cursor: "pointer" }}
+                >
+                  + Thêm Lợn
+                </button>
+              )}
+            </div>
+
+            {/* KHỐI XUẤT BÁO CÁO WORD NGAY TẠI TRANG TỔNG QUAN */}
+            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 XUẤT BÁO CÁO NHANH (.DOC)</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>Cơ cấu đàn & Biến động</span>
+              </div>
+              <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+                {[7, 10, 30].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setReportDays(d as any)}
+                    style={{
+                      flex: 1, padding: "7px 0", borderRadius: "6px", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer",
+                      background: reportDays === d ? "#2563eb" : "#dbeafe",
+                      color: reportDays === d ? "#fff" : "#1e40af"
+                    }}
+                  >
+                    {d} ngày qua
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleExportWord}
+                style={{ width: "100%", padding: "9px", borderRadius: "8px", background: "#1d4ed8", color: "#fff", border: "none", fontWeight: "900", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+              >
+                <span>📥 Tải File Word ({reportDays} ngày)</span>
+              </button>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
@@ -928,7 +941,7 @@ export default function FarmApp() {
                       >
                         <div>
                           <div style={{ fontSize: "12px", fontWeight: "700", color: "#166534", textDecoration: "line-through" }}>{task.title}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>Đã xử lý (Hạn cũ: {task.due_date})</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>Đã hoàn thành (Hạn: {task.due_date})</div>
                         </div>
                         <div style={{ fontSize: "16px" }}>🟢</div>
                       </div>
@@ -996,49 +1009,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. PHÂN HỆ XUẤT BÁO CÁO WORD */}
-        {currentMenu === "REPORT" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #fed7aa", marginBottom: "16px" }}>
-              <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#c2410c" }}>
-                📄 Xuất Báo Cáo Hoạt Động Trại
-              </h3>
-              <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 14px 0", lineHeight: "1.5" }}>
-                Báo cáo tổng hợp số lượng cá thể theo từng giống, chi tiết trạng thái đàn, các công việc thú y/kỹ thuật đã hoàn thành và biến động trong kỳ.
-              </p>
-
-              <label style={{ fontSize: "12px", fontWeight: "800", color: "#334155" }}>Chọn khoảng thời gian báo cáo:</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "10px 0 16px 0" }}>
-                {[7, 10, 30].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setReportDays(d as any)}
-                    style={{
-                      padding: "10px", borderRadius: "8px", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer",
-                      background: reportDays === d ? "#ea580c" : "#f1f5f9",
-                      color: reportDays === d ? "#fff" : "#475569"
-                    }}
-                  >
-                    {d} ngày qua
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px", color: "#475569", marginBottom: "16px" }}>
-                Tên file xuất mẫu: <strong>baocao_{reportDays}ngay_dd_mm_yy.doc</strong>
-              </div>
-
-              <button
-                onClick={handleExportWord}
-                style={{ width: "100%", padding: "12px", borderRadius: "10px", background: "#2563eb", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-              >
-                <span>📥 Tải File Word (.doc) Ngay</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 7. TRA CỨU */}
+        {/* 6. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -1048,7 +1019,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 8. CÀI ĐẶT & DANH MỤC */}
+        {/* 7. CÀI ĐẶT & DANH MỤC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
