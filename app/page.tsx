@@ -63,7 +63,7 @@ interface FarmConfig {
   pens: string[];
 }
 
-// BỘ TỰ ĐỘNG VIỆT HÓA MÃ TRẠNG THÁI SANG TIẾNG VIỆT CÓ DẤU
+// BỘ TỰ ĐỘNG VIỆT HÓA TRẠNG THÁI
 const formatVietnameseStage = (rawStage?: string) => {
   if (!rawStage) return "Bình thường";
   const s = rawStage.toUpperCase().trim();
@@ -81,7 +81,7 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Tên hiển thị người dùng
+  // Tên hiển thị người dùng (Display Name)
   const [customDisplayName, setCustomDisplayName] = useState<string>("");
   const [inputDisplayName, setInputDisplayName] = useState<string>("");
 
@@ -103,14 +103,14 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Điều hướng (ĐÃ BỎ TAB REPORT RIÊNG)
+  // Điều hướng (ĐÃ XÓA VĨNH VIỄN TAB REPORT ĐỂ TRÁNH TRÙNG LẶP)
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Cấu hình danh mục chuẩn tiếng Việt
+  // Cấu hình danh mục
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Lan lai Hương", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -395,17 +395,20 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
+  // TỔNG HỢP NHIỆM VỤ: KHỬ TRÙNG LẶP TRIỆT ĐỂ & TỰ ĐỘNG PHÂN LOẠI THÚ Y CHÍNH XÁC
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
+    // 1. Nhiệm vụ tự động từ phối giống
     (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
       const d = safeDateDiff(ins.mating_date);
       if (d === -999) return;
 
       if (d >= 16 && d <= 25) {
-        taskMap.set(`l1-${ins.sow_ear_tag}`, {
-          id: `l1-${ins.sow_ear_tag}`,
+        const key = `repro-l1-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[SINH SẢN] Kiểm tra lốc chu kỳ 1 (21 ngày) nái ${ins.sow_ear_tag}`,
           due_date: safeAddDays(ins.mating_date, 21),
           related_tag: ins.sow_ear_tag,
@@ -415,8 +418,9 @@ export default function FarmApp() {
         });
       }
       if (d >= 104 && d <= 112) {
-        taskMap.set(`cd-${ins.sow_ear_tag}`, {
-          id: `cd-${ins.sow_ear_tag}`,
+        const key = `repro-cd-${ins.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `[CHUẨN BỊ ĐẺ] Chuyển nái ${ins.sow_ear_tag} lên chuồng đẻ & sát trùng vú`,
           due_date: safeAddDays(ins.mating_date, 107),
           related_tag: ins.sow_ear_tag,
@@ -427,14 +431,16 @@ export default function FarmApp() {
       }
     });
 
+    // 2. Nhiệm vụ cai sữa
     activeLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
       const age = safeDateDiff(lit.farrow_date);
       if (age === -999) return;
 
       if (age >= 24) {
-        taskMap.set(`w-${lit.sow_ear_tag}`, {
-          id: `w-${lit.sow_ear_tag}`,
+        const key = `wean-${lit.sow_ear_tag}`;
+        taskMap.set(key, {
+          id: key,
           title: `${age >= 28 ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${Number(lit.alive_born || 0)} con)`,
           due_date: lit.weaning_date || safeAddDays(lit.farrow_date, 28),
           related_tag: lit.sow_ear_tag,
@@ -445,16 +451,44 @@ export default function FarmApp() {
       }
     });
 
+    // 3. Nhiệm vụ trong Database: Khử trùng lặp theo chuỗi tiêu đề và Tự động nhận diện Thú y
     (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
-      if (t?.title) {
-        taskMap.set(t.title, t);
+      if (!t?.title) return;
+      const cleanTitle = t.title.trim();
+      const dedupKey = `${cleanTitle}-${t.related_tag || ""}`;
+
+      // TỰ ĐỘNG PHÂN LOẠI THÚ Y THÔNG MINH CHO CÁC VIỆC VACCINE / TIÊM PHÒNG
+      let cat = t.category;
+      const normTitle = normalize(cleanTitle);
+      if (
+        normTitle.includes("vaccine") ||
+        normTitle.includes("tiem") ||
+        normTitle.includes("phong") ||
+        normTitle.includes("thu y") ||
+        normTitle.includes("e.coli") ||
+        normTitle.includes("dich ta") ||
+        normTitle.includes("tai xanh") ||
+        normTitle.includes("lo mom") ||
+        normTitle.includes("tay giun")
+      ) {
+        cat = "VET";
       }
+
+      taskMap.set(dedupKey, {
+        ...t,
+        category: cat
+      });
     });
 
     return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
   }, [inseminations, activeLitters, dbTasks]);
 
-  const filteredTasks = fullTasks.filter(t => taskCategoryFilter === "ALL" || t?.category === taskCategoryFilter);
+  // Bộ lọc danh mục công việc
+  const filteredTasks = fullTasks.filter(t => {
+    if (taskCategoryFilter === "ALL") return true;
+    return t?.category === taskCategoryFilter;
+  });
+
   const pendingTasks = filteredTasks.filter(t => !t.is_completed);
   const completedTasks = filteredTasks.filter(t => t.is_completed);
 
@@ -480,6 +514,7 @@ export default function FarmApp() {
         title: selectedTask.title,
         due_date: selectedTask.due_date,
         related_tag: selectedTask.related_tag,
+        category: selectedTask.category,
         is_completed: true,
         is_dismissed: false
       }]);
@@ -500,6 +535,7 @@ export default function FarmApp() {
         title: selectedTask.title,
         due_date: selectedTask.due_date,
         related_tag: selectedTask.related_tag,
+        category: selectedTask.category,
         is_completed: false,
         is_dismissed: true
       }]);
@@ -518,8 +554,8 @@ export default function FarmApp() {
     const newTitle = selectedTask.title.replace("⚠️ QUÁ HẠN: ", "").replace("🔔 ", "") + " (Gia hạn)";
     if (selectedTask.is_auto) {
       await supabase.from("farm_tasks").insert([
-        { title: selectedTask.title, due_date: selectedTask.due_date, related_tag: selectedTask.related_tag, is_dismissed: true, is_completed: false },
-        { title: newTitle, due_date: newDueDate, related_tag: selectedTask.related_tag, is_completed: false, is_dismissed: false }
+        { title: selectedTask.title, due_date: selectedTask.due_date, related_tag: selectedTask.related_tag, category: selectedTask.category, is_dismissed: true, is_completed: false },
+        { title: newTitle, due_date: newDueDate, related_tag: selectedTask.related_tag, category: selectedTask.category, is_completed: false, is_dismissed: false }
       ]);
     } else {
       await supabase.from("farm_tasks").update({ title: newTitle, due_date: newDueDate }).eq("id", selectedTask.id);
@@ -544,7 +580,7 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
-  // HÀM XUẤT BÁO CÁO WORD - 1 BẢNG DUY NHẤT, VIỆT HÓA 100%, BỎ HOÀN TOÀN SỐ 0 VÀ SỐ TAI
+  // HÀM XUẤT BÁO CÁO WORD - 1 BẢNG DUY NHẤT, VIỆT HÓA 100%, BỎ HẲN SỐ TAI VÀ SỐ 0
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -567,7 +603,7 @@ export default function FarmApp() {
 
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
-    // XÂY DỰNG DANH SÁCH BÁO CÁO CƠ CẤU ĐÀN (1 BẢNG DUY NHẤT)
+    // Xây dựng các dòng báo cáo (ĐÚNG 1 BẢNG)
     const reportRows: { category: string; breed: string; details: string; count: number }[] = [];
 
     // 1. Đực giống
@@ -587,7 +623,7 @@ export default function FarmApp() {
       }
     });
 
-    // 2. Nái sinh sản (Gom theo Giống & Trạng thái có dấu)
+    // 2. Nái sinh sản
     const sowByBreedAndStage: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
       const br = s.breed_id?.trim() || "Chưa rõ";
@@ -880,7 +916,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* MENU TRƯỢT (ĐÃ BỎ TAB XUẤT BÁO CÁO) */}
+        {/* MENU TRƯỢT - KHÔNG CÒN TAB REPORT THỪA */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
             <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
@@ -932,12 +968,27 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* KHỐI XUẤT BÁO CÁO WORD NGAY TRANG CHỦ */}
-            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "12px", border: "1px solid #bfdbfe" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 XUẤT BÁO CÁO (.DOC)</span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng chi tiết duy nhất</span>
+            {/* KHỐI XUẤT BÁO CÁO DUY NHẤT & ĐỔI TÊN NGƯỜI LẬP (ĐÃ GOM CHUNG, KHÔNG BỊ TRÙNG) */}
+            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 XUẤT BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng duy nhất</span>
               </div>
+
+              {/* Ô ĐỔI TÊN HIỂN THỊ NẰM NGAY TRÊN KHỐI XUẤT FILE */}
+              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+                <input
+                  type="text"
+                  placeholder="Tên người lập (VD: Hà Quang Dự)..."
+                  value={inputDisplayName}
+                  onChange={(e) => setInputDisplayName(e.target.value)}
+                  style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                />
+                <button type="submit" style={{ padding: "6px 12px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", fontSize: "11px", cursor: "pointer" }}>
+                  Lưu tên
+                </button>
+              </form>
+
               <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
                 {[7, 10, 30].map((d) => (
                   <button
@@ -957,30 +1008,8 @@ export default function FarmApp() {
                 onClick={handleExportWord}
                 style={{ width: "100%", padding: "9px", borderRadius: "8px", background: "#1d4ed8", color: "#fff", border: "none", fontWeight: "900", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
               >
-                <span>📥 Tải Báo Cáo Word ({reportDays} ngày)</span>
+                <span>📥 Tải File Word Báo Cáo ({reportDays} ngày)</span>
               </button>
-            </div>
-
-            {/* KHỐI ĐỔI TÊN HIỂN THỊ TRỰC TIẾP TẠI TRANG CHỦ */}
-            <div style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "12px 14px", marginBottom: "16px", border: "1px solid #f1e5f0" }}>
-              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: "700", color: "#475569" }}>
-                  <span>Tên người thực hiện (Ký báo cáo):</span>
-                  <span style={{ color: "#5b21b6" }}>{activeOperator}</span>
-                </div>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <input
-                    type="text"
-                    placeholder="Đổi tên (VD: Hà Quang Dự)..."
-                    value={inputDisplayName}
-                    onChange={(e) => setInputDisplayName(e.target.value)}
-                    style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
-                  />
-                  <button type="submit" style={{ padding: "6px 12px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", fontSize: "11px", cursor: "pointer" }}>
-                    Lưu tên
-                  </button>
-                </div>
-              </form>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
@@ -1027,19 +1056,20 @@ export default function FarmApp() {
                 </h3>
               </div>
 
+              {/* TABS PHÂN LOẠI CÔNG VIỆC: THÚ Y / SINH SẢN / CAI SỮA */}
               <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto" }}>
-                {[{ id: "ALL", label: "Tất cả" }, { id: "REPRO", label: "Sinh sản" }, { id: "VET", label: "Thú y" }, { id: "WEAN", label: "Cai sữa" }].map((tab) => (
+                {[{ id: "ALL", label: "Tất cả" }, { id: "VET", label: "Thú y" }, { id: "REPRO", label: "Sinh sản" }, { id: "WEAN", label: "Cai sữa" }].map((tab) => (
                   <button key={tab.id} onClick={() => setTaskCategoryFilter(tab.id)} style={{ padding: "6px 10px", borderRadius: "16px", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer", backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0", color: taskCategoryFilter === tab.id ? "#fff" : "#475569" }}>
                     {tab.label}
                   </button>
                 ))}
               </div>
 
-              {/* VIỆC CHƯA LÀM */}
+              {/* VIỆC CHƯA LÀM (ĐÃ KHỬ TRÙNG LẶP TRIỆT ĐỂ) */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
                 {pendingTasks.length === 0 ? (
                   <div style={{ padding: "14px", textAlign: "center", background: "#fff", borderRadius: "10px", fontSize: "12px", color: "#64748b" }}>
-                    ✨ Hiện tại không có công việc nào tồn đọng.
+                    ✨ Không có công việc nào trong danh mục này.
                   </div>
                 ) : (
                   pendingTasks.map((task) => {
@@ -1059,7 +1089,7 @@ export default function FarmApp() {
                         <div>
                           <div style={{ fontSize: "13px", fontWeight: "700", color: isOverdue ? "#b91c1c" : "#1e1b4b" }}>{task.title}</div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                            Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`}
+                            Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`} • <span style={{ color: "#7c3aed", fontWeight: "700" }}>{task.category === "VET" ? "Thú y" : task.category === "REPRO" ? "Sinh sản" : task.category === "WEAN" ? "Cai sữa" : "Chung"}</span>
                           </div>
                         </div>
                         <div style={{ fontSize: "18px" }}>⚪</div>
@@ -1436,7 +1466,7 @@ export default function FarmApp() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Trạng thái:</label>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giai đoạn:</label>
                   <select value={editingPig.stage || config.stages[0]} onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
                     {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
                   </select>
