@@ -532,7 +532,7 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
-  // HÀM XUẤT BÁO CÁO WORD CHI TIẾT
+  // HÀM XUẤT BÁO CÁO WORD THEO CƠ CẤU THỰC TẾ
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -553,170 +553,141 @@ export default function FarmApp() {
       return new Date(t.due_date) >= pastDate;
     });
 
-    // Thống kê lợn thịt theo giống
-    const meatByBreed: Record<string, number> = {};
-    meatList.forEach(m => {
-      const b = m.breed_id || "Khác";
-      meatByBreed[b] = (meatByBreed[b] || 0) + 1;
+    // 1. Thống kê Đực giống theo từng giống
+    const boarStats: Record<string, number> = {};
+    boarList.forEach(b => {
+      const breed = b.breed_id?.trim() || "Chưa rõ giống";
+      boarStats[breed] = (boarStats[breed] || 0) + 1;
     });
+
+    // 2. Thống kê Nái theo giống và trạng thái cụ thể
+    const sowStats: Record<string, Record<string, number>> = {};
+    sowList.forEach(s => {
+      const breed = s.breed_id?.trim() || "Chưa rõ giống";
+      const st = s.stage?.trim() || "Bình thường";
+      if (!sowStats[breed]) sowStats[breed] = {};
+      sowStats[breed][st] = (sowStats[breed][st] || 0) + 1;
+    });
+
+    // 3. Thống kê Lợn con theo mẹ (Gom theo giống của nái mẹ)
+    const pigletByDamBreed: Record<string, { piglets: number; litters: number }> = {};
+    activeLitters.forEach(l => {
+      const dam = safePigs.find(p => p.ear_tag === l.sow_ear_tag);
+      const breed = dam?.breed_id?.trim() || "Chưa rõ giống mẹ";
+      if (!pigletByDamBreed[breed]) pigletByDamBreed[breed] = { piglets: 0, litters: 0 };
+      pigletByDamBreed[breed].piglets += Number(l.alive_born || 0);
+      pigletByDamBreed[breed].litters += 1;
+    });
+
+    // 4. Thống kê Lợn thịt theo giống
+    const meatStats: Record<string, number> = {};
+    meatList.forEach(m => {
+      const breed = m.breed_id?.trim() || "Chưa rõ giống";
+      meatStats[breed] = (meatStats[breed] || 0) + 1;
+    });
+
+    const formatNum = (n: number) => String(n).padStart(2, "0");
 
     let contentHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset='utf-8'>
-        <title>Báo Cáo Chi Tiết Cơ Cấu Đàn & Vận Hành Trại Lợn Nà Roác</title>
+        <title>Báo Cáo Tổng Hợp Đàn Trại Lợn Nà Roác</title>
         <style>
-          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; margin: 30px; }
-          h2, h3 { text-align: center; margin-bottom: 4px; }
-          .header-info { text-align: center; margin-bottom: 20px; font-style: italic; }
+          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.6; margin: 35px; }
+          h2, h3 { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
+          .header-info { text-align: center; margin-bottom: 25px; font-style: italic; }
+          .section-title { font-weight: bold; font-size: 13pt; margin-top: 18px; margin-bottom: 6px; text-transform: uppercase; color: #000; }
+          .data-list { margin-left: 20px; margin-bottom: 12px; }
+          .data-item { margin-bottom: 6px; }
           table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 18px; }
           th, td { border: 1px solid #333; padding: 6px 8px; font-size: 11pt; text-align: left; }
           th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
-          .highlight { font-weight: bold; font-size: 12pt; margin-top: 15px; margin-bottom: 5px; color: #1e1b4b; }
         </style>
       </head>
       <body>
         <h2>TRẠI LỢN NÀ ROÁC</h2>
-        <h3>BÁO CÁO CHI TIẾT CƠ CẤU ĐÀN & BIẾN ĐỘNG VẬN HÀNH (${reportDays} NGÀY QUA)</h3>
+        <h3>BÁO CÁO CƠ CẤU ĐÀN & BIẾN ĐỘNG VẬN HÀNH (${reportDays} NGÀY QUA)</h3>
         <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người lập: ${activeOperator}</div>
 
-        <p class='highlight'>I. TỔNG QUAN TỔNG ĐÀN HIỆN DIỆN</p>
-        <p>- Tổng đàn toàn trại: <b>${grandTotal} con</b> (Nái: ${sowList.length} con | Đực giống: ${boarList.length} con | Lợn thịt: ${meatList.length} con | Lợn con theo mẹ: ${totalPiglets} con / ${activeLitters.length} lô).</p>
+        <div class='section-title'>I. TỔNG QUAN TỔNG ĐÀN TOÀN TRẠI</div>
+        <p>- Tổng số đàn hiện diện: <b>${formatNum(grandTotal)} con</b>.</p>
+        <p>- Cơ cấu tổng thể: Nái giống: <b>${formatNum(sowList.length)} con</b> | Đực giống: <b>${formatNum(boarList.length)} con</b> | Lợn con theo mẹ: <b>${formatNum(totalPiglets)} con</b> (${activeLitters.length} lô) | Lợn thịt: <b>${formatNum(meatList.length)} con</b>.</p>
 
-        <p class='highlight'>II. CHI TIẾT ĐÀN ĐỰC GIỐNG (${boarList.length} con)</p>
+        <div class='section-title'>II. CHI TIẾT CƠ CẤU ĐÀN THEO TỪNG NHÓM GIỐNG & PHÂN LOẠI</div>
+        <div class='data-list'>
+          
+          <!-- 1. Đực giống -->
+          <div class='data-item'>
+            <b>1. Đàn đực giống (${formatNum(boarList.length)} con):</b>
+            ${Object.keys(boarStats).length === 0 ? " Không có đực giống." : `
+              <ul>
+                ${Object.entries(boarStats).map(([b, cnt]) => `
+                  <li>Đực <b>${b}</b>: ${formatNum(cnt)} con</li>
+                `).join("")}
+              </ul>
+            `}
+          </div>
+
+          <!-- 2. Nái giống -->
+          <div class='data-item'>
+            <b>2. Đàn nái sinh sản (${formatNum(sowList.length)} con):</b>
+            ${Object.keys(sowStats).length === 0 ? " Không có nái giống." : `
+              <ul>
+                ${Object.entries(sowStats).map(([b, stages]) => {
+                  const stageDetails = Object.entries(stages)
+                    .map(([st, cnt]) => `${st} ${formatNum(cnt)} con`)
+                    .join(", ");
+                  const totalBreedSow = Object.values(stages).reduce((a, c) => a + c, 0);
+                  return `<li>Nái <b>${b}</b> (${formatNum(totalBreedSow)} con): ${stageDetails}</li>`;
+                }).join("")}
+              </ul>
+            `}
+          </div>
+
+          <!-- 3. Lợn con theo mẹ -->
+          <div class='data-item'>
+            <b>3. Lợn con đang theo mẹ (${formatNum(totalPiglets)} con / ${activeLitters.length} lô):</b>
+            ${Object.keys(pigletByDamBreed).length === 0 ? " Hiện không có lợn con theo mẹ." : `
+              <ul>
+                ${Object.entries(pigletByDamBreed).map(([damBreed, val]) => `
+                  <li>Theo mẹ <b>${damBreed}</b>: ${formatNum(val.piglets)} con (${val.litters} lô)</li>
+                `).join("")}
+              </ul>
+            `}
+          </div>
+
+          <!-- 4. Lợn thịt -->
+          <div class='data-item'>
+            <b>4. Đàn lợn thịt vỗ béo (${formatNum(meatList.length)} con):</b>
+            ${Object.keys(meatStats).length === 0 ? " Không có lợn thịt vỗ béo." : `
+              <ul>
+                ${Object.entries(meatStats).map(([b, cnt]) => `
+                  <li>Thịt <b>${b}</b>: ${formatNum(cnt)} con</li>
+                `).join("")}
+              </ul>
+            `}
+          </div>
+
+        </div>
+
+        <div class='section-title'>III. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN (${reportDays} NGÀY QUA)</div>
         <table>
           <thead>
             <tr>
-              <th>STT</th>
-              <th>Số Tai</th>
-              <th>Giống Lợn</th>
-              <th>Ô Chuồng</th>
-              <th>Trạng Thái / Khai Thác</th>
-              <th>Ghi Chú</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${boarList.length === 0 ? `<tr><td colspan='6' style='text-align: center;'>Không có đực giống</td></tr>` :
-              boarList.map((b, idx) => `
-                <tr>
-                  <td style='text-align: center;'>${idx + 1}</td>
-                  <td style='text-align: center;'><b>${b.ear_tag}</b></td>
-                  <td>${b.breed_id || "—"}</td>
-                  <td style='text-align: center;'>${b.current_pen_code || "—"}</td>
-                  <td style='text-align: center;'>${b.stage || "Đang khai thác tinh"}</td>
-                  <td>${b.notes || "—"}</td>
-                </tr>
-              `).join("")
-            }
-          </tbody>
-        </table>
-
-        <p class='highlight'>III. CHI TIẾT ĐÀN NÁI SINH SẢN (${sowList.length} con)</p>
-        <table>
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Số Tai</th>
-              <th>Giống Lợn</th>
-              <th>Trạng Thái Sinh Sản</th>
-              <th>Ô Chuồng</th>
-              <th>Bố / Mẹ</th>
-              <th>Ghi Chú</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${sowList.length === 0 ? `<tr><td colspan='7' style='text-align: center;'>Không có nái</td></tr>` :
-              sowList.map((s, idx) => `
-                <tr>
-                  <td style='text-align: center;'>${idx + 1}</td>
-                  <td style='text-align: center;'><b>${s.ear_tag}</b></td>
-                  <td>${s.breed_id || "—"}</td>
-                  <td style='text-align: center;'><b>${s.stage || "—"}</b></td>
-                  <td style='text-align: center;'>${s.current_pen_code || "—"}</td>
-                  <td style='text-align: center;'>${s.sire_ear_tag || "—"} / ${s.dam_ear_tag || "—"}</td>
-                  <td>${s.notes || "—"}</td>
-                </tr>
-              `).join("")
-            }
-          </tbody>
-        </table>
-
-        <p class='highlight'>IV. CHI TIẾT LỢN CON ĐANG THEO MẸ (${totalPiglets} con / ${activeLitters.length} lô)</p>
-        <table>
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Nái Mẹ</th>
-              <th>Mã Lô</th>
-              <th>Số Lượng Con</th>
-              <th>Ngày Đẻ</th>
-              <th>Ngày Tuổi</th>
-              <th>Ô Chuồng Nái Mẹ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${activeLitters.length === 0 ? `<tr><td colspan='7' style='text-align: center;'>Hiện không có lô lợn con theo mẹ</td></tr>` :
-              activeLitters.map((l, idx) => {
-                const sow = safePigs.find(p => p.ear_tag === l.sow_ear_tag);
-                const ageDays = safeDateDiff(l.farrow_date);
-                return `
-                  <tr>
-                    <td style='text-align: center;'>${idx + 1}</td>
-                    <td style='text-align: center;'><b>${l.sow_ear_tag}</b></td>
-                    <td style='text-align: center;'>${l.litter_code}</td>
-                    <td style='text-align: center;'><b>${l.alive_born} con</b></td>
-                    <td style='text-align: center;'>${l.farrow_date || "—"}</td>
-                    <td style='text-align: center;'>${ageDays !== -999 ? ageDays + " ngày" : "—"}</td>
-                    <td style='text-align: center;'>${sow?.current_pen_code || "—"}</td>
-                  </tr>
-                `;
-              }).join("")
-            }
-          </tbody>
-        </table>
-
-        <p class='highlight'>V. THỐNG KÊ ĐÀN LỢN THỊT VỖ BÉO (${meatList.length} con)</p>
-        <p>- Tổng đàn lợn thịt đang vỗ béo: <b>${meatList.length} con</b>.</p>
-        <table>
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Nhóm Giống Lợn Thịt</th>
-              <th>Số Lượng (Con)</th>
-              <th>Tỷ Lệ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${Object.keys(meatByBreed).length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Hiện không có lợn thịt</td></tr>` :
-              Object.entries(meatByBreed).map(([b, cnt], idx) => `
-                <tr>
-                  <td style='text-align: center;'>${idx + 1}</td>
-                  <td><b>${b}</b></td>
-                  <td style='text-align: center;'>${cnt} con</td>
-                  <td style='text-align: center;'>${meatList.length > 0 ? ((cnt / meatList.length) * 100).toFixed(1) : 0}%</td>
-                </tr>
-              `).join("")
-            }
-          </tbody>
-        </table>
-
-        <p class='highlight'>VI. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN (${reportDays} NGÀY QUA)</p>
-        <table>
-          <thead>
-            <tr>
-              <th>STT</th>
+              <th style='width: 40px;'>STT</th>
               <th>Nội Dung Công Việc</th>
-              <th>Cá Thể Liên Quan</th>
-              <th>Hạn / Ngày Thực Hiện</th>
+              <th style='width: 100px;'>Cá Thể</th>
+              <th style='width: 110px;'>Ngày Xong</th>
             </tr>
           </thead>
           <tbody>
-            ${recentCompletedTasks.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có việc kỹ thuật ghi nhận trong kỳ</td></tr>` :
+            ${recentCompletedTasks.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có việc kỹ thuật phát sinh trong kỳ</td></tr>` :
               recentCompletedTasks.map((t, idx) => `
                 <tr>
                   <td style='text-align: center;'>${idx + 1}</td>
                   <td>${t.title}</td>
-                  <td style='text-align: center;'>${t.related_tag || "Toàn trại"}</td>
+                  <td style='text-align: center;'>${t.related_tag || "Toàn đàn"}</td>
                   <td style='text-align: center;'>${t.due_date}</td>
                 </tr>
               `).join("")
@@ -724,18 +695,18 @@ export default function FarmApp() {
           </tbody>
         </table>
 
-        <p class='highlight'>VII. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC (${reportDays} NGÀY QUA)</p>
+        <div class='section-title'>IV. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC HỆ THỐNG (${reportDays} NGÀY QUA)</div>
         <table>
           <thead>
             <tr>
-              <th>Thời Gian</th>
-              <th>Người Thực Hiện</th>
-              <th>Hành Động</th>
+              <th style='width: 130px;'>Thời Gian</th>
+              <th style='width: 120px;'>Người Thực Hiện</th>
+              <th style='width: 110px;'>Hành Động</th>
               <th>Chi Tiết Biến Động</th>
             </tr>
           </thead>
           <tbody>
-            ${filteredLogs.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có biến động ghi nhận</td></tr>` :
+            ${filteredLogs.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có biến động nào trong kỳ</td></tr>` :
               filteredLogs.map(l => `
                 <tr>
                   <td style='text-align: center;'>${l.created_at ? new Date(l.created_at).toLocaleString("vi-VN") : ""}</td>
