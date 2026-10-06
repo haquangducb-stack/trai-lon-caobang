@@ -237,18 +237,26 @@ export default function FarmApp() {
 
   const isMeat = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig)) return false;
-    return normalize(pig.stage).includes("thit");
+    const st = normalize(pig.stage);
+    return st.includes("thit") || st.includes("vo beo");
   };
 
   const isSow = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
     const sx = normalize(pig.sex);
-    return sx.includes("cai") || sx === "c";
+    const st = normalize(pig.stage);
+    
+    // Nhận diện nái qua giới tính hoặc qua các trạng thái đặc trưng của nái
+    const isFemaleSex = sx.includes("cai") || sx === "c" || sx === "f" || sx.includes("female") || sx.includes("nai");
+    const isSowStage = st.includes("chua") || st.includes("phoi") || st.includes("de") || st.includes("nuoi con") || st.includes("hau bi");
+    
+    return isFemaleSex || isSowStage;
   };
 
   const isBoar = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isSow(pig)) return false;
-    return true;
+    const sx = normalize(pig.sex);
+    return sx.includes("duc") || sx === "d" || sx === "m" || sx.includes("male");
   };
 
   const checkSowState = (pig?: Pig) => {
