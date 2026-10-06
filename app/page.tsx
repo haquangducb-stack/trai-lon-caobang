@@ -63,11 +63,25 @@ interface FarmConfig {
   pens: string[];
 }
 
+// BỘ TỰ ĐỘNG VIỆT HÓA MÃ TRẠNG THÁI SANG TIẾNG VIỆT CÓ DẤU
+const formatVietnameseStage = (rawStage?: string) => {
+  if (!rawStage) return "Bình thường";
+  const s = rawStage.toUpperCase().trim();
+  if (s === "DUC_GIONG" || s === "DUC") return "Đực giống";
+  if (s === "CHUA" || s === "DANG_CHUA") return "Chửa";
+  if (s === "NUOICON" || s === "NUOI_CON") return "Nuôi con";
+  if (s === "HAU_BI" || s === "HAUBI") return "Hậu bị";
+  if (s === "CHO_PHOI" || s === "CHOPHOI") return "Chờ phối";
+  if (s === "CAI_SUA" || s === "CAISUA") return "Cai sữa";
+  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT") return "Vỗ béo thịt";
+  return rawStage;
+};
+
 export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Tên hiển thị người dùng (Display Name)
+  // Tên hiển thị người dùng
   const [customDisplayName, setCustomDisplayName] = useState<string>("");
   const [inputDisplayName, setInputDisplayName] = useState<string>("");
 
@@ -89,14 +103,14 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Điều hướng
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "REPORT" | "SEARCH" | "SETTINGS">("OVERVIEW");
+  // Điều hướng (ĐÃ BỎ TAB REPORT RIÊNG)
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Cấu hình danh mục
+  // Cấu hình danh mục chuẩn tiếng Việt
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Lan lai Hương", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -130,7 +144,6 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Khởi tạo và nạp cấu hình LocalStorage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -162,7 +175,6 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  // Tính tên hiển thị hiệu lực
   const activeOperator = useMemo(() => {
     if (customDisplayName.trim()) return customDisplayName.trim();
     if (user?.email) return user.email.replace("@trailon.local", "");
@@ -265,7 +277,7 @@ export default function FarmApp() {
     if (typeof window !== "undefined") {
       localStorage.setItem("farm_display_name", inputDisplayName.trim());
     }
-    alert(`Đã cập nhật tên hiển thị thành: "${inputDisplayName.trim()}"`);
+    alert(`Đã đổi tên hiển thị thành: "${inputDisplayName.trim()}"`);
   };
 
   const saveConfig = (newCfg: FarmConfig) => {
@@ -532,7 +544,7 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
-  // HÀM XUẤT BÁO CÁO WORD THEO CƠ CẤU THỰC TẾ
+  // HÀM XUẤT BÁO CÁO WORD - 1 BẢNG DUY NHẤT, VIỆT HÓA 100%, BỎ HOÀN TOÀN SỐ 0 VÀ SỐ TAI
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -553,55 +565,101 @@ export default function FarmApp() {
       return new Date(t.due_date) >= pastDate;
     });
 
-    // 1. Thống kê Đực giống theo từng giống
-    const boarStats: Record<string, number> = {};
+    const formatNum = (n: number) => String(n).padStart(2, "0");
+
+    // XÂY DỰNG DANH SÁCH BÁO CÁO CƠ CẤU ĐÀN (1 BẢNG DUY NHẤT)
+    const reportRows: { category: string; breed: string; details: string; count: number }[] = [];
+
+    // 1. Đực giống
+    const boarByBreed: Record<string, number> = {};
     boarList.forEach(b => {
-      const breed = b.breed_id?.trim() || "Chưa rõ giống";
-      boarStats[breed] = (boarStats[breed] || 0) + 1;
+      const br = b.breed_id?.trim() || "Chưa rõ";
+      boarByBreed[br] = (boarByBreed[br] || 0) + 1;
+    });
+    Object.entries(boarByBreed).forEach(([br, cnt]) => {
+      if (cnt > 0) {
+        reportRows.push({
+          category: "Đực giống",
+          breed: br,
+          details: "Đang khai thác tinh",
+          count: cnt
+        });
+      }
     });
 
-    // 2. Thống kê Nái theo giống và trạng thái cụ thể
-    const sowStats: Record<string, Record<string, number>> = {};
+    // 2. Nái sinh sản (Gom theo Giống & Trạng thái có dấu)
+    const sowByBreedAndStage: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
-      const breed = s.breed_id?.trim() || "Chưa rõ giống";
-      const st = s.stage?.trim() || "Bình thường";
-      if (!sowStats[breed]) sowStats[breed] = {};
-      sowStats[breed][st] = (sowStats[breed][st] || 0) + 1;
+      const br = s.breed_id?.trim() || "Chưa rõ";
+      const st = formatVietnameseStage(s.stage);
+      if (!sowByBreedAndStage[br]) sowByBreedAndStage[br] = {};
+      sowByBreedAndStage[br][st] = (sowByBreedAndStage[br][st] || 0) + 1;
+    });
+    Object.entries(sowByBreedAndStage).forEach(([br, stages]) => {
+      const stageText = Object.entries(stages)
+        .filter(([_, cnt]) => cnt > 0)
+        .map(([st, cnt]) => `${st} ${formatNum(cnt)} con`)
+        .join(", ");
+      const totalSow = Object.values(stages).reduce((a, b) => a + b, 0);
+      if (totalSow > 0) {
+        reportRows.push({
+          category: "Nái sinh sản",
+          breed: br,
+          details: stageText,
+          count: totalSow
+        });
+      }
     });
 
-    // 3. Thống kê Lợn con theo mẹ (Gom theo giống của nái mẹ)
-    const pigletByDamBreed: Record<string, { piglets: number; litters: number }> = {};
+    // 3. Lợn con theo mẹ
+    const pigletsByDamBreed: Record<string, { piglets: number; litters: number }> = {};
     activeLitters.forEach(l => {
       const dam = safePigs.find(p => p.ear_tag === l.sow_ear_tag);
-      const breed = dam?.breed_id?.trim() || "Chưa rõ giống mẹ";
-      if (!pigletByDamBreed[breed]) pigletByDamBreed[breed] = { piglets: 0, litters: 0 };
-      pigletByDamBreed[breed].piglets += Number(l.alive_born || 0);
-      pigletByDamBreed[breed].litters += 1;
+      const br = dam?.breed_id?.trim() || "Chưa rõ mẹ";
+      if (!pigletsByDamBreed[br]) pigletsByDamBreed[br] = { piglets: 0, litters: 0 };
+      pigletsByDamBreed[br].piglets += Number(l.alive_born || 0);
+      pigletsByDamBreed[br].litters += 1;
+    });
+    Object.entries(pigletsByDamBreed).forEach(([br, val]) => {
+      if (val.piglets > 0) {
+        reportRows.push({
+          category: "Lợn con theo mẹ",
+          breed: br,
+          details: `Đang bú sữa (${val.litters} đàn/ổ)`,
+          count: val.piglets
+        });
+      }
     });
 
-    // 4. Thống kê Lợn thịt theo giống
-    const meatStats: Record<string, number> = {};
+    // 4. Lợn thịt
+    const meatByBreed: Record<string, number> = {};
     meatList.forEach(m => {
-      const breed = m.breed_id?.trim() || "Chưa rõ giống";
-      meatStats[breed] = (meatStats[breed] || 0) + 1;
+      const br = m.breed_id?.trim() || "Chưa rõ";
+      meatByBreed[br] = (meatByBreed[br] || 0) + 1;
     });
-
-    const formatNum = (n: number) => String(n).padStart(2, "0");
+    Object.entries(meatByBreed).forEach(([br, cnt]) => {
+      if (cnt > 0) {
+        reportRows.push({
+          category: "Lợn thịt",
+          breed: br,
+          details: "Đang vỗ béo thịt",
+          count: cnt
+        });
+      }
+    });
 
     let contentHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset='utf-8'>
-        <title>Báo Cáo Tổng Hợp Đàn Trại Lợn Nà Roác</title>
+        <title>Báo Cáo Hoạt Động Trại Lợn Nà Roác</title>
         <style>
-          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.6; margin: 35px; }
+          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; margin: 35px; }
           h2, h3 { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
           .header-info { text-align: center; margin-bottom: 25px; font-style: italic; }
-          .section-title { font-weight: bold; font-size: 13pt; margin-top: 18px; margin-bottom: 6px; text-transform: uppercase; color: #000; }
-          .data-list { margin-left: 20px; margin-bottom: 12px; }
-          .data-item { margin-bottom: 6px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 18px; }
-          th, td { border: 1px solid #333; padding: 6px 8px; font-size: 11pt; text-align: left; }
+          .section-title { font-weight: bold; font-size: 13pt; margin-top: 20px; margin-bottom: 8px; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 20px; }
+          th, td { border: 1px solid #333; padding: 7px 10px; font-size: 11pt; text-align: left; }
           th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
         </style>
       </head>
@@ -611,65 +669,34 @@ export default function FarmApp() {
         <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người lập: ${activeOperator}</div>
 
         <div class='section-title'>I. TỔNG QUAN TỔNG ĐÀN TOÀN TRẠI</div>
-        <p>- Tổng số đàn hiện diện: <b>${formatNum(grandTotal)} con</b>.</p>
-        <p>- Cơ cấu tổng thể: Nái giống: <b>${formatNum(sowList.length)} con</b> | Đực giống: <b>${formatNum(boarList.length)} con</b> | Lợn con theo mẹ: <b>${formatNum(totalPiglets)} con</b> (${activeLitters.length} lô) | Lợn thịt: <b>${formatNum(meatList.length)} con</b>.</p>
+        <p>- Tổng số đàn hiện tại: <b>${formatNum(grandTotal)} con</b>.</p>
+        <p>- Cơ cấu tổng thể: Nái: <b>${formatNum(sowList.length)} con</b> | Đực giống: <b>${formatNum(boarList.length)} con</b> | Lợn con theo mẹ: <b>${formatNum(totalPiglets)} con</b> | Lợn thịt: <b>${formatNum(meatList.length)} con</b>.</p>
 
-        <div class='section-title'>II. CHI TIẾT CƠ CẤU ĐÀN THEO TỪNG NHÓM GIỐNG & PHÂN LOẠI</div>
-        <div class='data-list'>
-          
-          <!-- 1. Đực giống -->
-          <div class='data-item'>
-            <b>1. Đàn đực giống (${formatNum(boarList.length)} con):</b>
-            ${Object.keys(boarStats).length === 0 ? " Không có đực giống." : `
-              <ul>
-                ${Object.entries(boarStats).map(([b, cnt]) => `
-                  <li>Đực <b>${b}</b>: ${formatNum(cnt)} con</li>
-                `).join("")}
-              </ul>
-            `}
-          </div>
-
-          <!-- 2. Nái giống -->
-          <div class='data-item'>
-            <b>2. Đàn nái sinh sản (${formatNum(sowList.length)} con):</b>
-            ${Object.keys(sowStats).length === 0 ? " Không có nái giống." : `
-              <ul>
-                ${Object.entries(sowStats).map(([b, stages]) => {
-                  const stageDetails = Object.entries(stages)
-                    .map(([st, cnt]) => `${st} ${formatNum(cnt)} con`)
-                    .join(", ");
-                  const totalBreedSow = Object.values(stages).reduce((a, c) => a + c, 0);
-                  return `<li>Nái <b>${b}</b> (${formatNum(totalBreedSow)} con): ${stageDetails}</li>`;
-                }).join("")}
-              </ul>
-            `}
-          </div>
-
-          <!-- 3. Lợn con theo mẹ -->
-          <div class='data-item'>
-            <b>3. Lợn con đang theo mẹ (${formatNum(totalPiglets)} con / ${activeLitters.length} lô):</b>
-            ${Object.keys(pigletByDamBreed).length === 0 ? " Hiện không có lợn con theo mẹ." : `
-              <ul>
-                ${Object.entries(pigletByDamBreed).map(([damBreed, val]) => `
-                  <li>Theo mẹ <b>${damBreed}</b>: ${formatNum(val.piglets)} con (${val.litters} lô)</li>
-                `).join("")}
-              </ul>
-            `}
-          </div>
-
-          <!-- 4. Lợn thịt -->
-          <div class='data-item'>
-            <b>4. Đàn lợn thịt vỗ béo (${formatNum(meatList.length)} con):</b>
-            ${Object.keys(meatStats).length === 0 ? " Không có lợn thịt vỗ béo." : `
-              <ul>
-                ${Object.entries(meatStats).map(([b, cnt]) => `
-                  <li>Thịt <b>${b}</b>: ${formatNum(cnt)} con</li>
-                `).join("")}
-              </ul>
-            `}
-          </div>
-
-        </div>
+        <div class='section-title'>II. BẢNG CƠ CẤU CHI TIẾT THEO PHÂN LOẠI & GIỐNG LỢN</div>
+        <table>
+          <thead>
+            <tr>
+              <th style='width: 40px;'>STT</th>
+              <th style='width: 140px;'>Phân Loại Đàn</th>
+              <th style='width: 140px;'>Giống Lợn</th>
+              <th>Chi Tiết Trạng Thái</th>
+              <th style='width: 90px;'>Số Lượng</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportRows.length === 0 ? `<tr><td colspan='5' style='text-align: center;'>Hiện chưa có số liệu đàn</td></tr>` :
+              reportRows.map((r, idx) => `
+                <tr>
+                  <td style='text-align: center;'>${idx + 1}</td>
+                  <td><b>${r.category}</b></td>
+                  <td>${r.breed}</td>
+                  <td>${r.details}</td>
+                  <td style='text-align: center;'><b>${formatNum(r.count)} con</b></td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
 
         <div class='section-title'>III. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN (${reportDays} NGÀY QUA)</div>
         <table>
@@ -677,12 +704,12 @@ export default function FarmApp() {
             <tr>
               <th style='width: 40px;'>STT</th>
               <th>Nội Dung Công Việc</th>
-              <th style='width: 100px;'>Cá Thể</th>
+              <th style='width: 120px;'>Đối Tượng / Tai</th>
               <th style='width: 110px;'>Ngày Xong</th>
             </tr>
           </thead>
           <tbody>
-            ${recentCompletedTasks.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có việc kỹ thuật phát sinh trong kỳ</td></tr>` :
+            ${recentCompletedTasks.length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Không có công việc phát sinh trong kỳ</td></tr>` :
               recentCompletedTasks.map((t, idx) => `
                 <tr>
                   <td style='text-align: center;'>${idx + 1}</td>
@@ -695,13 +722,13 @@ export default function FarmApp() {
           </tbody>
         </table>
 
-        <div class='section-title'>IV. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC HỆ THỐNG (${reportDays} NGÀY QUA)</div>
+        <div class='section-title'>IV. NHẬT KÝ BIẾN ĐỘNG & THAO TÁC HỆ THỐNG (${reportDays} NGÀY QUA)</div>
         <table>
           <thead>
             <tr>
               <th style='width: 130px;'>Thời Gian</th>
-              <th style='width: 120px;'>Người Thực Hiện</th>
-              <th style='width: 110px;'>Hành Động</th>
+              <th style='width: 130px;'>Người Thực Hiện</th>
+              <th style='width: 120px;'>Hành Động</th>
               <th>Chi Tiết Biến Động</th>
             </tr>
           </thead>
@@ -784,7 +811,7 @@ export default function FarmApp() {
           Ô: {pig.current_pen_code || "Chưa xếp"}
         </span>
         <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
-          {pig.stage || "Bình thường"}
+          {formatVietnameseStage(pig.stage)}
         </span>
       </div>
 
@@ -817,7 +844,6 @@ export default function FarmApp() {
               {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
-              {currentMenu === "REPORT" && "XUẤT BÁO CÁO"}
               {currentMenu === "SEARCH" && "TRA CỨU"}
               {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
             </h1>
@@ -854,7 +880,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* MENU TRƯỢT */}
+        {/* MENU TRƯỢT (ĐÃ BỎ TAB XUẤT BÁO CÁO) */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
             <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
@@ -869,9 +895,8 @@ export default function FarmApp() {
                 { k: "BOAR", l: "Quản lý đực", icon: "🐗" },
                 { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
-                { k: "REPORT", l: "Xuất báo cáo Word", icon: "📄" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
-                { k: "SETTINGS", l: "Cài đặt & Nhân sự", icon: "⚙️" },
+                { k: "SETTINGS", l: "Cài đặt & Danh mục", icon: "⚙️" },
               ].map(item => (
                 <button
                   key={item.k}
@@ -907,11 +932,11 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* KHỐI XUẤT BÁO CÁO WORD NGAY TẠI TRANG TỔNG QUAN */}
-            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
+            {/* KHỐI XUẤT BÁO CÁO WORD NGAY TRANG CHỦ */}
+            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "12px", border: "1px solid #bfdbfe" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 XUẤT BÁO CÁO NHANH (.DOC)</span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Cơ cấu đàn & Biến động</span>
+                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 XUẤT BÁO CÁO (.DOC)</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng chi tiết duy nhất</span>
               </div>
               <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
                 {[7, 10, 30].map((d) => (
@@ -932,8 +957,30 @@ export default function FarmApp() {
                 onClick={handleExportWord}
                 style={{ width: "100%", padding: "9px", borderRadius: "8px", background: "#1d4ed8", color: "#fff", border: "none", fontWeight: "900", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
               >
-                <span>📥 Tải File Word ({reportDays} ngày)</span>
+                <span>📥 Tải Báo Cáo Word ({reportDays} ngày)</span>
               </button>
+            </div>
+
+            {/* KHỐI ĐỔI TÊN HIỂN THỊ TRỰC TIẾP TẠI TRANG CHỦ */}
+            <div style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "12px 14px", marginBottom: "16px", border: "1px solid #f1e5f0" }}>
+              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: "700", color: "#475569" }}>
+                  <span>Tên người thực hiện (Ký báo cáo):</span>
+                  <span style={{ color: "#5b21b6" }}>{activeOperator}</span>
+                </div>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <input
+                    type="text"
+                    placeholder="Đổi tên (VD: Hà Quang Dự)..."
+                    value={inputDisplayName}
+                    onChange={(e) => setInputDisplayName(e.target.value)}
+                    style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
+                  />
+                  <button type="submit" style={{ padding: "6px 12px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", fontSize: "11px", cursor: "pointer" }}>
+                    Lưu tên
+                  </button>
+                </div>
+              </form>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
@@ -1108,49 +1155,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. PHÂN HỆ XUẤT BÁO CÁO WORD */}
-        {currentMenu === "REPORT" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #fed7aa", marginBottom: "16px" }}>
-              <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#c2410c" }}>
-                📄 Xuất Báo Cáo Hoạt Động Trại
-              </h3>
-              <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 14px 0", lineHeight: "1.5" }}>
-                Báo cáo tổng hợp số lượng cá thể theo từng giống, chi tiết trạng thái đàn, các công việc thú y/kỹ thuật đã hoàn thành và biến động trong kỳ.
-              </p>
-
-              <label style={{ fontSize: "12px", fontWeight: "800", color: "#334155" }}>Chọn khoảng thời gian báo cáo:</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "10px 0 16px 0" }}>
-                {[7, 10, 30].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setReportDays(d as any)}
-                    style={{
-                      padding: "10px", borderRadius: "8px", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer",
-                      background: reportDays === d ? "#ea580c" : "#f1f5f9",
-                      color: reportDays === d ? "#fff" : "#475569"
-                    }}
-                  >
-                    {d} ngày qua
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px", color: "#475569", marginBottom: "16px" }}>
-                Tên file xuất mẫu: <strong>baocao_{reportDays}ngay_dd_mm_yy.doc</strong>
-              </div>
-
-              <button
-                onClick={handleExportWord}
-                style={{ width: "100%", padding: "12px", borderRadius: "10px", background: "#2563eb", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-              >
-                <span>📥 Tải File Word (.doc) Ngay</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 7. TRA CỨU */}
+        {/* 6. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -1160,36 +1165,15 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 8. CÀI ĐẶT & NHÂN SỰ */}
+        {/* 7. CÀI ĐẶT & DANH MỤC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
-            {/* THÔNG TIN VÀ ĐỔI TÊN HIỂN THỊ */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Thông tin tài khoản & Người thực hiện</h4>
-              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "10px" }}>
-                {user ? `👤 Đang đăng nhập: ${user.email}` : "Chế độ xem tự do (Khách)"}
+              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
+              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
+                {user ? `Đang đăng nhập: ${user.email} (${activeOperator})` : "Chế độ xem tự do (Khách)"}
               </div>
-
-              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontSize: "11px", fontWeight: "700", color: "#475569" }}>Tên hiển thị trên App & Chữ ký Báo cáo:</label>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: Hà Quang Dự, Kỹ thuật Tuấn..."
-                    value={inputDisplayName}
-                    onChange={(e) => setInputDisplayName(e.target.value)}
-                    style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  />
-                  <button type="submit" style={{ padding: "8px 14px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer", fontSize: "12px" }}>
-                    Lưu tên
-                  </button>
-                </div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                  * Tên hiện tại: <strong>{activeOperator}</strong> (tự động xuất hiện ở nhật ký và góc ký báo cáo).
-                </div>
-              </form>
             </div>
 
             {/* DANH MỤC GIỐNG */}
@@ -1224,7 +1208,7 @@ export default function FarmApp() {
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
                 {(config?.stages || []).map((st) => (
                   <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                    {st}
+                    {formatVietnameseStage(st)}
                     {user && (
                       <span
                         onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })}
@@ -1270,7 +1254,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* NHẬT KÝ THAO TÁC (CÓ CỘT NGƯỜI THỰC HIỆN) */}
+            {/* NHẬT KÝ THAO TÁC */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Thao Tác Gần Đây</h4>
               {(auditLogs || []).length === 0 ? (
@@ -1337,7 +1321,7 @@ export default function FarmApp() {
                 <div>
                   <label style={{ fontSize: "11px", fontWeight: "700" }}>Giai đoạn:</label>
                   <select value={newPig.stage || config.stages[0]} onChange={(e) => setNewPig({ ...newPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.stages.map(st => <option key={st} value={st}>{st}</option>)}
+                    {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1454,7 +1438,7 @@ export default function FarmApp() {
                 <div>
                   <label style={{ fontSize: "11px", fontWeight: "700" }}>Trạng thái:</label>
                   <select value={editingPig.stage || config.stages[0]} onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.stages.map(st => <option key={st} value={st}>{st}</option>)}
+                    {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
                   </select>
                 </div>
                 <div>
