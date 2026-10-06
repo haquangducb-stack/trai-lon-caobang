@@ -166,20 +166,32 @@ export default function FarmApp() {
   }, [supabase, fetchData]);
 
   // Hỗ trợ đăng nhập bằng tên thường (username)
+  // Xử lý đăng nhập
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
 
-    let loginAccount = authAccount.trim().toLowerCase();
-    if (!loginAccount.includes("@")) {
-      loginAccount = `${loginAccount}@trailon.local`;
+    let accountInput = authAccount.trim().toLowerCase();
+
+    // Nếu người dùng chỉ gõ tên (du, kithuat1...) mà không có dấu @
+    // Code sẽ tự động ghép thêm đuôi @trailon.local ngầm phía sau:
+    if (!accountInput.includes("@")) {
+      accountInput = `${accountInput}@trailon.local`;
     }
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginAccount,
+      email: accountInput,
       password: authPassword.trim()
     });
 
+    if (error) {
+      setAuthError("Tên đăng nhập hoặc mật khẩu không đúng!");
+    } else {
+      setShowAuthModal(false);
+      setAuthPassword("");
+      fetchData();
+    }
+  };
     if (error) {
       setAuthError("Tên đăng nhập hoặc mật khẩu không chính xác!");
     } else {
