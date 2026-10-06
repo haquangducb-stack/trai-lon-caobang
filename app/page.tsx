@@ -63,7 +63,6 @@ interface FarmConfig {
   pens: string[];
 }
 
-// BỘ VIỆT HÓA TRẠNG THÁI CHUẨN
 const formatVietnameseStage = (rawStage?: string) => {
   if (!rawStage) return "Bình thường";
   const s = rawStage.toUpperCase().trim();
@@ -81,11 +80,9 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Tên hiển thị người dùng (Display Name)
   const [customDisplayName, setCustomDisplayName] = useState<string>("");
   const [inputDisplayName, setInputDisplayName] = useState<string>("");
 
-  // Modal Auth & Đổi MK
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authAccount, setAuthAccount] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -95,7 +92,6 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Dữ liệu trại
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -103,14 +99,13 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Điều hướng (Tab chỉ để là "SETTINGS" - CÀI ĐẶT)
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
+  // Điều hướng: Có thêm tab "GUIDE" (Quy trình kỹ thuật thú y)
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Cấu hình danh mục
   const [config, setConfig] = useState<FarmConfig>({
     breeds: ["Hạ Lang", "Lan lai Hương", "Móng Cái", "Duroc", "Pietrain", "Landrace", "Yorkshire"],
     stages: ["Hậu bị", "Chờ phối", "Đang chửa", "Nuôi con", "Cai sữa", "Vỗ béo thịt", "Đực giống"],
@@ -121,7 +116,6 @@ export default function FarmApp() {
   const [newStageInput, setNewStageInput] = useState("");
   const [newPenInput, setNewPenInput] = useState("");
 
-  // Modal Thêm lợn
   const [showAddPigModal, setShowAddPigModal] = useState(false);
   const [newPig, setNewPig] = useState<Partial<Pig>>({
     ear_tag: "",
@@ -136,11 +130,9 @@ export default function FarmApp() {
   });
   const [isAddingPig, setIsAddingPig] = useState(false);
 
-  // Modal Sửa lợn
   const [editingPig, setEditingPig] = useState<Pig | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Modal Xử lý Công việc
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
@@ -188,7 +180,6 @@ export default function FarmApp() {
     return "Hà Quang Dự";
   }, [customDisplayName, user]);
 
-  // HÀM GHI NHẬT KÝ ĐẢM BẢO 100% HIỂN THỊ (LƯU DB + DỰ PHÒNG LOCALSTORAGE)
   const logAction = useCallback(async (actionType: string, targetId: string, details: string) => {
     const newEntry: AuditLog = {
       id: "log-" + Date.now(),
@@ -199,7 +190,6 @@ export default function FarmApp() {
       created_at: new Date().toISOString()
     };
 
-    // Cập nhật State & LocalStorage ngay lập tức để không bị mất
     setAuditLogs(prev => {
       const updated = [newEntry, ...prev].slice(0, 50);
       if (typeof window !== "undefined") {
@@ -429,7 +419,6 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // TỔNG HỢP NHIỆM VỤ: KHỬ TRÙNG LẶP VÀ GOM ĐÚNG VÀO THÚ Y
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -609,7 +598,7 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
-  // HÀM XUẤT BÁO CÁO WORD: ĐÚNG 1 BẢNG DUY NHẤT - CÓ CỘT NGƯỜI THỰC HIỆN - BỎ HẲN SỐ TAI VÀ SỐ 0
+  // HÀM XUẤT BÁO CÁO WORD: ĐÚNG 1 BẢNG DUY NHẤT
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -619,11 +608,9 @@ export default function FarmApp() {
 
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
-    // TỔNG HỢP TẤT CẢ VÀO 1 DANH SÁCH DUY NHẤT
     const masterRows: { stt: number; type: string; details: string; count: string; operator: string }[] = [];
     let counter = 1;
 
-    // 1. Đực giống theo giống
     const boarByBreed: Record<string, number> = {};
     boarList.forEach(b => {
       const br = b.breed_id?.trim() || "Chưa rõ";
@@ -641,7 +628,6 @@ export default function FarmApp() {
       }
     });
 
-    // 2. Nái sinh sản theo giống và trạng thái
     const sowByBreedAndStage: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
       const br = s.breed_id?.trim() || "Chưa rõ";
@@ -666,7 +652,6 @@ export default function FarmApp() {
       }
     });
 
-    // 3. Lợn con theo mẹ
     const pigletsByDamBreed: Record<string, { piglets: number; litters: number }> = {};
     activeLitters.forEach(l => {
       const dam = safePigs.find(p => p.ear_tag === l.sow_ear_tag);
@@ -687,7 +672,6 @@ export default function FarmApp() {
       }
     });
 
-    // 4. Lợn thịt
     const meatByBreed: Record<string, number> = {};
     meatList.forEach(m => {
       const br = m.breed_id?.trim() || "Chưa rõ";
@@ -705,7 +689,6 @@ export default function FarmApp() {
       }
     });
 
-    // 5. Công việc kỹ thuật thú y đã làm (Gom luôn vào bảng)
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - reportDays);
     const recentCompletedTasks = completedTasks.filter(t => {
@@ -743,7 +726,6 @@ export default function FarmApp() {
 
         <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực giống: ${formatNum(boarList.length)} con | Lợn con theo mẹ: ${formatNum(totalPiglets)} con | Lợn thịt: ${formatNum(meatList.length)} con).</p>
 
-        <!-- ĐÚNG 1 BẢNG DUY NHẤT -->
         <table>
           <thead>
             <tr>
@@ -867,6 +849,7 @@ export default function FarmApp() {
               {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
+              {currentMenu === "GUIDE" && "QUY TRÌNH THÚ Y"}
               {currentMenu === "SEARCH" && "TRA CỨU"}
               {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
             </h1>
@@ -883,7 +866,7 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT THÊM LỢN NHANH TRONG CÁC TAB ĐÀN */}
+        {/* NÚT THÊM LỢN NHANH */}
         {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
           <div style={{ padding: "12px 16px 0 16px" }}>
             <button
@@ -903,7 +886,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* MENU TRƯỢT (TÊN TAB LÀ "CÀI ĐẶT") */}
+        {/* MENU TRƯỢT */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
             <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
@@ -918,6 +901,7 @@ export default function FarmApp() {
                 { k: "BOAR", l: "Quản lý đực", icon: "🐗" },
                 { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
+                { k: "GUIDE", l: "Quy trình thú y", icon: "🩺" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
                 { k: "SETTINGS", l: "Cài đặt", icon: "⚙️" },
               ].map(item => (
@@ -955,14 +939,13 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* KHỐI XUẤT BÁO CÁO & ĐỔI TÊN NGƯỜI LẬP (ĐÚNG 1 KHỐI DUY NHẤT) */}
+            {/* KHỐI XUẤT BÁO CÁO & ĐỔI TÊN (ĐÚNG 1 KHỐI DUY NHẤT) */}
             <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
                 <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng duy nhất</span>
               </div>
 
-              {/* Ô ĐỔI TÊN HIỂN THỊ */}
               <form onSubmit={handleSaveDisplayName} style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
                 <input
                   type="text"
@@ -1043,7 +1026,6 @@ export default function FarmApp() {
                 </h3>
               </div>
 
-              {/* TABS PHÂN LOẠI CÔNG VIỆC: THÚ Y / SINH SẢN / CAI SỮA */}
               <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto" }}>
                 {[{ id: "ALL", label: "Tất cả" }, { id: "VET", label: "Thú y" }, { id: "REPRO", label: "Sinh sản" }, { id: "WEAN", label: "Cai sữa" }].map((tab) => (
                   <button key={tab.id} onClick={() => setTaskCategoryFilter(tab.id)} style={{ padding: "6px 10px", borderRadius: "16px", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer", backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0", color: taskCategoryFilter === tab.id ? "#fff" : "#475569" }}>
@@ -1052,7 +1034,6 @@ export default function FarmApp() {
                 ))}
               </div>
 
-              {/* VIỆC CHƯA LÀM */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
                 {pendingTasks.length === 0 ? (
                   <div style={{ padding: "14px", textAlign: "center", background: "#fff", borderRadius: "10px", fontSize: "12px", color: "#64748b" }}>
@@ -1086,7 +1067,6 @@ export default function FarmApp() {
                 )}
               </div>
 
-              {/* VIỆC ĐÃ LÀM XONG */}
               {completedTasks.length > 0 && (
                 <div>
                   <h4 style={{ fontSize: "14px", fontWeight: "800", color: "#047857", margin: "0 0 8px 0" }}>
@@ -1172,7 +1152,93 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TRA CỨU */}
+        {/* 6. TAB KỸ THUẬT & QUY TRÌNH VACCINE THÚ Y THỰC TẾ */}
+        {currentMenu === "GUIDE" && (
+          <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ background: "#eff6ff", borderRadius: "12px", padding: "14px", border: "1px solid #bfdbfe" }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: "900", color: "#1e40af" }}>
+                🩺 CẨM NANG QUY TRÌNH PHÒNG BỆNH VACCINE
+              </h3>
+              <div style={{ fontSize: "12px", color: "#475569" }}>
+                Áp dụng chuẩn quy trình chăn nuôi an toàn sinh học tại Trại Lợn Nà Roác.
+              </div>
+            </div>
+
+            {/* PHẦN 1: LỢN CON & THỊT */}
+            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#047857" }}>
+                1. Quy Trình Lợn Con Theo Mẹ & Lợn Thịt
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 3 ngày tuổi:</b> Tiêm Sắt (Dextran 200mg) + Nhỏ thuốc phòng Cầu trùng (Toltrazuril).
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 7 - 10 ngày tuổi:</b> Tiêm phòng Suyễn lợn (Mycoplasma hyopneumoniae) mũi 1.
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 14 - 16 ngày tuổi:</b> Tiêm phòng Phù đầu / Phân trắng (E.Coli + Phù đầu).
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 21 ngày tuổi (trước cai sữa):</b> Tiêm nhắc lại Suyễn mũi 2 hoặc phòng PRRS (Tai xanh).
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 30 - 35 ngày tuổi (sau cai sữa):</b> Tiêm Vaccine Dịch tả lợn cổ điển mũi 1 (CSF).
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 45 - 50 ngày tuổi:</b> Tiêm Vaccine Lở mồm long móng (FMD) mũi 1.
+                </div>
+                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
+                  <b>• 60 ngày tuổi:</b> Tiêm nhắc lại Dịch tả mũi 2 + Tẩy giun sán đường ruột.
+                </div>
+              </div>
+            </div>
+
+            {/* PHẦN 2: NÁI HẬU BỊ & SINH SẢN */}
+            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#db2777" }}>
+                2. Quy Trình Nái Hậu Bị & Nái Chửa
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
+                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
+                  <b>• Trước phối 4 tuần (Hậu bị):</b> Tiêm Parvovirus (Khô thai) mũi 1 + Giả dại (Aujeszky).
+                </div>
+                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
+                  <b>• Trước phối 2 tuần (Hậu bị):</b> Tiêm nhắc lại Parvovirus mũi 2 + Dịch tả cổ điển.
+                </div>
+                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
+                  <b>• Chửa 80 - 85 ngày:</b> Tiêm Vaccine Tai xanh (PRRS) hoặc Dịch tả định kỳ lứa chửa.
+                </div>
+                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
+                  <b>• Chửa 95 - 100 ngày:</b> Tiêm phòng E.Coli tạo kháng thể mẹ truyền sữa đầu phòng tiêu chảy phân trắng cho đàn con.
+                </div>
+                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
+                  <b>• Chửa 107 ngày:</b> Tắm rửa sạch sẽ, sát trùng vú và chuyển lên ô chuồng đẻ.
+                </div>
+              </div>
+            </div>
+
+            {/* PHẦN 3: ĐỰC GIỐNG */}
+            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#2563eb" }}>
+                3. Quy Trình Đực Giống
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
+                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
+                  <b>• Định kỳ 6 tháng/lần:</b> Tiêm nhắc lại Vaccine Lở mồm long móng (FMD) + Dịch tả lợn cổ điển.
+                </div>
+                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
+                  <b>• Định kỳ 6 tháng/lần:</b> Tiêm Ivermectin tẩy giun sán nội ngoại ký sinh trùng.
+                </div>
+                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
+                  <b>• Định kỳ 1 năm/lần:</b> Tiêm phòng Khô thai (Parvo) và Giả dại (Aujeszky).
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 7. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -1182,7 +1248,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. CÀI ĐẶT (TÊN TAB ĐÚNG CHUẨN) */}
+        {/* 8. CÀI ĐẶT */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
@@ -1271,7 +1337,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* NHẬT KÝ THAO TÁC (LUÔN CẬP NHẬT 100%) */}
+            {/* NHẬT KÝ THAO TÁC */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Thao Tác Gần Đây</h4>
               {(auditLogs || []).length === 0 ? (
