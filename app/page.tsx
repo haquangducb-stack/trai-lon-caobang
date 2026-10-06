@@ -66,9 +66,9 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Modal Auth & Doi MK
+  // Modal Auth & Đổi MK
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authEmail, setAuthEmail] = useState("");
+  const [authAccount, setAuthAccount] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
@@ -76,7 +76,7 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Du lieu
+  // Dữ liệu
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -84,7 +84,7 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Dieu huong
+  // Điều hướng
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
@@ -116,11 +116,12 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
-  // Khai bao logAction dau tien de khong bi ReferenceError
+  // Khai báo logAction trên đầu để tránh lỗi ReferenceError
   const logAction = useCallback(async (actionType: string, targetId: string, details: string) => {
     try {
+      const displayName = user?.email?.replace("@trailon.local", "") || "Khách";
       await supabase.from("audit_logs").insert([
-        { action_type: actionType, target_id: targetId, performed_by: user?.email || "Khách", details }
+        { action_type: actionType, target_id: targetId, performed_by: displayName, details }
       ]);
     } catch (e) {
       console.error(e);
@@ -164,15 +165,23 @@ export default function FarmApp() {
     return () => subscription.unsubscribe();
   }, [supabase, fetchData]);
 
+  // Hỗ trợ đăng nhập bằng tên thường (username)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
+
+    let loginAccount = authAccount.trim().toLowerCase();
+    if (!loginAccount.includes("@")) {
+      loginAccount = `${loginAccount}@trailon.local`;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
-      email: authEmail.trim(),
+      email: loginAccount,
       password: authPassword.trim()
     });
+
     if (error) {
-      setAuthError(error.message);
+      setAuthError("Tên đăng nhập hoặc mật khẩu không chính xác!");
     } else {
       setShowAuthModal(false);
       setAuthPassword("");
@@ -363,6 +372,8 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
+  const displayUser = user?.email?.replace("@trailon.local", "") || "";
+
   const renderPigCard = (pig: Pig) => (
     <div
       key={pig.id}
@@ -457,8 +468,8 @@ export default function FarmApp() {
             <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
             <div style={{ width: "260px", backgroundColor: "#fff", height: "100%", zIndex: 101, padding: "20px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
               <h2 style={{ margin: 0, color: "#5b21b6" }}>APPTRAILON</h2>
-              <div style={{ fontSize: "11px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "8px" }}>
-                {user ? `👤 ${user.email}` : "👀 Chế độ Khách (Chỉ xem)"}
+              <div style={{ fontSize: "12px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "8px" }}>
+                {user ? `👤 Tài khoản: ${displayUser}` : "👀 Chế độ Khách (Chỉ xem)"}
               </div>
               {[
                 { k: "OVERVIEW", l: "Tổng quan", icon: "📊" },
@@ -488,7 +499,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 1. TONG QUAN */}
+        {/* 1. TỔNG QUAN */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ backgroundColor: "#eae7ec", borderRadius: "14px", padding: "16px 18px", marginBottom: "12px" }}>
@@ -559,7 +570,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 2. QUAN LY NAI */}
+        {/* 2. QUẢN LÝ NÁI */}
         {currentMenu === "SOW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto" }}>
@@ -573,7 +584,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 3. QUAN LY DUC */}
+        {/* 3. QUẢN LÝ ĐỰC */}
         {currentMenu === "BOAR" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>ĐÀN ĐỰC GIỐNG ({boarList.length} CON)</div>
@@ -581,7 +592,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 4. LON CON THEO LO */}
+        {/* 4. LỢN CON THEO LÔ */}
         {currentMenu === "PIGLET" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a", marginBottom: "12px" }}>ĐANG NUÔI: {activeLitters.length} LÔ ({totalPiglets} CON)</div>
@@ -611,7 +622,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 5. LON THIT */}
+        {/* 5. LỢN THỊT */}
         {currentMenu === "MEAT" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>ĐÀN LỢN THỊT ({meatList.length} CON)</div>
@@ -619,7 +630,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TRA CUU */}
+        {/* 6. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -629,22 +640,22 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. CAI DAT & DANH MUC */}
+        {/* 7. CÀI ĐẶT & DANH MỤC */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
-            {/* THONG TIN TAI KHOAN */}
+            {/* THÔNG TIN TÀI KHOẢN */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
               <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
-                {user ? `Đang đăng nhập: ${user.email}` : "Chế độ xem tự do (Khách)"}
+                {user ? `Đang đăng nhập: ${displayUser}` : "Chế độ xem tự do (Khách)"}
               </div>
               <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                * Việc thêm, xóa tài khoản được quản lý trực tiếp và bảo mật trên Supabase Authentication.
+                * Để thêm hoặc cấp tài khoản nhân sự mới, quản trị viên thao tác trực tiếp tại mục Authentication trên Supabase.
               </div>
             </div>
 
-            {/* DANH MUC GIONG */}
+            {/* DANH MỤC GIỐNG */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -663,7 +674,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* DANH MUC GIAI DOAN */}
+            {/* DANH MỤC GIAI ĐOẠN */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -682,7 +693,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* DANH MUC O CHUONG */}
+            {/* DANH MỤC Ô CHUỒNG */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -701,7 +712,7 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* NHAT KY THAO TAC */}
+            {/* NHẬT KÝ THAO TÁC */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Gần Đây</h4>
               {(auditLogs || []).length === 0 ? (
@@ -734,12 +745,12 @@ export default function FarmApp() {
         )}
       </div>
 
-      {/* FOOTER CO DINH O DAY */}
+      {/* FOOTER CỐ ĐỊNH Ở ĐÁY */}
       <footer style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: "36px", backgroundColor: "rgba(253, 248, 251, 0.95)", borderTop: "1px solid #f1e5f0", display: "flex", alignItems: "center", justifyContent: "flex-start", paddingLeft: "16px", zIndex: 40, maxWidth: "480px", margin: "0 auto", pointerEvents: "none" }}>
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
 
-      {/* MODAL SUA CA THE */}
+      {/* MODAL SỬA CÁ THỂ */}
       {editingPig && user && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "400px", padding: "20px" }}>
@@ -793,15 +804,29 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL DANG NHAP */}
+      {/* MODAL ĐĂNG NHẬP */}
       {showAuthModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
             <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", fontWeight: "800" }}>Đăng nhập</h3>
             {authError && <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "8px" }}>{authError}</div>}
             <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <input type="email" required placeholder="Email..." value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
-              <input type="password" required placeholder="Mật khẩu..." value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
+              <input
+                type="text"
+                required
+                placeholder="Tên đăng nhập (VD: kithuat1)..."
+                value={authAccount}
+                onChange={(e) => setAuthAccount(e.target.value)}
+                style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              />
+              <input
+                type="password"
+                required
+                placeholder="Mật khẩu..."
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowAuthModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
                 <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#5b21b6", color: "#fff", border: "none", fontWeight: "700" }}>Vào</button>
@@ -811,7 +836,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL DOI MAT KHAU */}
+      {/* MODAL ĐỔI MẬT KHẨU */}
       {showChangePwdModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
