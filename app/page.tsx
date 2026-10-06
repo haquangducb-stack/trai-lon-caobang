@@ -67,6 +67,10 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
+  // Tên hiển thị người dùng (Display Name)
+  const [customDisplayName, setCustomDisplayName] = useState<string>("");
+  const [inputDisplayName, setInputDisplayName] = useState<string>("");
+
   // Modal Auth & Đổi MK
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authAccount, setAuthAccount] = useState("");
@@ -77,7 +81,7 @@ export default function FarmApp() {
   const [newPassword, setNewPassword] = useState("");
   const [changePwdMsg, setChangePwdMsg] = useState("");
 
-  // Dữ liệu
+  // Dữ liệu trại
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -126,6 +130,7 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
+  // Khởi tạo và nạp cấu hình LocalStorage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -136,6 +141,11 @@ export default function FarmApp() {
           if (parsed && parsed.breeds && parsed.stages && parsed.pens) {
             setConfig(parsed);
           }
+        }
+        const savedName = localStorage.getItem("farm_display_name");
+        if (savedName) {
+          setCustomDisplayName(savedName);
+          setInputDisplayName(savedName);
         }
       } catch (e) {
         console.error("Lỗi nạp config:", e);
@@ -152,18 +162,23 @@ export default function FarmApp() {
     return createClient(rawUrl, rawKey.trim());
   }, []);
 
+  // Tính tên hiển thị hiệu lực
+  const activeOperator = useMemo(() => {
+    if (customDisplayName.trim()) return customDisplayName.trim();
+    if (user?.email) return user.email.replace("@trailon.local", "");
+    return "Khách";
+  }, [customDisplayName, user]);
+
   const logAction = useCallback(async (actionType: string, targetId: string, details: string) => {
     try {
-      const displayName = user?.email?.replace("@trailon.local", "") || "Khách";
       await supabase.from("audit_logs").insert([
-        { action_type: actionType, target_id: targetId, performed_by: displayName, details }
+        { action_type: actionType, target_id: targetId, performed_by: activeOperator, details }
       ]);
     } catch (e) {
       console.error(e);
     }
-  }, [supabase, user]);
+  }, [supabase, activeOperator]);
 
-  // Ngắt vòng lặp bằng cách không để config trong dependency
   const fetchData = useCallback(async () => {
     try {
       const [pRes, tRes, farRes, insemRes, logRes] = await Promise.all([
@@ -171,7 +186,7 @@ export default function FarmApp() {
         supabase.from("farm_tasks").select("*").order("due_date", { ascending: true }),
         supabase.from("farrowings").select("*").order("farrow_date", { ascending: false }),
         supabase.from("inseminations").select("*").order("mating_date", { ascending: false }),
-        supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50)
+        supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(60)
       ]);
       if (pRes?.data) setPigs(pRes.data);
       if (tRes?.data) setDbTasks(tRes.data);
@@ -241,6 +256,16 @@ export default function FarmApp() {
       setNewPassword("");
       fetchData();
     }
+  };
+
+  const handleSaveDisplayName = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputDisplayName.trim()) return;
+    setCustomDisplayName(inputDisplayName.trim());
+    if (typeof window !== "undefined") {
+      localStorage.setItem("farm_display_name", inputDisplayName.trim());
+    }
+    alert(`Đã cập nhật tên hiển thị thành: "${inputDisplayName.trim()}"`);
   };
 
   const saveConfig = (newCfg: FarmConfig) => {
@@ -506,29 +531,14 @@ export default function FarmApp() {
 
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
-  const displayUser = user?.email?.replace("@trailon.local", "") || "";
 
-  // HÀM XUẤT BÁO CÁO WORD
+  // HÀM XUẤT BÁO CÁO WORD CHI TIẾT
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const yy = String(today.getFullYear()).slice(-2);
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
-
-    const breedStats: Record<string, { total: number; sow: number; boar: number; meat: number }> = {};
-    config.breeds.forEach(b => {
-      breedStats[b] = { total: 0, sow: 0, boar: 0, meat: 0 };
-    });
-
-    safePigs.forEach(p => {
-      const b = p.breed_id || "Khác";
-      if (!breedStats[b]) breedStats[b] = { total: 0, sow: 0, boar: 0, meat: 0 };
-      breedStats[b].total += 1;
-      if (isSow(p)) breedStats[b].sow += 1;
-      else if (isBoar(p)) breedStats[b].boar += 1;
-      else if (isMeat(p)) breedStats[b].meat += 1;
-    });
 
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - reportDays);
@@ -543,63 +553,161 @@ export default function FarmApp() {
       return new Date(t.due_date) >= pastDate;
     });
 
+    // Thống kê lợn thịt theo giống
+    const meatByBreed: Record<string, number> = {};
+    meatList.forEach(m => {
+      const b = m.breed_id || "Khác";
+      meatByBreed[b] = (meatByBreed[b] || 0) + 1;
+    });
+
     let contentHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset='utf-8'>
-        <title>Báo Cáo Hoạt Động Trại Lợn Nà Roác</title>
+        <title>Báo Cáo Chi Tiết Cơ Cấu Đàn & Vận Hành Trại Lợn Nà Roác</title>
         <style>
           body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; margin: 30px; }
-          h2, h3 { text-align: center; margin-bottom: 5px; }
-          .header-info { text-align: center; margin-bottom: 25px; font-style: italic; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
-          th, td { border: 1px solid #333; padding: 7px 10px; font-size: 11pt; text-align: left; }
+          h2, h3 { text-align: center; margin-bottom: 4px; }
+          .header-info { text-align: center; margin-bottom: 20px; font-style: italic; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 18px; }
+          th, td { border: 1px solid #333; padding: 6px 8px; font-size: 11pt; text-align: left; }
           th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
-          .highlight { font-weight: bold; }
+          .highlight { font-weight: bold; font-size: 12pt; margin-top: 15px; margin-bottom: 5px; color: #1e1b4b; }
         </style>
       </head>
       <body>
         <h2>TRẠI LỢN NÀ ROÁC</h2>
-        <h3>BÁO CÁO TỔNG HỢP VẬN HÀNH & BIẾN ĐỘNG ĐÀN (${reportDays} NGÀY QUA)</h3>
-        <div class='header-info'>Thời điểm lập báo cáo: Ngày ${dd}/${mm}/20${yy} | Người lập: ${displayUser || "Cán bộ kỹ thuật"}</div>
+        <h3>BÁO CÁO CHI TIẾT CƠ CẤU ĐÀN & BIẾN ĐỘNG VẬN HÀNH (${reportDays} NGÀY QUA)</h3>
+        <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người lập: ${activeOperator}</div>
 
-        <p class='highlight'>I. TỔNG QUAN TỔNG ĐÀN HIỆN TẠI</p>
-        <p>- Tổng đàn toàn trại: <b>${grandTotal} con</b> (Nái: ${sowList.length} con, Đực: ${boarList.length} con, Lợn thịt: ${meatList.length} con, Lợn con theo mẹ: ${totalPiglets} con / ${activeLitters.length} lô).</p>
-        
-        <p class='highlight'>II. CƠ CẤU ĐÀN CHI TIẾT THEO TỪNG GIỐNG LỢN</p>
+        <p class='highlight'>I. TỔNG QUAN TỔNG ĐÀN HIỆN DIỆN</p>
+        <p>- Tổng đàn toàn trại: <b>${grandTotal} con</b> (Nái: ${sowList.length} con | Đực giống: ${boarList.length} con | Lợn thịt: ${meatList.length} con | Lợn con theo mẹ: ${totalPiglets} con / ${activeLitters.length} lô).</p>
+
+        <p class='highlight'>II. CHI TIẾT ĐÀN ĐỰC GIỐNG (${boarList.length} con)</p>
         <table>
           <thead>
             <tr>
               <th>STT</th>
+              <th>Số Tai</th>
               <th>Giống Lợn</th>
-              <th>Nái Giống</th>
-              <th>Đực Giống</th>
-              <th>Lợn Thịt</th>
-              <th>Tổng Cá Thể</th>
+              <th>Ô Chuồng</th>
+              <th>Trạng Thái / Khai Thác</th>
+              <th>Ghi Chú</th>
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(breedStats).map(([breed, stat], idx) => `
-              <tr>
-                <td style='text-align: center;'>${idx + 1}</td>
-                <td><b>${breed}</b></td>
-                <td style='text-align: center;'>${stat.sow}</td>
-                <td style='text-align: center;'>${stat.boar}</td>
-                <td style='text-align: center;'>${stat.meat}</td>
-                <td style='text-align: center;'><b>${stat.total}</b></td>
-              </tr>
-            `).join("")}
+            ${boarList.length === 0 ? `<tr><td colspan='6' style='text-align: center;'>Không có đực giống</td></tr>` :
+              boarList.map((b, idx) => `
+                <tr>
+                  <td style='text-align: center;'>${idx + 1}</td>
+                  <td style='text-align: center;'><b>${b.ear_tag}</b></td>
+                  <td>${b.breed_id || "—"}</td>
+                  <td style='text-align: center;'>${b.current_pen_code || "—"}</td>
+                  <td style='text-align: center;'>${b.stage || "Đang khai thác tinh"}</td>
+                  <td>${b.notes || "—"}</td>
+                </tr>
+              `).join("")
+            }
           </tbody>
         </table>
 
-        <p class='highlight'>III. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN TRONG ${reportDays} NGÀY QUA</p>
+        <p class='highlight'>III. CHI TIẾT ĐÀN NÁI SINH SẢN (${sowList.length} con)</p>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Số Tai</th>
+              <th>Giống Lợn</th>
+              <th>Trạng Thái Sinh Sản</th>
+              <th>Ô Chuồng</th>
+              <th>Bố / Mẹ</th>
+              <th>Ghi Chú</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sowList.length === 0 ? `<tr><td colspan='7' style='text-align: center;'>Không có nái</td></tr>` :
+              sowList.map((s, idx) => `
+                <tr>
+                  <td style='text-align: center;'>${idx + 1}</td>
+                  <td style='text-align: center;'><b>${s.ear_tag}</b></td>
+                  <td>${s.breed_id || "—"}</td>
+                  <td style='text-align: center;'><b>${s.stage || "—"}</b></td>
+                  <td style='text-align: center;'>${s.current_pen_code || "—"}</td>
+                  <td style='text-align: center;'>${s.sire_ear_tag || "—"} / ${s.dam_ear_tag || "—"}</td>
+                  <td>${s.notes || "—"}</td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
+
+        <p class='highlight'>IV. CHI TIẾT LỢN CON ĐANG THEO MẸ (${totalPiglets} con / ${activeLitters.length} lô)</p>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Nái Mẹ</th>
+              <th>Mã Lô</th>
+              <th>Số Lượng Con</th>
+              <th>Ngày Đẻ</th>
+              <th>Ngày Tuổi</th>
+              <th>Ô Chuồng Nái Mẹ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${activeLitters.length === 0 ? `<tr><td colspan='7' style='text-align: center;'>Hiện không có lô lợn con theo mẹ</td></tr>` :
+              activeLitters.map((l, idx) => {
+                const sow = safePigs.find(p => p.ear_tag === l.sow_ear_tag);
+                const ageDays = safeDateDiff(l.farrow_date);
+                return `
+                  <tr>
+                    <td style='text-align: center;'>${idx + 1}</td>
+                    <td style='text-align: center;'><b>${l.sow_ear_tag}</b></td>
+                    <td style='text-align: center;'>${l.litter_code}</td>
+                    <td style='text-align: center;'><b>${l.alive_born} con</b></td>
+                    <td style='text-align: center;'>${l.farrow_date || "—"}</td>
+                    <td style='text-align: center;'>${ageDays !== -999 ? ageDays + " ngày" : "—"}</td>
+                    <td style='text-align: center;'>${sow?.current_pen_code || "—"}</td>
+                  </tr>
+                `;
+              }).join("")
+            }
+          </tbody>
+        </table>
+
+        <p class='highlight'>V. THỐNG KÊ ĐÀN LỢN THỊT VỖ BÉO (${meatList.length} con)</p>
+        <p>- Tổng đàn lợn thịt đang vỗ béo: <b>${meatList.length} con</b>.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Nhóm Giống Lợn Thịt</th>
+              <th>Số Lượng (Con)</th>
+              <th>Tỷ Lệ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.keys(meatByBreed).length === 0 ? `<tr><td colspan='4' style='text-align: center;'>Hiện không có lợn thịt</td></tr>` :
+              Object.entries(meatByBreed).map(([b, cnt], idx) => `
+                <tr>
+                  <td style='text-align: center;'>${idx + 1}</td>
+                  <td><b>${b}</b></td>
+                  <td style='text-align: center;'>${cnt} con</td>
+                  <td style='text-align: center;'>${meatList.length > 0 ? ((cnt / meatList.length) * 100).toFixed(1) : 0}%</td>
+                </tr>
+              `).join("")
+            }
+          </tbody>
+        </table>
+
+        <p class='highlight'>VI. CÔNG VIỆC KỸ THUẬT & THÚ Y ĐÃ THỰC HIỆN (${reportDays} NGÀY QUA)</p>
         <table>
           <thead>
             <tr>
               <th>STT</th>
               <th>Nội Dung Công Việc</th>
               <th>Cá Thể Liên Quan</th>
-              <th>Hạn Hoàn Thành</th>
+              <th>Hạn / Ngày Thực Hiện</th>
             </tr>
           </thead>
           <tbody>
@@ -616,7 +724,7 @@ export default function FarmApp() {
           </tbody>
         </table>
 
-        <p class='highlight'>IV. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC HỆ THỐNG TRONG ${reportDays} NGÀY QUA</p>
+        <p class='highlight'>VII. NHẬT KÝ BIẾN ĐỘNG ĐÀN & THAO TÁC (${reportDays} NGÀY QUA)</p>
         <table>
           <thead>
             <tr>
@@ -631,7 +739,7 @@ export default function FarmApp() {
               filteredLogs.map(l => `
                 <tr>
                   <td style='text-align: center;'>${l.created_at ? new Date(l.created_at).toLocaleString("vi-VN") : ""}</td>
-                  <td style='text-align: center;'>${l.performed_by}</td>
+                  <td style='text-align: center;'><b>${l.performed_by}</b></td>
                   <td style='text-align: center;'>${l.action_type}</td>
                   <td>${l.details}</td>
                 </tr>
@@ -647,7 +755,7 @@ export default function FarmApp() {
             <td style='border: none; text-align: center; width: 50%;'>
               <b>NGƯỜI LẬP BÁO CÁO</b><br/>
               <i>(Ký và ghi rõ họ tên)</i><br/><br/><br/><br/>
-              <b>${displayUser || "Kỹ sư phụ trách"}</b>
+              <b>${activeOperator}</b>
             </td>
           </tr>
         </table>
@@ -755,6 +863,26 @@ export default function FarmApp() {
           </div>
         </header>
 
+        {/* NÚT THÊM LỢN NHANH TRONG CÁC TAB ĐÀN */}
+        {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
+          <div style={{ padding: "12px 16px 0 16px" }}>
+            <button
+              onClick={() => {
+                if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
+                setNewPig(prev => ({
+                  ...prev,
+                  sex: currentMenu === "BOAR" ? "Đực" : "Cái",
+                  stage: currentMenu === "MEAT" ? "Vỗ béo thịt" : currentMenu === "BOAR" ? "Đực giống" : "Hậu bị"
+                }));
+                setShowAddPigModal(true);
+              }}
+              style={{ width: "100%", padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
+            >
+              + Thêm cá thể lợn mới
+            </button>
+          </div>
+        )}
+
         {/* MENU TRƯỢT */}
         {isSidebarOpen && (
           <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
@@ -762,7 +890,7 @@ export default function FarmApp() {
             <div style={{ width: "260px", backgroundColor: "#fff", height: "100%", zIndex: 101, padding: "20px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
               <h2 style={{ margin: 0, color: "#5b21b6" }}>APPTRAILON</h2>
               <div style={{ fontSize: "12px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "8px" }}>
-                {user ? `👤 Tài khoản: ${displayUser}` : "👀 Chế độ Khách (Chỉ xem)"}
+                {user ? `👤 Người thực hiện: ${activeOperator}` : "👀 Chế độ Khách (Chỉ xem)"}
               </div>
               {[
                 { k: "OVERVIEW", l: "Tổng quan", icon: "📊" },
@@ -772,7 +900,7 @@ export default function FarmApp() {
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
                 { k: "REPORT", l: "Xuất báo cáo Word", icon: "📄" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
-                { k: "SETTINGS", l: "Cài đặt & Danh mục", icon: "⚙️" },
+                { k: "SETTINGS", l: "Cài đặt & Nhân sự", icon: "⚙️" },
               ].map(item => (
                 <button
                   key={item.k}
@@ -1009,7 +1137,49 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TRA CỨU */}
+        {/* 6. PHÂN HỆ XUẤT BÁO CÁO WORD */}
+        {currentMenu === "REPORT" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid #fed7aa", marginBottom: "16px" }}>
+              <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#c2410c" }}>
+                📄 Xuất Báo Cáo Hoạt Động Trại
+              </h3>
+              <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 14px 0", lineHeight: "1.5" }}>
+                Báo cáo tổng hợp số lượng cá thể theo từng giống, chi tiết trạng thái đàn, các công việc thú y/kỹ thuật đã hoàn thành và biến động trong kỳ.
+              </p>
+
+              <label style={{ fontSize: "12px", fontWeight: "800", color: "#334155" }}>Chọn khoảng thời gian báo cáo:</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "10px 0 16px 0" }}>
+                {[7, 10, 30].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setReportDays(d as any)}
+                    style={{
+                      padding: "10px", borderRadius: "8px", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer",
+                      background: reportDays === d ? "#ea580c" : "#f1f5f9",
+                      color: reportDays === d ? "#fff" : "#475569"
+                    }}
+                  >
+                    {d} ngày qua
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px", color: "#475569", marginBottom: "16px" }}>
+                Tên file xuất mẫu: <strong>baocao_{reportDays}ngay_dd_mm_yy.doc</strong>
+              </div>
+
+              <button
+                onClick={handleExportWord}
+                style={{ width: "100%", padding: "12px", borderRadius: "10px", background: "#2563eb", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+              >
+                <span>📥 Tải File Word (.doc) Ngay</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 7. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -1019,15 +1189,36 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. CÀI ĐẶT & DANH MỤC */}
+        {/* 8. CÀI ĐẶT & NHÂN SỰ */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             
+            {/* THÔNG TIN VÀ ĐỔI TÊN HIỂN THỊ */}
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
-              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
-                {user ? `Đang đăng nhập: ${displayUser}` : "Chế độ xem tự do (Khách)"}
+              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Thông tin tài khoản & Người thực hiện</h4>
+              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "10px" }}>
+                {user ? `👤 Đang đăng nhập: ${user.email}` : "Chế độ xem tự do (Khách)"}
               </div>
+
+              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "11px", fontWeight: "700", color: "#475569" }}>Tên hiển thị trên App & Chữ ký Báo cáo:</label>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Hà Quang Dự, Kỹ thuật Tuấn..."
+                    value={inputDisplayName}
+                    onChange={(e) => setInputDisplayName(e.target.value)}
+                    style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  />
+                  <button type="submit" style={{ padding: "8px 14px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer", fontSize: "12px" }}>
+                    Lưu tên
+                  </button>
+                </div>
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                  * Tên hiện tại: <strong>{activeOperator}</strong> (tự động xuất hiện ở nhật ký và góc ký báo cáo).
+                </div>
+              </form>
             </div>
 
             {/* DANH MỤC GIỐNG */}
@@ -1104,6 +1295,35 @@ export default function FarmApp() {
                 <div style={{ display: "flex", gap: "8px" }}>
                   <input placeholder="Mã ô chuồng..." value={newPenInput} onChange={(e) => setNewPenInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
                   <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { saveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>+ Thêm</button>
+                </div>
+              )}
+            </div>
+
+            {/* NHẬT KÝ THAO TÁC (CÓ CỘT NGƯỜI THỰC HIỆN) */}
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Thao Tác Gần Đây</h4>
+              {(auditLogs || []).length === 0 ? (
+                <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có lịch sử thao tác nào.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                  {(auditLogs || []).map((log) => {
+                    let formattedTime = "";
+                    if (log.created_at) {
+                      const t = new Date(log.created_at);
+                      if (!isNaN(t.getTime())) {
+                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " - " + t.toLocaleDateString("vi-VN");
+                      }
+                    }
+                    return (
+                      <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
+                          <span style={{ color: "#5b21b6" }}>👤 {log.performed_by || "Khách"}</span>
+                          <span style={{ color: "#64748b" }}>{formattedTime}</span>
+                        </div>
+                        <div style={{ color: "#334155", marginTop: "3px" }}>{log.details}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
