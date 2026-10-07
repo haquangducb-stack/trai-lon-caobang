@@ -63,19 +63,6 @@ interface FarmConfig {
   pens: string[];
 }
 
-const formatVietnameseStage = (rawStage?: string) => {
-  if (!rawStage) return "Bình thường";
-  const s = rawStage.toUpperCase().trim();
-  if (s === "DUC_GIONG" || s === "DUC") return "Đực giống";
-  if (s === "CHUA" || s === "DANG_CHUA") return "Chửa";
-  if (s === "NUOICON" || s === "NUOI_CON") return "Nuôi con";
-  if (s === "HAU_BI" || s === "HAUBI") return "Hậu bị";
-  if (s === "CHO_PHOI" || s === "CHOPHOI") return "Chờ phối";
-  if (s === "CAI_SUA" || s === "CAISUA" || s === "DA_CAI_SUA") return "Đã cai sữa";
-  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT") return "Vỗ béo thịt";
-  return rawStage;
-};
-
 export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -97,10 +84,9 @@ export default function FarmApp() {
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
   const [dbTasks, setDbTasks] = useState<FarmTask[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  
+
   const [completedTaskKeys, setCompletedTaskKeys] = useState<string[]>([]);
   const [localWeanedTags, setLocalWeanedTags] = useState<string[]>([]);
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
@@ -139,7 +125,7 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Modal xem chi tiết cá thể trong lô lợn con & chọn hậu bị/thịt/bán
+  // Modal xem chi tiết cá thể trong lô lợn con
   const [viewingLitter, setViewingLitter] = useState<FarrowingLitter | null>(null);
 
   useEffect(() => {
@@ -149,10 +135,7 @@ export default function FarmApp() {
         const saved = localStorage.getItem("farm_config_persistent");
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed?.breeds && parsed?.stages && parsed?.pens) {
-            if (!parsed.stages.includes("Đã cai sữa")) parsed.stages.push("Đã cai sữa");
-            setConfig(parsed);
-          }
+          if (parsed?.breeds && parsed?.stages && parsed?.pens) setConfig(parsed);
         }
 
         const savedName = localStorage.getItem("farm_display_name_permanent");
@@ -167,16 +150,16 @@ export default function FarmApp() {
           if (Array.isArray(parsedLogs)) setAuditLogs(parsedLogs);
         }
 
-        const savedDoneTasks = localStorage.getItem("farm_done_task_keys");
-        if (savedDoneTasks) {
-          const parsedDone = JSON.parse(savedDoneTasks);
-          if (Array.isArray(parsedDone)) setCompletedTaskKeys(parsedDone);
+        const savedDone = localStorage.getItem("farm_done_task_keys");
+        if (savedDone) {
+          const p = JSON.parse(savedDone);
+          if (Array.isArray(p)) setCompletedTaskKeys(p);
         }
 
         const savedWeaned = localStorage.getItem("farm_local_weaned_tags");
         if (savedWeaned) {
-          const parsedWeaned = JSON.parse(savedWeaned);
-          if (Array.isArray(parsedWeaned)) setLocalWeanedTags(parsedWeaned);
+          const p = JSON.parse(savedWeaned);
+          if (Array.isArray(p)) setLocalWeanedTags(p);
         }
       } catch (e) {
         console.error("Lỗi nạp config:", e);
@@ -211,9 +194,7 @@ export default function FarmApp() {
     setAuditLogs(prev => {
       const updated = [newEntry, ...prev].slice(0, 50);
       if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("farm_local_audit_logs", JSON.stringify(updated));
-        } catch (e) {}
+        try { localStorage.setItem("farm_local_audit_logs", JSON.stringify(updated)); } catch (e) {}
       }
       return updated;
     });
@@ -393,21 +374,22 @@ export default function FarmApp() {
     return st.includes("thit") || st.includes("vo beo");
   };
 
-  // 2. ĐỰC GIỐNG: PHẢI CÓ DẤU HIỆU ĐỰC RÕ RÀNG
+  // 2. ĐỰC GIỐNG: CHUẨN XÁC, CHỈ ĐỰC MỚI LÀ ĐỰC
   const isBoar = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
     const sx = normalize(pig.sex);
     const st = normalize(pig.stage);
     const tag = String(pig.ear_tag || "").toLowerCase();
 
+    // Giới tính là đực / male HOẶC giai đoạn là Đực giống HOẶC tai bắt đầu bằng D-
     const hasBoarSex = sx === "duc" || sx === "male";
-    const hasBoarStage = st.includes("duc giong") || st === "duc";
+    const hasBoarStage = st === "duc giong" || st === "duc";
     const hasBoarTag = tag.startsWith("duc") || tag.startsWith("d-");
 
     return (hasBoarSex || hasBoarStage || hasBoarTag) && !sx.includes("cai");
   };
 
-  // 3. NÁI: TẤT CẢ LỢN GIỐNG CÒN LẠI (GOM ĐỦ ĐÀN NÁI)
+  // 3. NÁI: TẤT CẢ LỢN GIỐNG CÒN LẠI (TỰ ĐỘNG GOM ĐỦ 13 NÁI)
   const isSow = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
     return !isBoar(pig);
@@ -554,7 +536,6 @@ export default function FarmApp() {
   ) => {
     if (!user) return alert("Vui lòng đăng nhập để thực hiện!");
 
-    // Tìm bố (nếu có lưu trong inseminations)
     const insem = inseminations.find(ins => ins.sow_ear_tag === sowTag);
     const sireTag = insem?.boar_ear_tag || "";
     const damSow = safePigs.find(p => p.ear_tag === sowTag);
@@ -562,7 +543,6 @@ export default function FarmApp() {
 
     if (targetStage === "Xuất bán") {
       if (!confirm(`Xác nhận xuất bán con ${pigletTag}?`)) return;
-      // Trừ số lượng con trong lô
       const newAlive = Math.max(0, Number(litter.alive_born || 0) - 1);
       setLitters(prev => prev.map(l => l.id === litter.id ? { ...l, alive_born: newAlive } : l));
       await supabase.from("farrowings").update({ alive_born: newAlive }).eq("id", litter.id);
@@ -575,7 +555,6 @@ export default function FarmApp() {
     const actionText = targetStage === "Hậu bị" ? "chọn làm lợn HẬU BỊ" : "chuyển sang NUÔI THỊT";
     if (!confirm(`Xác nhận ${actionText} cho cá thể ${pigletTag}?`)) return;
 
-    // Tạo cá thể mới vào bảng pigs
     const payload = {
       ear_tag: pigletTag,
       breed_id: breed,
@@ -592,7 +571,6 @@ export default function FarmApp() {
     if (error) {
       alert("Lỗi tạo cá thể: " + error.message);
     } else {
-      // Giảm 1 con trong lô
       const newAlive = Math.max(0, Number(litter.alive_born || 0) - 1);
       setLitters(prev => prev.map(l => l.id === litter.id ? { ...l, alive_born: newAlive } : l));
       await supabase.from("farrowings").update({ alive_born: newAlive }).eq("id", litter.id);
@@ -1052,7 +1030,6 @@ export default function FarmApp() {
         </span>
       </div>
 
-      {/* HIỂN THỊ RÕ RÀNG BỐ / MẸ CỦA CÁ THỂ */}
       <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: "6px", marginTop: "4px", fontSize: "11px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
         <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
         <span>Mẹ: <strong style={{ color: "#b91c1c" }}>{pig.dam_ear_tag || "—"}</strong></span>
@@ -1353,7 +1330,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 4. LỢN CON THEO LÔ - BẤM VÀO ĐỂ XEM CHI TIẾT CÁ THỂ VÀ CHỌN HẬU BỊ/THỊT/BÁN */}
+        {/* 4. LỢN CON THEO LÔ - BẤM NÚT ĐỂ XEM CHI TIẾT TỪNG CON */}
         {currentMenu === "PIGLET" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a", marginBottom: "12px" }}>
@@ -1379,33 +1356,40 @@ export default function FarmApp() {
                       key={lit.id}
                       style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "16px", border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0" }}
                     >
-                      <div
-                        onClick={() => setViewingLitter(lit)}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-                            Lô nái {lit.sow_ear_tag} ({lit.litter_code}) <span style={{ fontSize: "12px", color: "#7c3aed" }}>[Xem từng con 🔍]</span>
-                          </span>
-                          <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>{lit.alive_born} con</span>
-                        </div>
-                        <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
-                          Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
-                        </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+                          Lô nái {lit.sow_ear_tag} ({lit.litter_code})
+                        </span>
+                        <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>{lit.alive_born} con</span>
+                      </div>
+                      <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
+                        Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
                       </div>
 
-                      {user && (
+                      {/* 2 NÚT THAO TÁC RÕ RÀNG */}
+                      <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                         <button
-                          onClick={() => executeWeaning(lit.sow_ear_tag, lit.id, lit.alive_born)}
+                          onClick={() => setViewingLitter(lit)}
                           style={{
-                            width: "100%", padding: "10px", borderRadius: "8px", border: "none",
-                            backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
-                            color: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer", marginTop: "4px"
+                            flex: 1, padding: "8px", borderRadius: "8px", border: "1px solid #c7d2fe",
+                            backgroundColor: "#e0e7ff", color: "#4338ca", fontSize: "12px", fontWeight: "800", cursor: "pointer"
                           }}
                         >
-                          ✓ Xác nhận Cai sữa đàn này
+                          🔍 Xem & Chọn cá thể
                         </button>
-                      )}
+                        {user && (
+                          <button
+                            onClick={() => executeWeaning(lit.sow_ear_tag, lit.id, lit.alive_born)}
+                            style={{
+                              flex: 1, padding: "8px", borderRadius: "8px", border: "none",
+                              backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
+                              color: "#fff", fontSize: "12px", fontWeight: "800", cursor: "pointer"
+                            }}
+                          >
+                            ✓ Cai sữa đàn này
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -1422,18 +1406,26 @@ export default function FarmApp() {
                   {weanedLitters.map((lit) => (
                     <div
                       key={lit.id}
-                      onClick={() => setViewingLitter(lit)}
-                      style={{ backgroundColor: "#f0fdf4", borderRadius: "12px", padding: "12px 14px", border: "1px solid #bbf7d0", cursor: "pointer" }}
+                      style={{ backgroundColor: "#f0fdf4", borderRadius: "12px", padding: "12px 14px", border: "1px solid #bbf7d0" }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontSize: "15px", fontWeight: "800", color: "#166534" }}>
-                          Lô nái {lit.sow_ear_tag} ({lit.litter_code}) <span style={{ fontSize: "11px", color: "#059669" }}>[Xem từng con 🔍]</span>
+                          Lô nái {lit.sow_ear_tag} ({lit.litter_code})
                         </span>
                         <span style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "12px", fontWeight: "800", backgroundColor: "#dcfce7", color: "#15803d" }}>{lit.alive_born} con</span>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                      <div style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 8px 0" }}>
                         Trạng thái: <strong>Đã cai sữa tách mẹ</strong> {lit.weaning_date && `(Ngày cai: ${lit.weaning_date})`}
                       </div>
+                      <button
+                        onClick={() => setViewingLitter(lit)}
+                        style={{
+                          width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #bbf7d0",
+                          backgroundColor: "#fff", color: "#166534", fontSize: "11px", fontWeight: "800", cursor: "pointer"
+                        }}
+                      >
+                        🔍 Xem & Chọn cá thể lợn con
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1879,7 +1871,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL XEM CHI TIẾT CÁC CÁ THỂ TRONG LÔ LỢN CON & CHỌN HẬU BỊ / NUÔI THỊT / XUẤT BÁN */}
+      {/* MODAL XEM CHI TIẾT TỪNG CON TRONG LÔ LỢN CON & CHỌN HẬU BỊ / NUÔI THỊT / XUẤT BÁN */}
       {viewingLitter && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 125, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: "18px" }}>
@@ -1888,7 +1880,7 @@ export default function FarmApp() {
                 <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>
                   Lô nái {viewingLitter.sow_ear_tag} ({viewingLitter.alive_born} con)
                 </h3>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Mã lô: {viewingLitter.litter_code} • Đẻ: {viewingLitter.farrow_date}</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>Mã lô: {viewingLitter.litter_code} • Ngày đẻ: {viewingLitter.farrow_date}</span>
               </div>
               <button onClick={() => setViewingLitter(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
             </div>
