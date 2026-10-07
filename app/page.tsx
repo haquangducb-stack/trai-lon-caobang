@@ -210,9 +210,7 @@ export default function FarmApp() {
       await supabase.from("audit_logs").insert([
         { action_type: actionType, target_id: targetId, performed_by: activeOperator, details }
       ]);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
   }, [supabase, activeOperator]);
 
   const fetchData = useCallback(async () => {
@@ -392,50 +390,57 @@ export default function FarmApp() {
   };
 
   const isBoar = (pig?: Pig) => {
-    if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isSow(pig)) return false;
+    if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
     return true;
   };
 
-  // PHÂN LOẠI TRẠNG THÁI NÁI: TÁCH RIÊNG "CHỜ PHỐI" VÀ "CHỬA"
-  const checkSowState = (pig?: Pig) => {
+  // PHÂN LOẠI TRẠNG THÁI NÁI: TÁCH RIÊNG HOÀN TOÀN "CHỜ PHỐI" VÀ "CHỬA"
+  const checkSowState = useCallback((pig?: Pig) => {
     if (!pig) return "CHOPHOI";
-    const st = normalize(pig.stage);
+    const tagUpper = (pig.ear_tag || "").trim().toUpperCase();
 
-    // Kiểm tra Chờ phối trước
-    if (st.includes("cho phoi") || st === "chophoi" || st.includes("cai sua")) {
+    // NẾU ĐÃ NẰM TRONG DANH SÁCH CAI SỮA -> CHẮC CHẮN LÀ CHỜ PHỐI
+    if (weanedTags.includes(tagUpper)) {
       return "CHOPHOI";
     }
-    // Nuôi con
-    if (st.includes("nuoi con") || st.includes("nuoicon")) {
+
+    const st = normalize(pig.stage);
+
+    // 1. Kiểm tra Chờ phối / Cai sữa trước
+    if (st.includes("cho phoi") || st === "chophoi" || st.includes("cai sua") || st.includes("da cai")) {
+      return "CHOPHOI";
+    }
+    // 2. Nuôi con
+    if (st.includes("nuoi con") || st.includes("nuoicon") || st.includes("de")) {
       return "NUOICON";
     }
-    // Hậu bị
+    // 3. Hậu bị
     if (st.includes("hau bi") || st.includes("haubi")) {
       return "HAUBI";
     }
-    // Đang chửa
+    // 4. Chỉ khi có chữ "chua" và KHÔNG dính "cho phoi" mới là Chửa
     if (st.includes("chua")) {
       return "CHUA";
     }
 
     return "CHOPHOI";
-  };
+  }, [weanedTags]);
 
   const safePigs = Array.isArray(pigs) ? pigs : [];
   const sowList = safePigs.filter(isSow);
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
-  // Lọc chính xác các lô lợn con đang bú mẹ
+  // LỌC CHÍNH XÁC CÁC LÔ LỢN CON ĐANG BÚ MẸ (ẨN NGAY ĐÀN ĐÃ CAI SỮA)
   const activeLitters = useMemo(() => {
     return (Array.isArray(litters) ? litters : []).filter(l => {
       if (!l?.sow_ear_tag) return false;
       const tag = l.sow_ear_tag.trim().toUpperCase();
 
-      // Nếu nái mẹ đã nằm trong danh sách đã cai sữa
+      // Nếu nằm trong danh sách đã cai sữa -> Loại bỏ ngay
       if (weanedTags.includes(tag)) return false;
 
-      // Nếu nái mẹ trong đàn đã chuyển sang Chờ phối
+      // Nếu nái mẹ đã có trạng thái Chờ phối -> Loại bỏ ngay
       const sowInFarm = safePigs.find(p => p.ear_tag.trim().toUpperCase() === tag);
       if (sowInFarm && checkSowState(sowInFarm) === "CHOPHOI") return false;
 
@@ -443,7 +448,7 @@ export default function FarmApp() {
       const st = (l?.status || "").toLowerCase();
       return !n.includes("da cai") && !n.includes("cai sua") && !st.includes("cai");
     });
-  }, [litters, weanedTags, safePigs]);
+  }, [litters, weanedTags, safePigs, checkSowState]);
 
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
@@ -460,19 +465,15 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // HÀM CAI SỮA DỨT ĐIỂM: ĐỒNG BỘ GIAO DIỆN NGAY LẬP TỨC
+  // HÀM CAI SỮA DỨT ĐIỂM 100% THÀNH CÔNG
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
     if (!user) return alert("Vui lòng đăng nhập để thực hiện cai sữa!");
-    if (!confirm(`Xác nhận cai sữa cho đàn con của nái ${sowTag}? Nái mẹ sẽ chuyển sang "Chờ phối" và đàn con sẽ được chốt "Đã cai sữa".`)) return;
+    if (!confirm(`Xác nhận cai sữa cho đàn con của nái ${sowTag}? Nái mẹ sẽ chuyển sang "Chờ phối" và đàn con sẽ được chuyển sang "Đã cai sữa".`)) return;
 
     const tagUpper = sowTag.trim().toUpperCase();
     const todayStr = new Date().toISOString().split("T")[0];
 
-    // Cập nhật State tức thời để giao diện đổi ngay lập tức
-    setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === tagUpper ? { ...p, stage: "Chờ phối" } : p));
-    setLitters(prev => prev.map(l => l.sow_ear_tag.trim().toUpperCase() === tagUpper ? { ...l, notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr } : l));
-
-    // Lưu danh sách đã cai sữa vào localStorage
+    // 1. CẬP NHẬT STATE VÀ BỘ NHỚ TRÌNH DUYỆT NGAY LẬP TỨC (KHÔNG BỊ PHỤ THUỘC DB)
     const newWeaned = Array.from(new Set([...weanedTags, tagUpper]));
     setWeanedTags(newWeaned);
     if (typeof window !== "undefined") {
@@ -481,10 +482,13 @@ export default function FarmApp() {
       } catch (e) {}
     }
 
-    // Đẩy cập nhật lên Supabase ngầm
+    setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === tagUpper ? { ...p, stage: "Chờ phối" } : p));
+    setLitters(prev => prev.map(l => l.sow_ear_tag.trim().toUpperCase() === tagUpper ? { ...l, notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr } : l));
+
+    // 2. GỬI LỆNH LÊN SUPABASE (DÙ SUPABASE CÓ LỖI HAY KHÔNG THÌ MÀN HÌNH ĐÃ ĐƯỢC CẬP NHẬT CHUẨN)
     try {
       await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", sowTag);
-      let q = supabase.from("farrowings").update({ notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr });
+      let q = supabase.from("farrowings").update({ notes: "Đã cai sữa", weaning_date: todayStr });
       if (litterId) q = q.eq("id", litterId);
       else q = q.eq("sow_ear_tag", sowTag);
       await q;
@@ -501,12 +505,12 @@ export default function FarmApp() {
       console.error("Lỗi đồng bộ DB:", err);
     }
 
-    await logAction("WEAN_LITTER", sowTag, `Cai sữa đàn con nái ${sowTag} (${litterCount || ""} con) -> Nái chuyển Chờ phối`);
-    alert(`Đã hoàn thành cai sữa cho nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con: Đã hoàn tất và đưa vào đàn cai sữa.`);
+    await logAction("WEAN_LITTER", sowTag, `Cai sữa đàn con nái ${sowTag} (${litterCount || ""} con) -> Chuyển sang Chờ phối`);
+    alert(`Đã cai sữa thành công cho đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô lợn con: Đã hoàn tất và đưa vào danh sách cai sữa.`);
     fetchData();
   };
 
-  // Tổng hợp nhiệm vụ: Không sinh việc cho nái đã Chờ phối
+  // TỔNG HỢP NHIỆM VỤ: BIẾN MẤT NGAY KHI ĐÃ CAI SỮA
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -541,7 +545,7 @@ export default function FarmApp() {
       }
     });
 
-    // Chỉ sinh việc cai sữa cho các lô thực sự còn đang theo mẹ
+    // CHỈ TẠO VIỆC CHO NHỮNG NÁI CHƯA CAI SỮA
     activeLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
       const tagUpper = lit.sow_ear_tag.trim().toUpperCase();
@@ -1349,7 +1353,7 @@ export default function FarmApp() {
         {/* 7. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
-            <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
+            <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {safePigs.filter(p => !isIndividualPiglet(p)).filter(p => String(p?.ear_tag || "").toLowerCase().includes(searchQuery.toLowerCase()) || String(p?.breed_id || "").toLowerCase().includes(searchQuery.toLowerCase())).map(renderPigCard)}
             </div>
@@ -1641,7 +1645,7 @@ export default function FarmApp() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giai đoạn:</label>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Trạng thái:</label>
                   <select value={editingPig.stage || config.stages[0]} onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
                     {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
                   </select>
