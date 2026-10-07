@@ -80,8 +80,9 @@ export default function FarmApp() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  const [customDisplayName, setCustomDisplayName] = useState<string>("");
-  const [inputDisplayName, setInputDisplayName] = useState<string>("");
+  // Tên hiển thị người dùng (Display Name) - Giữ bền vững
+  const [customDisplayName, setCustomDisplayName] = useState<string>("Hà Quang Dự");
+  const [inputDisplayName, setInputDisplayName] = useState<string>("Hà Quang Dự");
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authAccount, setAuthAccount] = useState("");
@@ -99,7 +100,6 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Điều hướng: Có thêm tab "GUIDE" (Quy trình kỹ thuật thú y)
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
@@ -136,6 +136,7 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
+  // Đọc dữ liệu bền vững từ LocalStorage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -147,11 +148,13 @@ export default function FarmApp() {
             setConfig(parsed);
           }
         }
-        const savedName = localStorage.getItem("farm_display_name");
-        if (savedName) {
-          setCustomDisplayName(savedName);
-          setInputDisplayName(savedName);
+
+        const savedName = localStorage.getItem("farm_display_name_permanent");
+        if (savedName && savedName.trim()) {
+          setCustomDisplayName(savedName.trim());
+          setInputDisplayName(savedName.trim());
         }
+
         const savedLogs = localStorage.getItem("farm_local_audit_logs");
         if (savedLogs) {
           const parsedLogs = JSON.parse(savedLogs);
@@ -175,10 +178,9 @@ export default function FarmApp() {
   }, []);
 
   const activeOperator = useMemo(() => {
-    if (customDisplayName.trim()) return customDisplayName.trim();
-    if (user?.email) return user.email.replace("@trailon.local", "");
+    if (customDisplayName && customDisplayName.trim()) return customDisplayName.trim();
     return "Hà Quang Dự";
-  }, [customDisplayName, user]);
+  }, [customDisplayName]);
 
   const logAction = useCallback(async (actionType: string, targetId: string, details: string) => {
     const newEntry: AuditLog = {
@@ -267,6 +269,7 @@ export default function FarmApp() {
     }
   };
 
+  // Đăng xuất KHÔNG ĐƯỢC xóa tên hiển thị trong localStorage
   const handleLogout = async () => {
     await logAction("LOGOUT", user?.email || "", "Đăng xuất hệ thống");
     await supabase.auth.signOut();
@@ -292,16 +295,17 @@ export default function FarmApp() {
     }
   };
 
+  // Lưu tên vĩnh viễn không bao giờ mất
   const handleSaveDisplayName = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputDisplayName.trim()) return;
     const name = inputDisplayName.trim();
     setCustomDisplayName(name);
     if (typeof window !== "undefined") {
-      localStorage.setItem("farm_display_name", name);
+      localStorage.setItem("farm_display_name_permanent", name);
     }
     logAction("UPDATE_NAME", name, `Đổi tên người thực hiện thành ${name}`);
-    alert(`Đã đổi tên hiển thị thành: "${name}"`);
+    alert(`Đã lưu cố định tên hiển thị: "${name}"`);
   };
 
   const saveConfig = (newCfg: FarmConfig) => {
@@ -402,7 +406,13 @@ export default function FarmApp() {
   const sowList = safePigs.filter(isSow);
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
-  const activeLitters = (Array.isArray(litters) ? litters : []).filter(l => !String(l?.notes || "").toLowerCase().includes("da cai"));
+  
+  // Danh sách lô lợn con đang nuôi mẹ (chưa cai sữa)
+  const activeLitters = (Array.isArray(litters) ? litters : []).filter(l => {
+    const n = (l?.notes || "").toLowerCase();
+    const st = (l?.status || "").toLowerCase();
+    return !n.includes("da cai") && !n.includes("cai sua") && !st.includes("cai");
+  });
 
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
@@ -419,6 +429,59 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
+  // HÀM XỬ LÝ CAI SỮA CHUẨN XÁC VÀ BẮT LỖI
+  const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
+    if (!user) return alert("Vui lòng đăng nhập để thực hiện cai sữa!");
+    if (!confirm(`Xác nhận cai sữa đàn con của nái ${sowTag}?`)) return;
+
+    try {
+      // 1. Đổi trạng thái nái mẹ thành "Chờ phối"
+      const { error: sowError } = await supabase
+        .from("pigs")
+        .update({ stage: "Chờ phối" })
+        .eq("ear_tag", sowTag);
+
+      if (sowError) {
+        console.error("Lỗi cập nhật nái:", sowError);
+      }
+
+      // 2. Đổi trạng thái lô lợn con thành Đã cai sữa
+      const todayStr = new Date().toISOString().split("T")[0];
+      let litterQuery = supabase.from("farrowings").update({
+        notes: "Đã cai sữa",
+        weaning_date: todayStr
+      });
+
+      if (litterId) {
+        litterQuery = litterQuery.eq("id", litterId);
+      } else {
+        litterQuery = litterQuery.eq("sow_ear_tag", sowTag);
+      }
+
+      const { error: litError } = await litterQuery;
+      if (litError) {
+        console.error("Lỗi cập nhật lô con:", litError);
+      }
+
+      // 3. Đánh dấu hoàn thành việc cai sữa tự động nếu có
+      await supabase.from("farm_tasks").insert([{
+        title: `Cai sữa đàn con nái ${sowTag}`,
+        due_date: todayStr,
+        related_tag: sowTag,
+        category: "WEAN",
+        is_completed: true,
+        is_dismissed: false
+      }]);
+
+      await logAction("WEAN_LITTER", sowTag, `Xác nhận cai sữa đàn con nái ${sowTag} (${litterCount || ""} con)`);
+      alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}! Nái mẹ đã chuyển sang trạng thái "Chờ phối".`);
+      fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi thực hiện cai sữa: " + err.message);
+    }
+  };
+
+  // Tổng hợp nhiệm vụ
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -520,11 +583,10 @@ export default function FarmApp() {
     if (!selectedTask) return;
 
     if (selectedTask.category === "WEAN" && selectedTask.related_tag) {
-      await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", selectedTask.related_tag);
-      await supabase.from("farrowings").update({
-        notes: "Đã cai sữa",
-        weaning_date: new Date().toISOString().split("T")[0]
-      }).eq("sow_ear_tag", selectedTask.related_tag);
+      await executeWeaning(selectedTask.related_tag);
+      setShowTaskModal(false);
+      setSelectedTask(null);
+      return;
     }
 
     if (selectedTask.is_auto) {
@@ -598,7 +660,7 @@ export default function FarmApp() {
   const totalPiglets = activeLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPiglets;
 
-  // HÀM XUẤT BÁO CÁO WORD: ĐÚNG 1 BẢNG DUY NHẤT
+  // HÀM XUẤT BÁO CÁO WORD
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -939,13 +1001,14 @@ export default function FarmApp() {
               )}
             </div>
 
-            {/* KHỐI XUẤT BÁO CÁO & ĐỔI TÊN (ĐÚNG 1 KHỐI DUY NHẤT) */}
+            {/* KHỐI XUẤT BÁO CÁO & ĐỔI TÊN */}
             <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
                 <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng duy nhất</span>
               </div>
 
+              {/* Ô ĐỔI TÊN HIỂN THỊ CỐ ĐỊNH */}
               <form onSubmit={handleSaveDisplayName} style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
                 <input
                   type="text"
@@ -955,7 +1018,7 @@ export default function FarmApp() {
                   style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
                 />
                 <button type="submit" style={{ padding: "6px 12px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", fontSize: "11px", cursor: "pointer" }}>
-                  Lưu tên
+                  Lưu cố định
                 </button>
               </form>
 
@@ -1119,7 +1182,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 4. LỢN CON THEO LÔ */}
+        {/* 4. LỢN CON THEO LÔ - CÓ NÚT XÁC NHẬN CAI SỮA TRỰC TIẾP */}
         {currentMenu === "PIGLET" && (
           <div style={{ padding: "16px" }}>
             <div style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a", marginBottom: "12px" }}>ĐANG NUÔI: {activeLitters.length} LÔ ({totalPiglets} CON)</div>
@@ -1130,13 +1193,25 @@ export default function FarmApp() {
                 const isReadyWean = ageDays >= 24;
                 return (
                   <div key={lit.id} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "16px", border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontSize: "17px", fontWeight: "900" }}>Lô nái {lit.sow_ear_tag} ({lit.litter_code})</span>
                       <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>{lit.alive_born} con</span>
                     </div>
                     <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
                       Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
                     </div>
+                    {user && (
+                      <button
+                        onClick={() => executeWeaning(lit.sow_ear_tag, lit.id, lit.alive_born)}
+                        style={{
+                          width: "100%", padding: "10px", borderRadius: "8px", border: "none",
+                          backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
+                          color: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer", marginTop: "4px"
+                        }}
+                      >
+                        ✓ Xác nhận Cai sữa đàn này
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -1152,7 +1227,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TAB KỸ THUẬT & QUY TRÌNH VACCINE THÚ Y THỰC TẾ */}
+        {/* 6. TAB QUY TRÌNH THÚ Y */}
         {currentMenu === "GUIDE" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ background: "#eff6ff", borderRadius: "12px", padding: "14px", border: "1px solid #bfdbfe" }}>
@@ -1164,7 +1239,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* PHẦN 1: LỢN CON & THỊT */}
             <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#047857" }}>
                 1. Quy Trình Lợn Con Theo Mẹ & Lợn Thịt
@@ -1194,7 +1268,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* PHẦN 2: NÁI HẬU BỊ & SINH SẢN */}
             <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#db2777" }}>
                 2. Quy Trình Nái Hậu Bị & Nái Chửa
@@ -1218,7 +1291,6 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* PHẦN 3: ĐỰC GIỐNG */}
             <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
               <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#2563eb" }}>
                 3. Quy Trình Đực Giống
