@@ -20,7 +20,7 @@ export async function GET() {
     const yyyy = today.getFullYear();
     const formattedDate = `${dd}/${mm}/${yyyy}`;
 
-    // 1. Quét dữ liệu nái ngày 18 - 21 và sắp đẻ
+    // 1. Quét dữ liệu nái ngày 18 - 21 và sắp đẻ (105 - 114)
     const { data: inseminations } = await supabase
       .from("inseminations")
       .select("*");
@@ -44,7 +44,7 @@ export async function GET() {
       });
     }
 
-    // 2. Quét công việc CẦN LÀM hôm nay (chưa xong)
+    // 2. Quét công việc CẦN LÀM hôm nay (chưa hoàn thành)
     const { data: pendingTasks } = await supabase
       .from("farm_tasks")
       .select("*")
@@ -55,42 +55,49 @@ export async function GET() {
       (t: any, idx: number) => `${idx + 1}. ${t.title}`
     );
 
-    // 3. Quét công việc ĐÃ LÀM (Lấy cả từ farm_tasks lẫn audit_logs)
-    const completedItems: string[] = [];
-
-    // 3.1. Quét từ bảng farm_tasks (các việc đã tick hoàn thành: vaccine, thú y, cai sữa...)
+    // 3. Quét CÔNG VIỆC ĐÃ LÀM XONG - KHỚP 100% VỚI DANH SÁCH TRÊN WEB
+    // Lấy tất cả task is_completed = true giống hệt màn hình Tổng quan
     const { data: doneTasks } = await supabase
       .from("farm_tasks")
       .select("*")
       .eq("is_completed", true)
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(15);
 
-    if (Array.isArray(doneTasks)) {
-      doneTasks.forEach((t: any) => {
-        completedItems.push(`• ${t.title} [Hoàn tất]`);
-      });
-    }
-
-    // 3.2. Quét thêm từ nhật ký thao tác audit_logs (lấy 5 hành động gần nhất kèm người làm)
-    const { data: recentLogs } = await supabase
+    // Lấy nhật ký audit_logs gần đây để map đúng tên người làm
+    const { data: logs } = await supabase
       .from("audit_logs")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(6);
+      .limit(30);
 
-    if (Array.isArray(recentLogs)) {
-      recentLogs.forEach((log: any) => {
-        const who = log.performed_by || "Hà Quang Dự";
-        const detail = log.details;
-        // Tránh trùng lặp nội dung nếu đã có
-        if (!completedItems.some(item => item.includes(detail))) {
-          completedItems.push(`• ${detail} _(${who})_`);
+    const completedItems: string[] = [];
+    const seenTitles = new Set<string>(); // Khử trùng lặp tuyệt đối
+
+    if (Array.isArray(doneTasks)) {
+      doneTasks.forEach((t: any) => {
+        const cleanTitle = (t.title || "").trim();
+        if (!cleanTitle || seenTitles.has(cleanTitle)) return;
+        seenTitles.add(cleanTitle);
+
+        // Tìm người làm từ nhật ký log (nếu có, mặc định là Hà Quang Dự)
+        let operator = "Hà Quang Dự";
+        if (Array.isArray(logs)) {
+          const matchLog = logs.find(
+            (l: any) =>
+              (l.details && l.details.includes(cleanTitle)) ||
+              (t.related_tag && l.target_id === t.related_tag)
+          );
+          if (matchLog && matchLog.performed_by) {
+            operator = matchLog.performed_by;
+          }
         }
+
+        completedItems.push(`• ${cleanTitle} _(Người làm: ${operator})_`);
       });
     }
 
-    // 4. Soạn thảo tin nhắn Telegram
+    // 4. Soạn tin nhắn gửi Telegram
     let text = `📋 *BÁO CÁO CÔNG VIỆC TRẠI LỢN NÀ ROÁC*\n📅 Ngày: *${formattedDate}*\n\n`;
 
     if (recheckList.length > 0) {
@@ -110,11 +117,11 @@ export async function GET() {
       text += `✨ _Không có công việc nào tồn đọng trong ngày._\n\n`;
     }
 
-    text += `✅ *CÔNG VIỆC / KỸ THUẬT ĐÃ HOÀN THÀNH:*\n`;
+    text += `✅ *CÔNG VIỆC ĐÃ HOÀN THÀNH (${completedItems.length}):*\n`;
     if (completedItems.length > 0) {
-      text += `${completedItems.slice(0, 8).join("\n")}\n`;
+      text += `${completedItems.join("\n")}\n`;
     } else {
-      text += `⏳ _Chưa ghi nhận thao tác kỹ thuật nào gần đây._\n`;
+      text += `⏳ _Chưa ghi nhận công việc hoàn thành nào._\n`;
     }
 
     text += `\n_Hệ thống tự động cập nhật từ Trại Lợn Nà Roác._`;
@@ -137,7 +144,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      message: `Đã gửi báo cáo chi tiết thành công!`,
+      message: `Đã đồng bộ sạch sẽ danh sách việc đã làm!`,
     });
   } catch (error: any) {
     return NextResponse.json(
