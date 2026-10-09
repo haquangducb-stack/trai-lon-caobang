@@ -64,7 +64,7 @@ interface FarmConfig {
 }
 
 // CHUẨN HÓA NGÀY DD/MM/YYYY TOÀN BỘ APP
-export const formatDateVN = (dStr?: string) => {
+const formatDateVN = (dStr?: string) => {
   if (!dStr) return "—";
   const d = new Date(dStr);
   if (isNaN(d.getTime())) return dStr;
