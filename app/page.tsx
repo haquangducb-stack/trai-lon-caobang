@@ -831,9 +831,11 @@ export default function FarmApp() {
     }
   };
 
+  // KHỬ TRÙNG LẶP TUYỆT ĐỐI TOÀN BỘ CÔNG VIỆC TRÊN MÀN HÌNH
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
+    // 1. Quét công việc tự động từ sinh sản
     (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
       const tagUpper = ins.sow_ear_tag.trim().toUpperCase();
@@ -866,6 +868,7 @@ export default function FarmApp() {
       }
     });
 
+    // 2. Quét công việc cai sữa tự động
     suckingLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
       const tagUpper = lit.sow_ear_tag.trim().toUpperCase();
@@ -887,10 +890,14 @@ export default function FarmApp() {
       }
     });
 
+    // 3. Quét công việc từ Database (farm_tasks) & KHỬ TRÙNG LẶP THEO TIÊU ĐỀ + THẺ TAI
     (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
       if (!t?.title) return;
       const cleanTitle = t.title.trim();
-      const dedupKey = `${cleanTitle}-${t.related_tag || ""}`;
+      const tag = (t.related_tag || "").trim().toUpperCase();
+      
+      // Khóa phân biệt: Cùng tiêu đề và cùng thẻ tai thì chỉ giữ 1 bản ghi duy nhất!
+      const uniqueKey = `${cleanTitle}-${tag}`;
 
       let cat = t.category;
       const normTitle = cleanTitle.toLowerCase();
@@ -910,7 +917,15 @@ export default function FarmApp() {
         cat = "VET";
       }
 
-      taskMap.set(dedupKey, { ...t, category: cat });
+      // Nếu đã có task này rồi, ưu tiên giữ trạng thái đã hoàn thành (is_completed = true)
+      if (taskMap.has(uniqueKey)) {
+        const existing = taskMap.get(uniqueKey)!;
+        if (!existing.is_completed && t.is_completed) {
+          taskMap.set(uniqueKey, { ...t, category: cat });
+        }
+      } else {
+        taskMap.set(uniqueKey, { ...t, category: cat });
+      }
     });
 
     return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
@@ -955,7 +970,18 @@ export default function FarmApp() {
     }
 
     try {
-      if (selectedTask.is_auto) {
+      // Kiểm tra xem trong DB đã có task này chưa trước khi thao tác
+      const { data: existing } = await supabase
+        .from("farm_tasks")
+        .select("id")
+        .eq("title", selectedTask.title)
+        .eq("related_tag", selectedTask.related_tag || "");
+
+      if (existing && existing.length > 0) {
+        // Đã có thì chỉ UPDATE is_completed = true, KHÔNG INSERT THÊM DÒNG MỚI
+        await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", existing[0].id);
+      } else {
+        // Chưa có thì mới tạo mới 1 lần duy nhất
         await supabase.from("farm_tasks").insert([{
           title: selectedTask.title,
           due_date: selectedTask.due_date,
@@ -964,10 +990,10 @@ export default function FarmApp() {
           is_completed: true,
           is_dismissed: false
         }]);
-      } else {
-        await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", selectedTask.id);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error(e);
+    }
 
     await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`);
     setShowTaskModal(false);
