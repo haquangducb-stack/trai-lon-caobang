@@ -109,7 +109,8 @@ export default function FarmApp() {
   const [localWeanedTags, setLocalWeanedTags] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
+  // Tabs điều hướng
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "PEDIGREE" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -146,6 +147,18 @@ export default function FarmApp() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [viewingLitter, setViewingLitter] = useState<FarrowingLitter | null>(null);
 
+  // Modal Gia phả
+  const [pedigreePig, setPedigreePig] = useState<Pig | null>(null);
+
+  // Modal Lịch sử Sinh sản của Nái
+  const [reproHistorySow, setReproHistorySow] = useState<Pig | null>(null);
+
+  // Modal Phối giống kiểm tra Cận huyết
+  const [showMatingModal, setShowMatingModal] = useState(false);
+  const [matingSowTag, setMatingSowTag] = useState("");
+  const [selectedBoarTag, setSelectedBoarTag] = useState("");
+  const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
+
   const navigateTo = useCallback((menu: typeof currentMenu) => {
     setCurrentMenu(menu);
     if (typeof window !== "undefined" && window.history) {
@@ -155,26 +168,14 @@ export default function FarmApp() {
 
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (viewingLitter) {
-        setViewingLitter(null);
-        return;
-      }
-      if (editingPig) {
-        setEditingPig(null);
-        return;
-      }
-      if (showTaskModal) {
-        setShowTaskModal(false);
-        return;
-      }
-      if (showAddPigModal) {
-        setShowAddPigModal(false);
-        return;
-      }
-      if (isSidebarOpen) {
-        setIsSidebarOpen(false);
-        return;
-      }
+      if (reproHistorySow) { setReproHistorySow(null); return; }
+      if (pedigreePig) { setPedigreePig(null); return; }
+      if (showMatingModal) { setShowMatingModal(false); return; }
+      if (viewingLitter) { setViewingLitter(null); return; }
+      if (editingPig) { setEditingPig(null); return; }
+      if (showTaskModal) { setShowTaskModal(false); return; }
+      if (showAddPigModal) { setShowAddPigModal(false); return; }
+      if (isSidebarOpen) { setIsSidebarOpen(false); return; }
 
       if (e.state && e.state.menu) {
         setCurrentMenu(e.state.menu);
@@ -185,7 +186,7 @@ export default function FarmApp() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
+  }, [reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -386,8 +387,8 @@ export default function FarmApp() {
         stage: formatVietnameseStage(newPig.stage || config.stages[0] || "Hậu bị"),
         current_pen_code: newPig.current_pen_code || config.pens[0] || "CA1",
         status: newPig.status || "Bình thường",
-        sire_ear_tag: newPig.sire_ear_tag?.trim() || null,
-        dam_ear_tag: newPig.dam_ear_tag?.trim() || null,
+        sire_ear_tag: newPig.sire_ear_tag?.trim().toUpperCase() || null,
+        dam_ear_tag: newPig.dam_ear_tag?.trim().toUpperCase() || null,
         notes: newPig.notes?.trim() || null
       };
 
@@ -424,7 +425,7 @@ export default function FarmApp() {
     return tag.includes("-C") || tag.includes("CON");
   };
 
-  // PHÂN LOẠI CHÍNH XÁC THEO NGHIỆP VỤ - SẴN SÀNG THÊM NHIỀU ĐỰC SAU NÀY
+  // PHÂN LOẠI CHÍNH XÁC THEO NGHIỆP VỤ
   const isMeat = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig)) return false;
     const st = (pig.stage || "").toLowerCase();
@@ -519,6 +520,118 @@ export default function FarmApp() {
     if (isNaN(d.getTime())) return "";
     d.setDate(d.getDate() + days);
     return d.toISOString().split("T")[0];
+  };
+
+  // THUẬT TOÁN KIỂM TRA QUAN HỆ CẬN HUYẾT
+  const checkInbreedingRisk = useCallback((sowTag: string, boarTag: string): { risk: boolean; reason: string } => {
+    const sTag = sowTag.trim().toUpperCase();
+    const bTag = boarTag.trim().toUpperCase();
+
+    const sow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sTag);
+    const boar = safePigs.find(p => p.ear_tag.trim().toUpperCase() === bTag);
+
+    if (!sow || !boar) return { risk: false, reason: "An toàn" };
+
+    const sowSire = (sow.sire_ear_tag || "").trim().toUpperCase();
+    const sowDam = (sow.dam_ear_tag || "").trim().toUpperCase();
+    const boarSire = (boar.sire_ear_tag || "").trim().toUpperCase();
+    const boarDam = (boar.dam_ear_tag || "").trim().toUpperCase();
+
+    // 1. Bố - Con
+    if (sowSire && sowSire === bTag) {
+      return { risk: true, reason: `CẬN HUYẾT NẶNG: Đực ${bTag} là BỐ của nái ${sTag}!` };
+    }
+
+    // 2. Cùng Bố hoặc Cùng Mẹ
+    if (sowSire && boarSire && sowSire === boarSire) {
+      return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng BỐ (${sowSire})!` };
+    }
+    if (sowDam && boarDam && sowDam === boarDam) {
+      return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng MẸ (${sowDam})!` };
+    }
+
+    // 3. Ông - Cháu
+    if (sowSire) {
+      const sireOfSow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sowSire);
+      if (sireOfSow && (sireOfSow.sire_ear_tag || "").trim().toUpperCase() === bTag) {
+        return { risk: true, reason: `CẬN HUYẾT THẾ HỆ 2: Đực ${bTag} là ÔNG NỘI của nái ${sTag}!` };
+      }
+    }
+    if (sowDam) {
+      const damOfSow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sowDam);
+      if (damOfSow && (damOfSow.sire_ear_tag || "").trim().toUpperCase() === bTag) {
+        return { risk: true, reason: `CẬN HUYẾT THẾ HỆ 2: Đực ${bTag} là ÔNG NGOẠI của nái ${sTag}!` };
+      }
+    }
+
+    return { risk: false, reason: "Phối giống an toàn (Khác dòng máu)" };
+  }, [safePigs]);
+
+  // PHÂN TÍCH NĂNG SUẤT NÁI & CẢNH BÁO LOẠI THẢI
+  const getSowReproAnalysis = useCallback((sowTag: string) => {
+    const sTag = sowTag.trim().toUpperCase();
+    const sowLitters = (Array.isArray(litters) ? litters : []).filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === sTag);
+    const sowInsems = (Array.isArray(inseminations) ? inseminations : []).filter(i => (i.sow_ear_tag || "").trim().toUpperCase() === sTag);
+
+    const totalLitters = sowLitters.length;
+    const totalBorn = sowLitters.reduce((acc, l) => acc + Number(l.alive_born || 0), 0);
+    const avgBorn = totalLitters > 0 ? (totalBorn / totalLitters).toFixed(1) : "0";
+
+    // Đếm số lần phối trượt liên tiếp gần nhất
+    let consecutiveFails = 0;
+    for (const ins of sowInsems) {
+      if ((ins.status || "").toLowerCase().includes("lốc") || (ins.status || "").toLowerCase().includes("trượt")) {
+        consecutiveFails++;
+      } else {
+        break;
+      }
+    }
+
+    const cullWarnings: string[] = [];
+    if (consecutiveFails >= 3) {
+      cullWarnings.push(`⚠️ Phối lốc/trượt ${consecutiveFails} lần liên tiếp (Nghi ngờ vô sinh/viêm tử cung)`);
+    }
+    if (totalLitters >= 2 && Number(avgBorn) < 7) {
+      cullWarnings.push(`⚠️ Năng suất đẻ quá thấp (Trung bình chỉ ${avgBorn} con/lứa qua ${totalLitters} lứa)`);
+    }
+    if (totalLitters >= 8) {
+      cullWarnings.push(`🔔 Nái đã đẻ ${totalLitters} lứa (Nái già, cần theo dõi thoái hóa giống và năng suất sữa)`);
+    }
+
+    return { totalLitters, totalBorn, avgBorn, consecutiveFails, cullWarnings, sowLitters, sowInsems };
+  }, [litters, inseminations]);
+
+  // XỬ LÝ LƯU PHỐI GIỐNG
+  const handleSaveInsemination = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return alert("Vui lòng đăng nhập để phối giống!");
+    if (!matingSowTag || !selectedBoarTag) return alert("Vui lòng chọn nái và đực!");
+
+    const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
+    if (check.risk) {
+      const confirmForce = confirm(`⚠️ CẢNH BÁO NGUY HIỂM:\n${check.reason}\n\nPhối giống cận huyết sẽ làm suy thoái đàn, đẻ non và dị tật! Bạn có chắc chắn muốn bỏ qua cảnh báo để phối?`);
+      if (!confirmForce) return;
+    }
+
+    const expFarrow = safeAddDays(matingDate, 114);
+    const payload = {
+      sow_ear_tag: matingSowTag.trim().toUpperCase(),
+      boar_ear_tag: selectedBoarTag.trim().toUpperCase(),
+      mating_date: matingDate,
+      expected_farrow_date: expFarrow,
+      status: "Đã phối"
+    };
+
+    try {
+      await supabase.from("inseminations").insert([payload]);
+      await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
+      await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} (Dự sinh: ${expFarrow})`);
+      alert(`Đã ghi nhận phối giống nái ${matingSowTag} thành công!\n- Ngày dự kiến đẻ: ${expFarrow}`);
+      setShowMatingModal(false);
+      fetchData();
+    } catch (err: any) {
+      alert("Lỗi lưu phối giống: " + err.message);
+    }
   };
 
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
@@ -700,10 +813,7 @@ export default function FarmApp() {
         cat = "VET";
       }
 
-      taskMap.set(dedupKey, {
-        ...t,
-        category: cat
-      });
+      taskMap.set(dedupKey, { ...t, category: cat });
     });
 
     return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
@@ -834,7 +944,9 @@ export default function FarmApp() {
     await supabase.from("pigs").update({
       ...editingPig,
       sex: formatVietnameseSex(editingPig.sex),
-      stage: formatVietnameseStage(editingPig.stage)
+      stage: formatVietnameseStage(editingPig.stage),
+      sire_ear_tag: editingPig.sire_ear_tag?.trim().toUpperCase() || null,
+      dam_ear_tag: editingPig.dam_ear_tag?.trim().toUpperCase() || null
     }).eq("id", editingPig.id);
     await logAction("UPDATE_PIG", editingPig.ear_tag, `Sửa cá thể ${editingPig.ear_tag} (Bố: ${editingPig.sire_ear_tag || "—"}, Mẹ: ${editingPig.dam_ear_tag || "—"})`);
     setEditingPig(null);
@@ -842,6 +954,7 @@ export default function FarmApp() {
     setIsSavingEdit(false);
   };
 
+  // HÀM XUẤT BÁO CÁO WORD
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -854,6 +967,7 @@ export default function FarmApp() {
     const masterRows: { stt: number; type: string; details: string; count: string; operator: string }[] = [];
     let counter = 1;
 
+    // 1. Đực giống
     const boarByBreed: Record<string, number> = {};
     boarList.forEach(b => {
       const br = b.breed_id?.trim() || "Chưa rõ";
@@ -871,6 +985,7 @@ export default function FarmApp() {
       }
     });
 
+    // 2. Nái sinh sản
     const sowByBreedAndStage: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
       const br = s.breed_id?.trim() || "Chưa rõ";
@@ -895,6 +1010,7 @@ export default function FarmApp() {
       }
     });
 
+    // 3. Lợn con theo mẹ
     if (suckingPigletsCount > 0) {
       masterRows.push({
         stt: counter++,
@@ -905,6 +1021,7 @@ export default function FarmApp() {
       });
     }
 
+    // 4. Lợn con đã cai sữa
     if (weanedPigletsCount > 0) {
       masterRows.push({
         stt: counter++,
@@ -915,6 +1032,7 @@ export default function FarmApp() {
       });
     }
 
+    // 5. Lợn thịt
     const meatByBreed: Record<string, number> = {};
     meatList.forEach(m => {
       const br = m.breed_id?.trim() || "Chưa rõ";
@@ -932,6 +1050,7 @@ export default function FarmApp() {
       }
     });
 
+    // 6. Công việc hoàn thành
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - reportDays);
     const recentCompletedTasks = completedTasks.filter(t => {
@@ -1020,55 +1139,91 @@ export default function FarmApp() {
     URL.revokeObjectURL(url);
   };
 
-  const renderPigCard = (pig: Pig) => (
-    <div
-      key={pig.id}
-      onClick={() => {
-        if (!user) return alert("Chế độ khách chỉ có quyền xem! Hãy đăng nhập để sửa.");
-        setEditingPig({ ...pig });
-      }}
-      style={{
-        backgroundColor: "#ffffff",
-        borderRadius: "14px",
-        padding: "14px 16px",
-        border: "1px solid #f1e5f0",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-        cursor: user ? "pointer" : "default",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px"
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
-        {user ? (
-          <span style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "12px", background: "#f3e8ff", color: "#6b21a8" }}>
-            Sửa ✎
+  // RENDER THẺ CÁ THỂ: CÓ NÚT GIA PHẢ + NÚT LỊCH SỬ SINH SẢN (NẾU LÀ NÁI)
+  const renderPigCard = (pig: Pig) => {
+    const isThisSow = isSow(pig);
+    const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
+    const hasCullAlert = reproData && reproData.cullWarnings.length > 0;
+
+    return (
+      <div
+        key={pig.id}
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "14px",
+          padding: "14px 16px",
+          border: hasCullAlert ? "2px solid #f87171" : "1px solid #f1e5f0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
+            {hasCullAlert && (
+              <span style={{ fontSize: "10px", background: "#fef2f2", color: "#b91c1c", padding: "2px 6px", borderRadius: "8px", fontWeight: "800", border: "1px solid #fecaca" }}>
+                ⚠️ Cảnh báo loại thải
+              </span>
+            )}
+          </div>
+          
+          <div style={{ display: "flex", gap: "4px" }}>
+            {/* NÚT XEM GIA PHẢ */}
+            <button
+              onClick={() => setPedigreePig(pig)}
+              style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#ede9fe", color: "#6d28d9", border: "none", cursor: "pointer" }}
+            >
+              Gia phả 🌳
+            </button>
+
+            {/* NÚT XEM SINH SẢN (CHO NÁI) */}
+            {isThisSow && (
+              <button
+                onClick={() => setReproHistorySow(pig)}
+                style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#fce7f3", color: "#db2777", border: "none", cursor: "pointer" }}
+              >
+                Sinh sản 📊
+              </button>
+            )}
+
+            {user ? (
+              <button
+                onClick={() => setEditingPig({ ...pig })}
+                style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#f1f5f9", color: "#334155", border: "none", cursor: "pointer" }}
+              >
+                Sửa ✎
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={{ fontSize: "13px", color: "#475569" }}>
+          Giống: <strong style={{ color: "#0f172a" }}>{pig.breed_id || "—"}</strong> | Giới tính: <strong>{formatVietnameseSex(pig.sex)}</strong>
+        </div>
+
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+          <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#f1f5f9", fontWeight: "600", color: "#334155" }}>
+            Ô: {pig.current_pen_code || "Chưa xếp"}
           </span>
-        ) : (
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>Chỉ xem</span>
-        )}
-      </div>
+          <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
+            {formatVietnameseStage(pig.stage)}
+          </span>
+          {isThisSow && (
+            <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "11px", background: "#eff6ff", color: "#1d4ed8", fontWeight: "700" }}>
+              Đã đẻ: {reproData?.totalLitters || 0} lứa
+            </span>
+          )}
+        </div>
 
-      <div style={{ fontSize: "13px", color: "#475569" }}>
-        Giống: <strong style={{ color: "#0f172a" }}>{pig.breed_id || "—"}</strong> | Giới tính: <strong>{formatVietnameseSex(pig.sex)}</strong>
+        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: "6px", marginTop: "4px", fontSize: "11px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
+          <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
+          <span>Mẹ: <strong style={{ color: "#b91c1c" }}>{pig.dam_ear_tag || "—"}</strong></span>
+        </div>
       </div>
-
-      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
-        <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#f1f5f9", fontWeight: "600", color: "#334155" }}>
-          Ô: {pig.current_pen_code || "Chưa xếp"}
-        </span>
-        <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
-          {formatVietnameseStage(pig.stage)}
-        </span>
-      </div>
-
-      <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: "6px", marginTop: "4px", fontSize: "11px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
-        <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
-        <span>Mẹ: <strong style={{ color: "#b91c1c" }}>{pig.dam_ear_tag || "—"}</strong></span>
-      </div>
-    </div>
-  );
+    );
+  };
 
   if (!mounted) {
     return (
@@ -1097,6 +1252,7 @@ export default function FarmApp() {
               {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
+              {currentMenu === "PEDIGREE" && "GIA PHẢ ĐÀN"}
               {currentMenu === "GUIDE" && "QUY TRÌNH THÚ Y"}
               {currentMenu === "SEARCH" && "TRA CỨU"}
               {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
@@ -1114,9 +1270,9 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT THÊM LỢN NHANH */}
+        {/* NÚT THAO TÁC NHANH: THÊM LỢN & PHỐI GIỐNG TRÁNH CẬN HUYẾT */}
         {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
-          <div style={{ padding: "12px 16px 0 16px" }}>
+          <div style={{ padding: "12px 16px 0 16px", display: "flex", gap: "8px" }}>
             <button
               onClick={() => {
                 if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
@@ -1127,10 +1283,21 @@ export default function FarmApp() {
                 }));
                 setShowAddPigModal(true);
               }}
-              style={{ width: "100%", padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
+              style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
             >
-              + Thêm cá thể lợn mới
+              + Thêm cá thể mới
             </button>
+            {currentMenu === "SOW" && (
+              <button
+                onClick={() => {
+                  if (!user) return alert("Vui lòng đăng nhập để phối giống!");
+                  setShowMatingModal(true);
+                }}
+                style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
+              >
+                🔬 Phối giống (Tránh cận huyết)
+              </button>
+            )}
           </div>
         )}
 
@@ -1149,6 +1316,7 @@ export default function FarmApp() {
                 { k: "BOAR", l: "Quản lý đực", icon: "🐗" },
                 { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
                 { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
+                { k: "PEDIGREE", l: "Gia phả toàn đàn", icon: "🌳" },
                 { k: "GUIDE", l: "Quy trình thú y", icon: "🩺" },
                 { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
                 { k: "SETTINGS", l: "Cài đặt", icon: "⚙️" },
@@ -1176,7 +1344,6 @@ export default function FarmApp() {
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             
-            {/* THẺ TỔNG ĐÀN GRADIENT */}
             <div style={{
               background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
               borderRadius: "16px",
@@ -1197,7 +1364,7 @@ export default function FarmApp() {
                 {user && (
                   <button
                     onClick={() => setShowAddPigModal(true)}
-                    style={{ padding: "8px 14px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer", boxShadow: "0 2px 6px rgba(5,150,105,0.3)" }}
+                    style={{ padding: "8px 14px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
                   >
                     + Thêm Lợn
                   </button>
@@ -1220,7 +1387,7 @@ export default function FarmApp() {
               </div>
             </div>
 
-            {/* KHỐI XUẤT BÁO CÁO & ĐỔI TÊN */}
+            {/* XUẤT BÁO CÁO & ĐỔI TÊN */}
             <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
@@ -1511,7 +1678,44 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 6. TAB QUY TRÌNH THÚ Y */}
+        {/* 6. TAB GIA PHẢ TOÀN ĐÀN */}
+        {currentMenu === "PEDIGREE" && (
+          <div style={{ padding: "16px" }}>
+            <div style={{ background: "#ede9fe", borderRadius: "12px", padding: "14px", marginBottom: "14px", border: "1px solid #ddd6fe" }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "15px", fontWeight: "900", color: "#5b21b6" }}>
+                🌳 CÂY PHẢ HỆ VÀ DÒNG GIỐNG
+              </h3>
+              <div style={{ fontSize: "12px", color: "#475569" }}>
+                Theo dõi dòng máu Bố - Mẹ - Đàn con, phòng tránh cận huyết thoái hóa giống trong trại.
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {safePigs.filter(p => !isIndividualPiglet(p)).map((pig) => {
+                const hasSire = !!pig.sire_ear_tag;
+                const hasDam = !!pig.dam_ear_tag;
+                return (
+                  <div key={pig.id} style={{ background: "#fff", borderRadius: "12px", padding: "12px 14px", border: "1px solid #f1e5f0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag} ({pig.breed_id})</span>
+                      <button
+                        onClick={() => setPedigreePig(pig)}
+                        style={{ padding: "4px 10px", borderRadius: "8px", background: "#7c3aed", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                      >
+                        Xem cây gia phả 🌳
+                      </button>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                      Thế hệ bố mẹ: {hasSire ? `Bố [${pig.sire_ear_tag}]` : "Chưa rõ bố"} • {hasDam ? `Mẹ [${pig.dam_ear_tag}]` : "Chưa rõ mẹ"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 7. TAB QUY TRÌNH THÚ Y */}
         {currentMenu === "GUIDE" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ background: "#eff6ff", borderRadius: "12px", padding: "14px", border: "1px solid #bfdbfe" }}>
@@ -1594,7 +1798,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 7. TRA CỨU */}
+        {/* 8. TRA CỨU */}
         {currentMenu === "SEARCH" && (
           <div style={{ padding: "16px" }}>
             <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
@@ -1604,7 +1808,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 8. CÀI ĐẶT */}
+        {/* 9. CÀI ĐẶT */}
         {currentMenu === "SETTINGS" && (
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
@@ -1621,12 +1825,7 @@ export default function FarmApp() {
                   <span key={b} style={{ padding: "4px 10px", borderRadius: "20px", background: "#f1f5f9", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
                     {b}
                     {user && (
-                      <span
-                        onClick={() => saveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })}
-                        style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}
-                      >
-                        ✕
-                      </span>
+                      <span onClick={() => saveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
                     )}
                   </span>
                 ))}
@@ -1646,22 +1845,11 @@ export default function FarmApp() {
                   <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
                     {formatVietnameseStage(st)}
                     {user && (
-                      <span
-                        onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })}
-                        style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}
-                      >
-                        ✕
-                      </span>
+                      <span onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
                     )}
                   </span>
                 ))}
               </div>
-              {user && (
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <input placeholder="Thêm trạng thái..." value={newStageInput} onChange={(e) => setNewStageInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-                  <button onClick={() => { if (newStageInput.trim() && !config.stages.includes(newStageInput.trim())) { saveConfig({ ...config, stages: [...config.stages, newStageInput.trim()] }); setNewStageInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>+ Thêm</button>
-                </div>
-              )}
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
@@ -1671,22 +1859,11 @@ export default function FarmApp() {
                   <span key={pen} style={{ padding: "4px 10px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
                     {pen}
                     {user && (
-                      <span
-                        onClick={() => saveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })}
-                        style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}
-                      >
-                        ✕
-                      </span>
+                      <span onClick={() => saveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
                     )}
                   </span>
                 ))}
               </div>
-              {user && (
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <input placeholder="Mã ô chuồng..." value={newPenInput} onChange={(e) => setNewPenInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-                  <button onClick={() => { if (newPenInput.trim() && !config.pens.includes(newPenInput.trim())) { saveConfig({ ...config, pens: [...config.pens, newPenInput.trim().toUpperCase()] }); setNewPenInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>+ Thêm</button>
-                </div>
-              )}
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
@@ -1724,6 +1901,268 @@ export default function FarmApp() {
       <footer style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: "36px", backgroundColor: "rgba(253, 248, 251, 0.95)", borderTop: "1px solid #f1e5f0", display: "flex", alignItems: "center", justifyContent: "flex-start", paddingLeft: "16px", zIndex: 40, maxWidth: "480px", margin: "0 auto", pointerEvents: "none" }}>
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
+
+      {/* MODAL XEM LỊCH SỬ SINH SẢN VÀ CẢNH BÁO LOẠI THẢI CỦA NÁI */}
+      {reproHistorySow && (() => {
+        const analysis = getSowReproAnalysis(reproHistorySow.ear_tag);
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: "18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#db2777" }}>
+                    📊 Lịch Sử Sinh Sản: {reproHistorySow.ear_tag}
+                  </h3>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {reproHistorySow.breed_id} • Trạng thái: {reproHistorySow.stage}</span>
+                </div>
+                <button onClick={() => setReproHistorySow(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+              </div>
+
+              <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
+                {/* KHỐI CHỈ SỐ TỔNG QUAN */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                  <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
+                    <div style={{ fontSize: "10px", color: "#db2777", fontWeight: "700" }}>SỐ LỨA ĐẺ</div>
+                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#e11d48" }}>{analysis.totalLitters}</div>
+                  </div>
+                  <div style={{ background: "#eff6ff", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
+                    <div style={{ fontSize: "10px", color: "#2563eb", fontWeight: "700" }}>TỔNG CON ĐẺ</div>
+                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#1d4ed8" }}>{analysis.totalBorn}</div>
+                  </div>
+                  <div style={{ background: "#ecfdf5", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
+                    <div style={{ fontSize: "10px", color: "#059669", fontWeight: "700" }}>TB CON/LỨA</div>
+                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#047857" }}>{analysis.avgBorn}</div>
+                  </div>
+                </div>
+
+                {/* KHỐI CẢNH BÁO LOẠI THẢI */}
+                {analysis.cullWarnings.length > 0 && (
+                  <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "10px", borderRadius: "10px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: "900", color: "#b91c1c", marginBottom: "4px" }}>
+                      ⚠️ ĐÁNH GIÁ NĂNG SUẤT & ĐỀ XUẤT LOẠI THẢI:
+                    </div>
+                    {analysis.cullWarnings.map((w, idx) => (
+                      <div key={idx} style={{ fontSize: "11px", color: "#991b1b", marginBottom: "2px", fontWeight: "600" }}>{w}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* BẢNG CHI TIẾT TỪNG LỨA ĐẺ */}
+                <div>
+                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Chi tiết các lứa đẻ:</h4>
+                  {analysis.sowLitters.length === 0 ? (
+                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có ghi nhận lứa đẻ nào.</div>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                      <thead>
+                        <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Lứa</th>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Ngày đẻ</th>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Số con sống</th>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Cai sữa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysis.sowLitters.map((l, idx) => (
+                          <tr key={l.id}>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800" }}>Lứa {idx + 1}</td>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.farrow_date}</td>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800", color: "#059669" }}>{l.alive_born} con</td>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.weaning_date || "Đang bú"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* LỊCH SỬ PHỐI GIỐNG */}
+                <div>
+                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Nhật ký phối giống gần nhất:</h4>
+                  {analysis.sowInsems.length === 0 ? (
+                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có dữ liệu phối giống.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {analysis.sowInsems.slice(0, 4).map((ins) => (
+                        <div key={ins.id} style={{ fontSize: "11px", padding: "6px 8px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                          Phối ngày <b>{ins.mating_date}</b> với đực <b>{ins.boar_ear_tag}</b> (Dự sinh: {ins.expected_farrow_date}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
+                <button onClick={() => setReproHistorySow(null)} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL CÂY GIA PHẢ 3 ĐỜI */}
+      {pedigreePig && (() => {
+        const sire = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (pedigreePig.sire_ear_tag || "").trim().toUpperCase());
+        const dam = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (pedigreePig.dam_ear_tag || "").trim().toUpperCase());
+
+        const grandSirePaternal = sire ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (sire.sire_ear_tag || "").trim().toUpperCase()) : null;
+        const grandDamPaternal = sire ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (sire.dam_ear_tag || "").trim().toUpperCase()) : null;
+
+        const grandSireMaternal = dam ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (dam.sire_ear_tag || "").trim().toUpperCase()) : null;
+        const grandDamMaternal = dam ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (dam.dam_ear_tag || "").trim().toUpperCase()) : null;
+
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: "18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>
+                    🌳 Cây Gia Phả: {pedigreePig.ear_tag}
+                  </h3>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {pedigreePig.breed_id} • Giới tính: {formatVietnameseSex(pedigreePig.sex)}</span>
+                </div>
+                <button onClick={() => setPedigreePig(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+              </div>
+
+              <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
+                {/* THẾ HỆ 1: CÁ THỂ HIỆN TẠI */}
+                <div style={{ background: "#ede9fe", padding: "10px", borderRadius: "10px", border: "1px solid #c4b5fd", textAlign: "center" }}>
+                  <div style={{ fontSize: "10px", color: "#6d28d9", fontWeight: "800" }}>CÁ THỂ HIỆN TẠI</div>
+                  <div style={{ fontSize: "16px", fontWeight: "900", color: "#4c1d95" }}>{pedigreePig.ear_tag}</div>
+                  <div style={{ fontSize: "11px", color: "#5b21b6" }}>Giống: {pedigreePig.breed_id} | {pedigreePig.stage}</div>
+                </div>
+
+                {/* THẾ HỆ 2: BỐ & MẸ */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  {/* BỐ */}
+                  <div style={{ background: "#eff6ff", padding: "8px", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
+                    <div style={{ fontSize: "10px", color: "#1d4ed8", fontWeight: "800" }}>BỐ (ĐỰC)</div>
+                    <div style={{ fontSize: "14px", fontWeight: "900", color: "#1e3a8a" }}>{pedigreePig.sire_ear_tag || "Chưa rõ"}</div>
+                    <div style={{ fontSize: "10px", color: "#64748b" }}>{sire ? `Giống: ${sire.breed_id}` : "Nhập ngoài"}</div>
+                  </div>
+                  {/* MẸ */}
+                  <div style={{ background: "#fdf2f4", padding: "8px", borderRadius: "8px", border: "1px solid #fbcfe8" }}>
+                    <div style={{ fontSize: "10px", color: "#be185d", fontWeight: "800" }}>MẸ (NÁI)</div>
+                    <div style={{ fontSize: "14px", fontWeight: "900", color: "#831843" }}>{pedigreePig.dam_ear_tag || "Chưa rõ"}</div>
+                    <div style={{ fontSize: "10px", color: "#64748b" }}>{dam ? `Giống: ${dam.breed_id}` : "Nhập ngoài"}</div>
+                  </div>
+                </div>
+
+                {/* THẾ HỆ 3: ÔNG BÀ NỘI / NGOẠI */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", fontSize: "10px", textAlign: "center" }}>
+                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ color: "#64748b" }}>Ông nội</div>
+                    <b>{grandSirePaternal?.ear_tag || sire?.sire_ear_tag || "—"}</b>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ color: "#64748b" }}>Bà nội</div>
+                    <b>{grandDamPaternal?.ear_tag || sire?.dam_ear_tag || "—"}</b>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ color: "#64748b" }}>Ông ngoại</div>
+                    <b>{grandSireMaternal?.ear_tag || dam?.sire_ear_tag || "—"}</b>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ color: "#64748b" }}>Bà ngoại</div>
+                    <b>{grandDamMaternal?.ear_tag || dam?.dam_ear_tag || "—"}</b>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
+                <button onClick={() => setPedigreePig(null)} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL PHỐI GIỐNG CÓ KIỂM TRA CẬN HUYẾT */}
+      {showMatingModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "20px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>
+              🔬 Lập Kế Hoạch Phối Giống
+            </h3>
+            <form onSubmit={handleSaveInsemination} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "700" }}>Chọn Nái phối:</label>
+                <select
+                  required
+                  value={matingSowTag}
+                  onChange={(e) => setMatingSowTag(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                >
+                  <option value="">-- Chọn Nái giống --</option>
+                  {sowList.map(s => (
+                    <option key={s.id} value={s.ear_tag}>
+                      {s.ear_tag} ({s.breed_id}) - {s.stage}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "700" }}>Chọn Đực giống:</label>
+                <select
+                  required
+                  value={selectedBoarTag}
+                  onChange={(e) => setSelectedBoarTag(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                >
+                  <option value="">-- Chọn Đực giống --</option>
+                  {boarList.map(b => {
+                    const check = matingSowTag ? checkInbreedingRisk(matingSowTag, b.ear_tag) : { risk: false, reason: "" };
+                    return (
+                      <option key={b.id} value={b.ear_tag} style={{ color: check.risk ? "#ef4444" : "#0f172a" }}>
+                        {b.ear_tag} ({b.breed_id}) {check.risk ? "⚠️ [CẬN HUYẾT!]" : "✓ [An toàn]"}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* KHỐI HIỂN THỊ CẢNH BÁO CẬN HUYẾT TỨC THÌ */}
+              {matingSowTag && selectedBoarTag && (() => {
+                const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
+                return (
+                  <div style={{
+                    padding: "8px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "700",
+                    background: check.risk ? "#fef2f2" : "#f0fdf4",
+                    border: check.risk ? "1px solid #fecaca" : "1px solid #bbf7d0",
+                    color: check.risk ? "#b91c1c" : "#166534"
+                  }}>
+                    {check.risk ? `⚠️ ${check.reason}` : `✓ ${check.reason}`}
+                  </div>
+                );
+              })()}
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "700" }}>Ngày phối giống:</label>
+                <input
+                  type="date"
+                  required
+                  value={matingDate}
+                  onChange={(e) => setMatingDate(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" }}>
+                <button type="button" onClick={() => setShowMatingModal(false)} style={{ padding: "8px 14px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" style={{ padding: "8px 16px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>
+                  Xác nhận Phối
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL THÊM CÁ THỂ LỢN */}
       {showAddPigModal && user && (
