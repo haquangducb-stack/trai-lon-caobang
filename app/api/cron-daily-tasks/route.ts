@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig"
 );
 
-// Cấu hình cố định Telegram của anh
+// Thông tin kết nối Telegram
 const TELEGRAM_BOT_TOKEN = "8290400353:AAGE3Ra6Fz7BuJiIAEwMp6OQanZXbWwUzWQ";
 const TELEGRAM_CHAT_ID = "8864970730";
 
@@ -20,7 +20,7 @@ export async function GET() {
     const yyyy = today.getFullYear();
     const formattedDate = `${dd}/${mm}/${yyyy}`;
 
-    // 1. Quét dữ liệu phối giống để tìm nái ở ngày 18 - 21
+    // 1. Quét dữ liệu phối giống để tìm nái ở ngày 18 - 21 và sắp đẻ (105 - 114)
     const { data: inseminations } = await supabase
       .from("inseminations")
       .select("*");
