@@ -727,6 +727,7 @@ export default function FarmApp() {
     }
   };
 
+  // HÀM CAI SỮA DỨT ĐIỂM - LƯU THẲNG TASK HOÀN THÀNH
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
     if (!user) return alert("Vui lòng đăng nhập để thực hiện cai sữa!");
     if (!confirm(`Xác nhận cai sữa cho đàn con của nái ${sowTag}? Nái mẹ sẽ chuyển sang "Chờ phối" và đàn con (${litterCount || ""} con) chuyển sang "Lợn con cai sữa".`)) return;
@@ -740,6 +741,7 @@ export default function FarmApp() {
       try { localStorage.setItem("farm_local_weaned_tags", JSON.stringify(newWeaned)); } catch (e) {}
     }
 
+    // 1. Cập nhật state nội bộ
     setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === tagUpper ? { ...p, stage: "Chờ phối" } : p));
     setLitters(prev => prev.map(l => (l.id === litterId || l.sow_ear_tag.trim().toUpperCase() === tagUpper) ? { ...l, notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr } : l));
 
@@ -750,6 +752,7 @@ export default function FarmApp() {
       try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
     }
 
+    // 2. Ghi nhận chính thức vào Database
     try {
       await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", sowTag);
       let q = supabase.from("farrowings").update({ notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr });
@@ -757,8 +760,9 @@ export default function FarmApp() {
       else q = q.eq("sow_ear_tag", sowTag);
       await q;
 
+      // Ghi task cai sữa đã xong vào farm_tasks để mục "Đã làm xong" trên web và Telegram hiển thị
       await supabase.from("farm_tasks").insert([{
-        title: `Cai sữa đàn con nái ${sowTag}`,
+        title: `Cai sữa đàn con nái ${sowTag} (${litterCount || 0} con)`,
         due_date: todayStr,
         related_tag: sowTag,
         category: "WEAN",
@@ -766,11 +770,11 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
     } catch (err) {
-      console.error("Lỗi DB:", err);
+      console.error("Lỗi đồng bộ DB:", err);
     }
 
     await logAction("WEAN_LITTER", sowTag, `Cai sữa đàn con nái ${sowTag} (${litterCount || ""} con) -> Nái chuyển Chờ phối`);
-    alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con (${litterCount || ""} con): Đã chuyển sang nhóm "Lợn con cai sữa".`);
+    alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con (${litterCount || ""} con): Đã chuyển sang nhóm "Lợn con cai sữa".\n- Đã lưu vào danh sách công việc hoàn thành!`);
     fetchData();
   };
 
