@@ -9,9 +9,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUz
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const TELEGRAM_BOT_TOKEN = "8290400353:AAGE3Ra6Fz7BuJiIAEwMp6OQanZXbWwUzWQ";
-
-// Có thể điền ID cá nhân hoặc ID nhóm (Group ID bắt đầu bằng dấu -)
-// Nếu muốn gửi nhiều người/nhiều nhóm, chỉ cần thêm ID vào mảng này:
 const TELEGRAM_CHAT_IDS = ["-5523221456"];
 
 export async function GET() {
@@ -23,7 +20,7 @@ export async function GET() {
     const yyyy = today.getFullYear();
     const formattedDate = `${dd}/${mm}/${yyyy}`;
 
-    // 1. Quét dữ liệu phối giống (Kiểm tra lốc ngày 18-21 & nái sắp đẻ)
+    // 1. Quét dữ liệu nái ngày 18 - 21 và sắp đẻ
     const { data: inseminations } = await supabase
       .from("inseminations")
       .select("*");
@@ -47,7 +44,7 @@ export async function GET() {
       });
     }
 
-    // 2. Quét công việc cần làm hôm nay (chưa hoàn thành)
+    // 2. Quét công việc CẦN LÀM hôm nay (chưa xong)
     const { data: pendingTasks } = await supabase
       .from("farm_tasks")
       .select("*")
@@ -58,28 +55,44 @@ export async function GET() {
       (t: any, idx: number) => `${idx + 1}. ${t.title}`
     );
 
-    // 3. Quét các công việc hoặc thao tác đã thực hiện trong ngày (kèm người thực hiện)
-    // Lấy từ nhật ký thao tác audit_logs trong ngày hôm nay
-    const { data: todayLogs } = await supabase
-      .from("audit_logs")
-      .select("*")
-      .gte("created_at", `${todayStr}T00:00:00.000Z`)
-      .lte("created_at", `${todayStr}T23:59:59.999Z`)
-      .order("created_at", { ascending: false });
-
-    // Lọc các thao tác thực hiện công việc, cai sữa, phối giống, tiêm phòng
+    // 3. Quét công việc ĐÃ LÀM (Lấy cả từ farm_tasks lẫn audit_logs)
     const completedItems: string[] = [];
-    if (Array.isArray(todayLogs) && todayLogs.length > 0) {
-      todayLogs.forEach((log: any) => {
-        const who = log.performed_by || "Kỹ thuật viên";
-        completedItems.push(`• ${log.details} _(Người làm: ${who})_`);
+
+    // 3.1. Quét từ bảng farm_tasks (các việc đã tick hoàn thành: vaccine, thú y, cai sữa...)
+    const { data: doneTasks } = await supabase
+      .from("farm_tasks")
+      .select("*")
+      .eq("is_completed", true)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (Array.isArray(doneTasks)) {
+      doneTasks.forEach((t: any) => {
+        completedItems.push(`• ${t.title} [Hoàn tất]`);
       });
     }
 
-    // 4. Soạn thảo thông điệp Telegram rõ ràng, mạch lạc
+    // 3.2. Quét thêm từ nhật ký thao tác audit_logs (lấy 5 hành động gần nhất kèm người làm)
+    const { data: recentLogs } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    if (Array.isArray(recentLogs)) {
+      recentLogs.forEach((log: any) => {
+        const who = log.performed_by || "Hà Quang Dự";
+        const detail = log.details;
+        // Tránh trùng lặp nội dung nếu đã có
+        if (!completedItems.some(item => item.includes(detail))) {
+          completedItems.push(`• ${detail} _(${who})_`);
+        }
+      });
+    }
+
+    // 4. Soạn thảo tin nhắn Telegram
     let text = `📋 *BÁO CÁO CÔNG VIỆC TRẠI LỢN NÀ ROÁC*\n📅 Ngày: *${formattedDate}*\n\n`;
 
-    // Khối Cảnh báo
     if (recheckList.length > 0) {
       text += `⚠️ *CẢNH BÁO THEO DÕI PHỐI LỐC (NGÀY 18-21):*\n${recheckList.join("\n")}\n\n`;
     } else {
@@ -90,7 +103,6 @@ export async function GET() {
       text += `🍼 *NÁI SẮP ĐẺ (TRÊN 105 NGÀY):*\n${farrowSoonList.join("\n")}\n\n`;
     }
 
-    // Khối Việc cần làm
     text += `🔔 *NHỮNG VIỆC CẦN LÀM HÔM NAY:*\n`;
     if (pendingItems.length > 0) {
       text += `${pendingItems.join("\n")}\n\n`;
@@ -98,17 +110,16 @@ export async function GET() {
       text += `✨ _Không có công việc nào tồn đọng trong ngày._\n\n`;
     }
 
-    // Khối Việc đã làm & Người thực hiện
-    text += `✅ *CÔNG VIỆC ĐÃ HOÀN THÀNH:*\n`;
+    text += `✅ *CÔNG VIỆC / KỸ THUẬT ĐÃ HOÀN THÀNH:*\n`;
     if (completedItems.length > 0) {
       text += `${completedItems.slice(0, 8).join("\n")}\n`;
     } else {
-      text += `⏳ _Chưa ghi nhận công việc phát sinh nào trong hôm nay._\n`;
+      text += `⏳ _Chưa ghi nhận thao tác kỹ thuật nào gần đây._\n`;
     }
 
     text += `\n_Hệ thống tự động cập nhật từ Trại Lợn Nà Roác._`;
 
-    // 5. Gửi tin nhắn đến toàn bộ danh sách Chat ID đã cấu hình
+    // 5. Gửi tin nhắn qua Telegram
     for (const chatId of TELEGRAM_CHAT_IDS) {
       await fetch(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -126,7 +137,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      message: `Đã gửi báo cáo thành công tới ${TELEGRAM_CHAT_IDS.length} người nhận!`,
+      message: `Đã gửi báo cáo chi tiết thành công!`,
     });
   } catch (error: any) {
     return NextResponse.json(
