@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Khởi tạo Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co",
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig"
-);
+export const dynamic = "force-dynamic";
 
-// Thông tin kết nối Telegram
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig";
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 const TELEGRAM_BOT_TOKEN = "8290400353:AAGE3Ra6Fz7BuJiIAEwMp6OQanZXbWwUzWQ";
 const TELEGRAM_CHAT_ID = "8864970730";
 
@@ -20,7 +20,7 @@ export async function GET() {
     const yyyy = today.getFullYear();
     const formattedDate = `${dd}/${mm}/${yyyy}`;
 
-    // 1. Quét dữ liệu phối giống để tìm nái ở ngày 18 - 21 và sắp đẻ (105 - 114)
+    // 1. Quét dữ liệu phối giống
     const { data: inseminations } = await supabase
       .from("inseminations")
       .select("*");
@@ -28,21 +28,21 @@ export async function GET() {
     const recheckList: string[] = [];
     const farrowSoonList: string[] = [];
 
-    (inseminations || []).forEach((ins) => {
-      if (!ins.mating_date) return;
-      const mDate = new Date(ins.mating_date).getTime();
-      const diffDays = Math.floor((today.getTime() - mDate) / (1000 * 3600 * 24));
+    if (Array.isArray(inseminations)) {
+      inseminations.forEach((ins: any) => {
+        if (!ins?.mating_date) return;
+        const mDate = new Date(ins.mating_date).getTime();
+        const diffDays = Math.floor((today.getTime() - mDate) / (1000 * 3600 * 24));
 
-      // Lốc chu kỳ 1 (ngày 18 - 21)
-      if (diffDays >= 18 && diffDays <= 21) {
-        recheckList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 (Đực: ${ins.boar_ear_tag || "—"}) - Kiểm tra phản xạ đứng im!`);
-      }
+        if (diffDays >= 18 && diffDays <= 21) {
+          recheckList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 (Đực: ${ins.boar_ear_tag || "—"}) - Kiểm tra phản xạ đứng im!`);
+        }
 
-      // Sắp đẻ (ngày 105 - 114)
-      if (diffDays >= 105 && diffDays <= 114) {
-        farrowSoonList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 - Chuẩn bị chuồng đẻ & trực đẻ!`);
-      }
-    });
+        if (diffDays >= 105 && diffDays <= 114) {
+          farrowSoonList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 - Chuẩn bị chuồng đẻ & trực đẻ!`);
+        }
+      });
+    }
 
     // 2. Quét công việc cần làm hôm nay
     const { data: tasks } = await supabase
@@ -51,7 +51,7 @@ export async function GET() {
       .eq("due_date", todayStr)
       .eq("is_completed", false);
 
-    const taskItems = (tasks || []).map((t, idx) => `${idx + 1}. ${t.title}`);
+    const taskItems = (Array.isArray(tasks) ? tasks : []).map((t: any, idx: number) => `${idx + 1}. ${t.title}`);
 
     // 3. Soạn nội dung thông báo
     let text = `📋 *LỊCH CÔNG VIỆC TRẠI LỢN NÀ ROÁC*\n📅 Ngày: *${formattedDate}*\n\n`;
@@ -74,7 +74,7 @@ export async function GET() {
 
     text += `\n\n_Chúc anh Dự một ngày làm việc thuận lợi!_`;
 
-    // 4. Gửi tin nhắn qua Telegram API
+    // 4. Gửi tin qua Telegram
     const teleRes = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
@@ -96,6 +96,6 @@ export async function GET() {
 
     return NextResponse.json({ success: true, message: "Đã gửi thông báo Telegram thành công!" });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error?.message || "Lỗi không xác định" }, { status: 500 });
   }
 }
