@@ -12,7 +12,7 @@ const TELEGRAM_BOT_TOKEN = "8290400353:AAGE3Ra6Fz7BuJiIAEwMp6OQanZXbWwUzWQ";
 
 // Có thể điền ID cá nhân hoặc ID nhóm (Group ID bắt đầu bằng dấu -)
 // Nếu muốn gửi nhiều người/nhiều nhóm, chỉ cần thêm ID vào mảng này:
-const TELEGRAM_CHAT_IDS = ["8864970730"];
+const TELEGRAM_CHAT_IDS = ["-5523221456"];
 
 export async function GET() {
   try {
