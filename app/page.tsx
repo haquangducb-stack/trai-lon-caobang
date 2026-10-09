@@ -63,6 +63,17 @@ interface FarmConfig {
   pens: string[];
 }
 
+// CHUẨN HÓA NGÀY DD/MM/YYYY TOÀN BỘ APP
+export const formatDateVN = (dStr?: string) => {
+  if (!dStr) return "—";
+  const d = new Date(dStr);
+  if (isNaN(d.getTime())) return dStr;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 const formatVietnameseSex = (rawSex?: string) => {
   if (!rawSex) return "Cái";
   const s = rawSex.trim().toLowerCase();
@@ -150,10 +161,17 @@ export default function FarmApp() {
   // Modal Gia phả
   const [pedigreePig, setPedigreePig] = useState<Pig | null>(null);
 
-  // Modal Lịch sử Sinh sản của Nái
+  // Modal Lịch sử Sinh sản & Sửa lứa đẻ cũ
   const [reproHistorySow, setReproHistorySow] = useState<Pig | null>(null);
+  const [showAddPastLitter, setShowAddPastLitter] = useState(false);
+  const [pastLitterForm, setPastLitterForm] = useState({
+    farrow_date: new Date().toISOString().split("T")[0],
+    alive_born: 10,
+    weaned_count: 9,
+    weaning_date: ""
+  });
 
-  // Modal Phối giống kiểm tra Cận huyết
+  // Modal Phối giống tránh cận huyết
   const [showMatingModal, setShowMatingModal] = useState(false);
   const [matingSowTag, setMatingSowTag] = useState("");
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
@@ -168,6 +186,7 @@ export default function FarmApp() {
 
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
+      if (showAddPastLitter) { setShowAddPastLitter(false); return; }
       if (reproHistorySow) { setReproHistorySow(null); return; }
       if (pedigreePig) { setPedigreePig(null); return; }
       if (showMatingModal) { setShowMatingModal(false); return; }
@@ -186,7 +205,7 @@ export default function FarmApp() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
+  }, [showAddPastLitter, reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -425,7 +444,7 @@ export default function FarmApp() {
     return tag.includes("-C") || tag.includes("CON");
   };
 
-  // PHÂN LOẠI CHÍNH XÁC THEO NGHIỆP VỤ
+  // PHÂN LOẠI CHUẨN XÁC
   const isMeat = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig)) return false;
     const st = (pig.stage || "").toLowerCase();
@@ -507,6 +526,19 @@ export default function FarmApp() {
   const totalPigletsCount = suckingPigletsCount + weanedPigletsCount;
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPigletsCount;
 
+  // TÍNH CHỈ SỐ PSY (PIGLETS / SOW / YEAR) TỰ ĐỘNG
+  const psyScore = useMemo(() => {
+    if (sowList.length === 0) return "0.0";
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const yearLitters = litters.filter(l => l.farrow_date && new Date(l.farrow_date) >= oneYearAgo);
+    const totalWeanedInYear = yearLitters.reduce((sum, l) => sum + Number(l.alive_born || 0), 0);
+    
+    // Công thức: (Tổng số con cai sữa trong 1 năm) / (Tổng số nái giống hiện diện)
+    return (totalWeanedInYear / sowList.length).toFixed(1);
+  }, [litters, sowList.length]);
+
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
     const t = new Date(dStr).getTime();
@@ -522,7 +554,44 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // THUẬT TOÁN KIỂM TRA QUAN HỆ CẬN HUYẾT
+  // TÍNH TIẾN TRÌNH THAI KỲ CHO NÁI CHỬA (ĐỒNG HỒ 114 NGÀY)
+  const getGestationProgress = useCallback((sowTag: string) => {
+    const sTag = sowTag.trim().toUpperCase();
+    const latestInsem = inseminations.find(ins => ins.sow_ear_tag.trim().toUpperCase() === sTag);
+    if (!latestInsem?.mating_date) return null;
+
+    const daysPassed = safeDateDiff(latestInsem.mating_date);
+    if (daysPassed < 0 || daysPassed > 120) return null;
+
+    const pct = Math.min(100, Math.max(0, (daysPassed / 114) * 100));
+
+    let stageTitle = "Ổn định phôi";
+    let badgeColor = "#3b82f6";
+    if (daysPassed <= 21) {
+      stageTitle = "Theo dõi lốc chu kỳ 1 (18-21 ngày)";
+      badgeColor = "#ef4444";
+    } else if (daysPassed <= 80) {
+      stageTitle = "Nuôi thai ổn định (Khẩu phần chuẩn)";
+      badgeColor = "#3b82f6";
+    } else if (daysPassed <= 106) {
+      stageTitle = "Thúc thai & Tuyến vú (Tăng cám)";
+      badgeColor = "#f59e0b";
+    } else {
+      stageTitle = "Lên chuồng đẻ & Sát trùng vú";
+      badgeColor = "#10b981";
+    }
+
+    return {
+      daysPassed,
+      pct,
+      stageTitle,
+      badgeColor,
+      matingDate: latestInsem.mating_date,
+      expectedFarrowDate: latestInsem.expected_farrow_date
+    };
+  }, [inseminations]);
+
+  // KIỂM TRA QUAN HỆ CẬN HUYẾT
   const checkInbreedingRisk = useCallback((sowTag: string, boarTag: string): { risk: boolean; reason: string } => {
     const sTag = sowTag.trim().toUpperCase();
     const bTag = boarTag.trim().toUpperCase();
@@ -537,20 +606,15 @@ export default function FarmApp() {
     const boarSire = (boar.sire_ear_tag || "").trim().toUpperCase();
     const boarDam = (boar.dam_ear_tag || "").trim().toUpperCase();
 
-    // 1. Bố - Con
     if (sowSire && sowSire === bTag) {
       return { risk: true, reason: `CẬN HUYẾT NẶNG: Đực ${bTag} là BỐ của nái ${sTag}!` };
     }
-
-    // 2. Cùng Bố hoặc Cùng Mẹ
     if (sowSire && boarSire && sowSire === boarSire) {
       return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng BỐ (${sowSire})!` };
     }
     if (sowDam && boarDam && sowDam === boarDam) {
       return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng MẸ (${sowDam})!` };
     }
-
-    // 3. Ông - Cháu
     if (sowSire) {
       const sireOfSow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sowSire);
       if (sireOfSow && (sireOfSow.sire_ear_tag || "").trim().toUpperCase() === bTag) {
@@ -577,7 +641,6 @@ export default function FarmApp() {
     const totalBorn = sowLitters.reduce((acc, l) => acc + Number(l.alive_born || 0), 0);
     const avgBorn = totalLitters > 0 ? (totalBorn / totalLitters).toFixed(1) : "0";
 
-    // Đếm số lần phối trượt liên tiếp gần nhất
     let consecutiveFails = 0;
     for (const ins of sowInsems) {
       if ((ins.status || "").toLowerCase().includes("lốc") || (ins.status || "").toLowerCase().includes("trượt")) {
@@ -601,7 +664,37 @@ export default function FarmApp() {
     return { totalLitters, totalBorn, avgBorn, consecutiveFails, cullWarnings, sowLitters, sowInsems };
   }, [litters, inseminations]);
 
-  // XỬ LÝ LƯU PHỐI GIỐNG
+  // HÀM LƯU BỔ SUNG LỨA ĐẺ CŨ CHO NÁI RẠ HOẶC TRƯỚC KHI DÙNG APP
+  const handleSavePastLitter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reproHistorySow || !user) return;
+
+    const sowTag = reproHistorySow.ear_tag.trim().toUpperCase();
+    const newLitterCode = `L-${sowTag}-${Date.now().toString().slice(-4)}`;
+
+    const payload = {
+      litter_code: newLitterCode,
+      sow_ear_tag: sowTag,
+      farrow_date: pastLitterForm.farrow_date,
+      alive_born: Number(pastLitterForm.alive_born || 0),
+      weaning_date: pastLitterForm.weaning_date || pastLitterForm.farrow_date,
+      notes: "Nhập bổ sung lịch sử nái rạ",
+      status: "Đã cai sữa"
+    };
+
+    try {
+      const { error } = await supabase.from("farrowings").insert([payload]);
+      if (error) throw error;
+
+      await logAction("ADD_PAST_LITTER", sowTag, `Bổ sung lứa cũ cho nái ${sowTag}: Đẻ ${pastLitterForm.alive_born} con ngày ${formatDateVN(pastLitterForm.farrow_date)}`);
+      alert(`Đã thêm thành công lứa đẻ lịch sử cho nái ${sowTag}!`);
+      setShowAddPastLitter(false);
+      fetchData();
+    } catch (err: any) {
+      alert("Lỗi lưu lứa cũ: " + err.message);
+    }
+  };
+
   const handleSaveInsemination = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return alert("Vui lòng đăng nhập để phối giống!");
@@ -625,8 +718,8 @@ export default function FarmApp() {
     try {
       await supabase.from("inseminations").insert([payload]);
       await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
-      await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} (Dự sinh: ${expFarrow})`);
-      alert(`Đã ghi nhận phối giống nái ${matingSowTag} thành công!\n- Ngày dự kiến đẻ: ${expFarrow}`);
+      await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} (Dự sinh: ${formatDateVN(expFarrow)})`);
+      alert(`Đã ghi nhận phối giống nái ${matingSowTag} thành công!\n- Ngày dự kiến đẻ: ${formatDateVN(expFarrow)}`);
       setShowMatingModal(false);
       fetchData();
     } catch (err: any) {
@@ -954,7 +1047,6 @@ export default function FarmApp() {
     setIsSavingEdit(false);
   };
 
-  // HÀM XUẤT BÁO CÁO WORD
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -1010,7 +1102,6 @@ export default function FarmApp() {
       }
     });
 
-    // 3. Lợn con theo mẹ
     if (suckingPigletsCount > 0) {
       masterRows.push({
         stt: counter++,
@@ -1021,7 +1112,6 @@ export default function FarmApp() {
       });
     }
 
-    // 4. Lợn con đã cai sữa
     if (weanedPigletsCount > 0) {
       masterRows.push({
         stt: counter++,
@@ -1032,7 +1122,6 @@ export default function FarmApp() {
       });
     }
 
-    // 5. Lợn thịt
     const meatByBreed: Record<string, number> = {};
     meatList.forEach(m => {
       const br = m.breed_id?.trim() || "Chưa rõ";
@@ -1050,7 +1139,6 @@ export default function FarmApp() {
       }
     });
 
-    // 6. Công việc hoàn thành
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - reportDays);
     const recentCompletedTasks = completedTasks.filter(t => {
@@ -1086,7 +1174,7 @@ export default function FarmApp() {
         <h3>BÁO CÁO TỔNG HỢP CƠ CẤU ĐÀN & VẬN HÀNH KỸ THUẬT (${reportDays} NGÀY QUA)</h3>
         <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người thực hiện: ${activeOperator}</div>
 
-        <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực giống: ${formatNum(boarList.length)} con | Tổng lợn con: ${formatNum(totalPigletsCount)} con [Theo mẹ: ${formatNum(suckingPigletsCount)}, Đã cai sữa: ${formatNum(weanedPigletsCount)}] | Lợn thịt: ${formatNum(meatList.length)} con).</p>
+        <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực giống: ${formatNum(boarList.length)} con | Tổng lợn con: ${formatNum(totalPigletsCount)} con [Theo mẹ: ${formatNum(suckingPigletsCount)}, Đã cai sữa: ${formatNum(weanedPigletsCount)}] | Lợn thịt: ${formatNum(meatList.length)} con | Chỉ số PSY trại: <b>${psyScore} con/nái/năm</b>).</p>
 
         <table>
           <thead>
@@ -1139,11 +1227,12 @@ export default function FarmApp() {
     URL.revokeObjectURL(url);
   };
 
-  // RENDER THẺ CÁ THỂ: CÓ NÚT GIA PHẢ + NÚT LỊCH SỬ SINH SẢN (NẾU LÀ NÁI)
+  // RENDER THẺ CÁ THỂ: CÓ ĐỒNG HỒ THAI KỲ 114 NGÀY & NÚT SINH SẢN
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
     const hasCullAlert = reproData && reproData.cullWarnings.length > 0;
+    const gestation = isThisSow && checkSowState(pig) === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
 
     return (
       <div
@@ -1164,13 +1253,12 @@ export default function FarmApp() {
             <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
             {hasCullAlert && (
               <span style={{ fontSize: "10px", background: "#fef2f2", color: "#b91c1c", padding: "2px 6px", borderRadius: "8px", fontWeight: "800", border: "1px solid #fecaca" }}>
-                ⚠️ Cảnh báo loại thải
+                ⚠️ Loại thải
               </span>
             )}
           </div>
           
           <div style={{ display: "flex", gap: "4px" }}>
-            {/* NÚT XEM GIA PHẢ */}
             <button
               onClick={() => setPedigreePig(pig)}
               style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#ede9fe", color: "#6d28d9", border: "none", cursor: "pointer" }}
@@ -1178,7 +1266,6 @@ export default function FarmApp() {
               Gia phả 🌳
             </button>
 
-            {/* NÚT XEM SINH SẢN (CHO NÁI) */}
             {isThisSow && (
               <button
                 onClick={() => setReproHistorySow(pig)}
@@ -1216,6 +1303,22 @@ export default function FarmApp() {
             </span>
           )}
         </div>
+
+        {/* ĐỒNG HỒ ĐẾM THAI KỲ 114 NGÀY TRỰC QUAN */}
+        {gestation && (
+          <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>
+              <span style={{ color: gestation.badgeColor }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
+              <span style={{ color: "#64748b" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
+            </div>
+            <div style={{ height: "6px", width: "100%", background: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${gestation.pct}%`, background: gestation.badgeColor, transition: "width 0.3s" }} />
+            </div>
+            <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px", fontStyle: "italic" }}>
+              Giai đoạn: <b>{gestation.stageTitle}</b>
+            </div>
+          </div>
+        )}
 
         <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: "6px", marginTop: "4px", fontSize: "11px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
           <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
@@ -1270,7 +1373,7 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT THAO TÁC NHANH: THÊM LỢN & PHỐI GIỐNG TRÁNH CẬN HUYẾT */}
+        {/* NÚT THAO TÁC NHANH */}
         {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
           <div style={{ padding: "12px 16px 0 16px", display: "flex", gap: "8px" }}>
             <button
@@ -1340,7 +1443,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 1. TỔNG QUAN SINH ĐỘNG */}
+        {/* 1. TỔNG QUAN SINH ĐỘNG (CÓ CHỈ SỐ PSY TRẠI) */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             
@@ -1361,18 +1464,16 @@ export default function FarmApp() {
                     {grandTotal} <span style={{ fontSize: "14px", fontWeight: "600", color: "#c7d2fe" }}>cá thể</span>
                   </div>
                 </div>
-                {user && (
-                  <button
-                    onClick={() => setShowAddPigModal(true)}
-                    style={{ padding: "8px 14px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-                  >
-                    + Thêm Lợn
-                  </button>
-                )}
+                
+                {/* CHỈ SỐ PSY TRỰC QUAN */}
+                <div style={{ background: "rgba(255,255,255,0.12)", padding: "6px 12px", borderRadius: "10px", textAlign: "right" }}>
+                  <div style={{ fontSize: "10px", color: "#cbd5e1" }}>CHỈ SỐ PSY TRẠI</div>
+                  <div style={{ fontSize: "16px", fontWeight: "900", color: "#34d399" }}>{psyScore} <span style={{ fontSize: "10px", fontWeight: "600" }}>con/nái/năm</span></div>
+                </div>
               </div>
 
               {/* THANH TỶ LỆ CƠ CẤU */}
-              <div style={{ height: "7px", width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "4px", overflow: "hidden", display: "flex", margin: "6px 0 8px 0" }}>
+              <div style={{ height: "7px", width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "4px", overflow: "hidden", display: "flex", margin: "8px 0 8px 0" }}>
                 <div style={{ width: `${sowPct}%`, backgroundColor: "#ec4899" }} title="Nái" />
                 <div style={{ width: `${boarPct}%`, backgroundColor: "#3b82f6" }} title="Đực" />
                 <div style={{ width: `${pigletPct}%`, backgroundColor: "#10b981" }} title="Lợn con" />
@@ -1506,7 +1607,7 @@ export default function FarmApp() {
                         <div>
                           <div style={{ fontSize: "13px", fontWeight: "700", color: isOverdue ? "#b91c1c" : "#1e1b4b" }}>{task.title}</div>
                           <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                            Hạn: <strong>{task.due_date}</strong> {task.related_tag && `(Tai: ${task.related_tag})`} • <span style={{ color: "#7c3aed", fontWeight: "700" }}>{task.category === "VET" ? "Thú y" : task.category === "REPRO" ? "Sinh sản" : task.category === "WEAN" ? "Cai sữa" : "Chung"}</span>
+                            Hạn: <strong>{formatDateVN(task.due_date)}</strong> {task.related_tag && `(Tai: ${task.related_tag})`} • <span style={{ color: "#7c3aed", fontWeight: "700" }}>{task.category === "VET" ? "Thú y" : task.category === "REPRO" ? "Sinh sản" : task.category === "WEAN" ? "Cai sữa" : "Chung"}</span>
                           </div>
                         </div>
                         <div style={{ fontSize: "18px" }}>⚪</div>
@@ -1533,7 +1634,7 @@ export default function FarmApp() {
                       >
                         <div>
                           <div style={{ fontSize: "12px", fontWeight: "700", color: "#166534", textDecoration: "line-through" }}>{task.title}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>Đã hoàn thành (Hạn: {task.due_date})</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>Đã hoàn thành (Hạn: {formatDateVN(task.due_date)})</div>
                         </div>
                         <div style={{ fontSize: "16px" }}>🟢</div>
                       </div>
@@ -1650,7 +1751,7 @@ export default function FarmApp() {
                         <span style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "12px", fontWeight: "800", backgroundColor: "#dcfce7", color: "#15803d" }}>{lit.alive_born} con</span>
                       </div>
                       <div style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 8px 0" }}>
-                        Trạng thái: <strong>Đã cai sữa tách mẹ</strong> {lit.weaning_date && `(Ngày cai: ${lit.weaning_date})`}
+                        Trạng thái: <strong>Đã cai sữa tách mẹ</strong> {lit.weaning_date && `(Ngày cai: ${formatDateVN(lit.weaning_date)})`}
                       </div>
                       <button
                         onClick={() => setViewingLitter(lit)}
@@ -1877,7 +1978,7 @@ export default function FarmApp() {
                     if (log.created_at) {
                       const t = new Date(log.created_at);
                       if (!isNaN(t.getTime())) {
-                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " - " + t.toLocaleDateString("vi-VN");
+                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " - " + formatDateVN(log.created_at);
                       }
                     }
                     return (
@@ -1902,7 +2003,7 @@ export default function FarmApp() {
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
 
-      {/* MODAL XEM LỊCH SỬ SINH SẢN VÀ CẢNH BÁO LOẠI THẢI CỦA NÁI */}
+      {/* MODAL XEM LỊCH SỬ SINH SẢN & BỔ SUNG LỨA ĐẺ LỊCH SỬ CỦA NÁI */}
       {reproHistorySow && (() => {
         const analysis = getSowReproAnalysis(reproHistorySow.ear_tag);
         return (
@@ -1911,22 +2012,23 @@ export default function FarmApp() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#db2777" }}>
-                    📊 Lịch Sử Sinh Sản: {reproHistorySow.ear_tag}
+                    📊 Sinh Sản: Nái {reproHistorySow.ear_tag}
                   </h3>
                   <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {reproHistorySow.breed_id} • Trạng thái: {reproHistorySow.stage}</span>
                 </div>
-                <button onClick={() => setReproHistorySow(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+                <button onClick={() => { setReproHistorySow(null); setShowAddPastLitter(false); }} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
               </div>
 
               <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
-                {/* KHỐI CHỈ SỐ TỔNG QUAN */}
+                
+                {/* 3 CHỈ SỐ NĂNG SUẤT */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                   <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
-                    <div style={{ fontSize: "10px", color: "#db2777", fontWeight: "700" }}>SỐ LỨA ĐẺ</div>
+                    <div style={{ fontSize: "10px", color: "#db2777", fontWeight: "700" }}>TỔNG LỨA</div>
                     <div style={{ fontSize: "18px", fontWeight: "900", color: "#e11d48" }}>{analysis.totalLitters}</div>
                   </div>
                   <div style={{ background: "#eff6ff", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
-                    <div style={{ fontSize: "10px", color: "#2563eb", fontWeight: "700" }}>TỔNG CON ĐẺ</div>
+                    <div style={{ fontSize: "10px", color: "#2563eb", fontWeight: "700" }}>TỔNG CON</div>
                     <div style={{ fontSize: "18px", fontWeight: "900", color: "#1d4ed8" }}>{analysis.totalBorn}</div>
                   </div>
                   <div style={{ background: "#ecfdf5", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
@@ -1935,11 +2037,11 @@ export default function FarmApp() {
                   </div>
                 </div>
 
-                {/* KHỐI CẢNH BÁO LOẠI THẢI */}
+                {/* CẢNH BÁO LOẠI THẢI */}
                 {analysis.cullWarnings.length > 0 && (
                   <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "10px", borderRadius: "10px" }}>
                     <div style={{ fontSize: "12px", fontWeight: "900", color: "#b91c1c", marginBottom: "4px" }}>
-                      ⚠️ ĐÁNH GIÁ NĂNG SUẤT & ĐỀ XUẤT LOẠI THẢI:
+                      ⚠️ ĐÁNH GIÁ NĂNG SUẤT & LOẠI THẢI:
                     </div>
                     {analysis.cullWarnings.map((w, idx) => (
                       <div key={idx} style={{ fontSize: "11px", color: "#991b1b", marginBottom: "2px", fontWeight: "600" }}>{w}</div>
@@ -1947,28 +2049,59 @@ export default function FarmApp() {
                   </div>
                 )}
 
-                {/* BẢNG CHI TIẾT TỪNG LỨA ĐẺ */}
+                {/* BẢNG CHI TIẾT TỪNG LỨA & NÚT THÊM LỨA CŨ */}
                 <div>
-                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Chi tiết các lứa đẻ:</h4>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
+                    <h4 style={{ margin: 0, fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Các lứa đẻ ghi nhận:</h4>
+                    {user && (
+                      <button
+                        onClick={() => setShowAddPastLitter(!showAddPastLitter)}
+                        style={{ padding: "4px 8px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                      >
+                        {showAddPastLitter ? "Đóng nhập" : "+ Nhập lứa cũ (Nái rạ)"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* FORM NHẬP LỨA CŨ (NÁI RẠ / TRƯỚC KHI TẠO APP) */}
+                  {showAddPastLitter && (
+                    <form onSubmit={handleSavePastLitter} style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ fontSize: "11px", fontWeight: "800", color: "#047857" }}>Nhập dữ liệu lứa cũ của nái:</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                        <div>
+                          <label style={{ fontSize: "10px", fontWeight: "700" }}>Ngày đẻ:</label>
+                          <input type="date" required value={pastLitterForm.farrow_date} onChange={(e) => setPastLitterForm({ ...pastLitterForm, farrow_date: e.target.value })} style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: "10px", fontWeight: "700" }}>Số con sơ sinh sống:</label>
+                          <input type="number" required min="1" max="25" value={pastLitterForm.alive_born} onChange={(e) => setPastLitterForm({ ...pastLitterForm, alive_born: Number(e.target.value) })} style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                        </div>
+                      </div>
+                      <button type="submit" style={{ padding: "6px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "11px", cursor: "pointer", marginTop: "4px" }}>
+                        Lưu lứa đẻ lịch sử
+                      </button>
+                    </form>
+                  )}
+
                   {analysis.sowLitters.length === 0 ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có ghi nhận lứa đẻ nào.</div>
+                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic", padding: "6px 0" }}>Chưa có ghi nhận lứa đẻ nào. Bấm "+ Nhập lứa cũ" để bổ sung số lứa cho nái rạ!</div>
                   ) : (
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
                       <thead>
                         <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
                           <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Lứa</th>
                           <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Ngày đẻ</th>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Số con sống</th>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Cai sữa</th>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Sơ sinh sống</th>
+                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Ghi chú</th>
                         </tr>
                       </thead>
                       <tbody>
                         {analysis.sowLitters.map((l, idx) => (
                           <tr key={l.id}>
                             <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800" }}>Lứa {idx + 1}</td>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.farrow_date}</td>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{formatDateVN(l.farrow_date)}</td>
                             <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800", color: "#059669" }}>{l.alive_born} con</td>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.weaning_date || "Đang bú"}</td>
+                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.notes || (l.weaning_date ? "Đã cai sữa" : "Đang bú")}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1976,16 +2109,16 @@ export default function FarmApp() {
                   )}
                 </div>
 
-                {/* LỊCH SỬ PHỐI GIỐNG */}
+                {/* LỊCH SỬ PHỐI */}
                 <div>
-                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Nhật ký phối giống gần nhất:</h4>
+                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Lịch sử phối giống:</h4>
                   {analysis.sowInsems.length === 0 ? (
                     <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có dữ liệu phối giống.</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       {analysis.sowInsems.slice(0, 4).map((ins) => (
                         <div key={ins.id} style={{ fontSize: "11px", padding: "6px 8px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          Phối ngày <b>{ins.mating_date}</b> với đực <b>{ins.boar_ear_tag}</b> (Dự sinh: {ins.expected_farrow_date}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
+                          Phối ngày <b>{formatDateVN(ins.mating_date)}</b> với đực <b>{ins.boar_ear_tag}</b> (Dự sinh: {formatDateVN(ins.expected_farrow_date)}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
                         </div>
                       ))}
                     </div>
@@ -1994,7 +2127,7 @@ export default function FarmApp() {
               </div>
 
               <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
-                <button onClick={() => setReproHistorySow(null)} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                <button onClick={() => { setReproHistorySow(null); setShowAddPastLitter(false); }} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
                   Đóng
                 </button>
               </div>
@@ -2028,22 +2161,18 @@ export default function FarmApp() {
               </div>
 
               <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
-                {/* THẾ HỆ 1: CÁ THỂ HIỆN TẠI */}
                 <div style={{ background: "#ede9fe", padding: "10px", borderRadius: "10px", border: "1px solid #c4b5fd", textAlign: "center" }}>
                   <div style={{ fontSize: "10px", color: "#6d28d9", fontWeight: "800" }}>CÁ THỂ HIỆN TẠI</div>
                   <div style={{ fontSize: "16px", fontWeight: "900", color: "#4c1d95" }}>{pedigreePig.ear_tag}</div>
                   <div style={{ fontSize: "11px", color: "#5b21b6" }}>Giống: {pedigreePig.breed_id} | {pedigreePig.stage}</div>
                 </div>
 
-                {/* THẾ HỆ 2: BỐ & MẸ */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  {/* BỐ */}
                   <div style={{ background: "#eff6ff", padding: "8px", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
                     <div style={{ fontSize: "10px", color: "#1d4ed8", fontWeight: "800" }}>BỐ (ĐỰC)</div>
                     <div style={{ fontSize: "14px", fontWeight: "900", color: "#1e3a8a" }}>{pedigreePig.sire_ear_tag || "Chưa rõ"}</div>
                     <div style={{ fontSize: "10px", color: "#64748b" }}>{sire ? `Giống: ${sire.breed_id}` : "Nhập ngoài"}</div>
                   </div>
-                  {/* MẸ */}
                   <div style={{ background: "#fdf2f4", padding: "8px", borderRadius: "8px", border: "1px solid #fbcfe8" }}>
                     <div style={{ fontSize: "10px", color: "#be185d", fontWeight: "800" }}>MẸ (NÁI)</div>
                     <div style={{ fontSize: "14px", fontWeight: "900", color: "#831843" }}>{pedigreePig.dam_ear_tag || "Chưa rõ"}</div>
@@ -2051,7 +2180,6 @@ export default function FarmApp() {
                   </div>
                 </div>
 
-                {/* THẾ HỆ 3: ÔNG BÀ NỘI / NGOẠI */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", fontSize: "10px", textAlign: "center" }}>
                   <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                     <div style={{ color: "#64748b" }}>Ông nội</div>
@@ -2127,7 +2255,6 @@ export default function FarmApp() {
                 </select>
               </div>
 
-              {/* KHỐI HIỂN THỊ CẢNH BÁO CẬN HUYẾT TỨC THÌ */}
               {matingSowTag && selectedBoarTag && (() => {
                 const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
                 return (
@@ -2239,7 +2366,7 @@ export default function FarmApp() {
               {selectedTask.title}
             </div>
             <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>
-              Hạn: <strong>{selectedTask.due_date}</strong> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
+              Hạn: <strong>{formatDateVN(selectedTask.due_date)}</strong> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
             </div>
 
             {selectedTask.category === "WEAN" ? (
@@ -2381,7 +2508,7 @@ export default function FarmApp() {
                 <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>
                   Lô nái {viewingLitter.sow_ear_tag} ({viewingLitter.alive_born} con)
                 </h3>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Mã lô: {viewingLitter.litter_code} • Ngày đẻ: {viewingLitter.farrow_date}</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>Mã lô: {viewingLitter.litter_code} • Ngày đẻ: {formatDateVN(viewingLitter.farrow_date)}</span>
               </div>
               <button onClick={() => setViewingLitter(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
             </div>
