@@ -63,7 +63,7 @@ interface FarmConfig {
   pens: string[];
 }
 
-// CHUẨN HÓA NGÀY DD/MM/YYYY TOÀN BỘ APP
+// CHUẨN HÓA NGÀY DD/MM/YYYY TOÀN BỘ APP (KHÔNG EXPORT ĐỂ TRÁNH LỖI NEXT.JS BUILD)
 const formatDateVN = (dStr?: string) => {
   if (!dStr) return "—";
   const d = new Date(dStr);
@@ -161,14 +161,16 @@ export default function FarmApp() {
   // Modal Gia phả
   const [pedigreePig, setPedigreePig] = useState<Pig | null>(null);
 
-  // Modal Lịch sử Sinh sản & Sửa lứa đẻ cũ
+  // Modal Lịch sử Sinh sản & Form Thêm/Sửa lứa đẻ
   const [reproHistorySow, setReproHistorySow] = useState<Pig | null>(null);
-  const [showAddPastLitter, setShowAddPastLitter] = useState(false);
-  const [pastLitterForm, setPastLitterForm] = useState({
+  const [showLitterFormModal, setShowLitterFormModal] = useState(false);
+  const [editingLitterId, setEditingLitterId] = useState<string | null>(null);
+  const [litterFormData, setLitterFormData] = useState({
+    litter_code: "",
     farrow_date: new Date().toISOString().split("T")[0],
     alive_born: 10,
-    weaned_count: 9,
-    weaning_date: ""
+    boar_used: "",
+    notes: ""
   });
 
   // Modal Phối giống tránh cận huyết
@@ -186,7 +188,7 @@ export default function FarmApp() {
 
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (showAddPastLitter) { setShowAddPastLitter(false); return; }
+      if (showLitterFormModal) { setShowLitterFormModal(false); return; }
       if (reproHistorySow) { setReproHistorySow(null); return; }
       if (pedigreePig) { setPedigreePig(null); return; }
       if (showMatingModal) { setShowMatingModal(false); return; }
@@ -205,7 +207,7 @@ export default function FarmApp() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [showAddPastLitter, reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
+  }, [showLitterFormModal, reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -444,7 +446,6 @@ export default function FarmApp() {
     return tag.includes("-C") || tag.includes("CON");
   };
 
-  // PHÂN LOẠI CHUẨN XÁC
   const isMeat = (pig?: Pig) => {
     if (!pig || isIndividualPiglet(pig)) return false;
     const st = (pig.stage || "").toLowerCase();
@@ -464,26 +465,26 @@ export default function FarmApp() {
   };
 
   const checkSowState = useCallback((pig?: Pig) => {
-    if (!pig) return "CHOPHOI";
+    if (!pig) return "HAUBI";
     const tagUpper = (pig.ear_tag || "").trim().toUpperCase();
 
     if (localWeanedTags.includes(tagUpper)) return "CHOPHOI";
 
     const st = (pig.stage || "").toLowerCase();
+    if (st.includes("hậu bị") || st.includes("hau bi")) {
+      return "HAUBI";
+    }
     if (st.includes("chờ phối") || st.includes("cho phoi") || st.includes("cai sữa") || st.includes("cai sua") || st.includes("đã cai") || st.includes("da cai")) {
       return "CHOPHOI";
     }
     if (st.includes("nuôi con") || st.includes("nuoi con") || st.includes("đẻ") || st.includes("de")) {
       return "NUOICON";
     }
-    if (st.includes("hậu bị") || st.includes("hau bi")) {
-      return "HAUBI";
-    }
     if (st.includes("chửa") || st.includes("chua")) {
       return "CHUA";
     }
 
-    return "CHOPHOI";
+    return "HAUBI";
   }, [localWeanedTags]);
 
   const safePigs = Array.isArray(pigs) ? pigs : [];
@@ -526,46 +527,6 @@ export default function FarmApp() {
   const totalPigletsCount = suckingPigletsCount + weanedPigletsCount;
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPigletsCount;
 
-  // TÍNH CHỈ SỐ PSY (PIGLETS / SOW / YEAR) TỰ ĐỘNG
-  // MỚI: CHỈ TÍNH TRÊN NÁI SINH SẢN THỰC TẾ (LOẠI BỎ HẬU BỊ CHƯA PHỐI)
-  const activeProductiveSows = useMemo(() => {
-    return sowList.filter(sow => {
-      const tagUpper = sow.ear_tag.trim().toUpperCase();
-      const st = (sow.stage || "").toLowerCase();
-
-      // 1. Nái đang chửa, nuôi con, hoặc chờ phối/cai sữa -> Chắc chắn là nái sinh sản
-      if (st.includes("chửa") || st.includes("chua") || 
-          st.includes("nuôi con") || st.includes("nuoi con") || 
-          st.includes("chờ phối") || st.includes("cho phoi") || 
-          st.includes("cai sữa") || st.includes("cai sua")) {
-        return true;
-      }
-
-      // 2. Nếu đang gắn mác "Hậu bị", kiểm tra xem đã từng phối giống hoặc từng đẻ lứa nào chưa
-      const hasInsem = inseminations.some(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
-      const hasLitter = litters.some(lit => (lit.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
-
-      // Đã từng phối hoặc từng đẻ thì tính là nái sinh sản, còn hậu bị "tinh khôi" chưa phối thì BỎ QUA
-      return hasInsem || hasLitter;
-    });
-  }, [sowList, inseminations, litters]);
-
-  const psyScore = useMemo(() => {
-    const activeCount = activeProductiveSows.length;
-    if (activeCount === 0) return "0.0";
-
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    // Lấy các lứa đẻ trong vòng 365 ngày qua
-    const yearLitters = litters.filter(l => l.farrow_date && new Date(l.farrow_date) >= oneYearAgo);
-    
-    // Tổng số con cai sữa thực tế (hoặc sơ sinh sống của lứa trong năm)
-    const totalWeanedInYear = yearLitters.reduce((sum, l) => sum + Number(l.alive_born || 0), 0);
-
-    return (totalWeanedInYear / activeCount).toFixed(1);
-  }, [litters, activeProductiveSows]);
-
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
     const t = new Date(dStr).getTime();
@@ -581,7 +542,7 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // TÍNH TIẾN TRÌNH THAI KỲ CHO NÁI CHỬA (ĐỒNG HỒ 114 NGÀY)
+  // ĐỒNG HỒ ĐẾM THAI KỲ 114 NGÀY TRỰC QUAN
   const getGestationProgress = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
     const latestInsem = inseminations.find(ins => ins.sow_ear_tag.trim().toUpperCase() === sTag);
@@ -614,7 +575,8 @@ export default function FarmApp() {
       stageTitle,
       badgeColor,
       matingDate: latestInsem.mating_date,
-      expectedFarrowDate: latestInsem.expected_farrow_date
+      expectedFarrowDate: latestInsem.expected_farrow_date,
+      boarTag: latestInsem.boar_ear_tag || "—"
     };
   }, [inseminations]);
 
@@ -661,8 +623,13 @@ export default function FarmApp() {
   // PHÂN TÍCH NĂNG SUẤT NÁI & CẢNH BÁO LOẠI THẢI
   const getSowReproAnalysis = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
-    const sowLitters = (Array.isArray(litters) ? litters : []).filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === sTag);
-    const sowInsems = (Array.isArray(inseminations) ? inseminations : []).filter(i => (i.sow_ear_tag || "").trim().toUpperCase() === sTag);
+    const sowLitters = (Array.isArray(litters) ? litters : [])
+      .filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === sTag)
+      .sort((a, b) => new Date(a.farrow_date).getTime() - new Date(b.farrow_date).getTime());
+
+    const sowInsems = (Array.isArray(inseminations) ? inseminations : [])
+      .filter(i => (i.sow_ear_tag || "").trim().toUpperCase() === sTag)
+      .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime());
 
     const totalLitters = sowLitters.length;
     const totalBorn = sowLitters.reduce((acc, l) => acc + Number(l.alive_born || 0), 0);
@@ -691,34 +658,99 @@ export default function FarmApp() {
     return { totalLitters, totalBorn, avgBorn, consecutiveFails, cullWarnings, sowLitters, sowInsems };
   }, [litters, inseminations]);
 
-  // HÀM LƯU BỔ SUNG LỨA ĐẺ CŨ CHO NÁI RẠ HOẶC TRƯỚC KHI DÙNG APP
-  const handleSavePastLitter = async (e: React.FormEvent) => {
+  // MỞ MODAL THÊM LỨA CŨ
+  const openAddLitterModal = () => {
+    setEditingLitterId(null);
+    setLitterFormData({
+      litter_code: `L${(getSowReproAnalysis(reproHistorySow?.ear_tag || "").totalLitters + 1)}`,
+      farrow_date: new Date().toISOString().split("T")[0],
+      alive_born: 10,
+      boar_used: "",
+      notes: ""
+    });
+    setShowLitterFormModal(true);
+  };
+
+  // MỞ MODAL SỬA LỨA ĐÃ CÓ
+  const openEditLitterModal = (litter: FarrowingLitter, litterIndex: number) => {
+    setEditingLitterId(litter.id);
+    // Tách thông tin đực phối từ ghi chú nếu có dạng [Đực: XXX]
+    let boar = "";
+    const match = (litter.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
+    if (match) boar = match[1].trim();
+
+    setLitterFormData({
+      litter_code: litter.litter_code || `L${litterIndex + 1}`,
+      farrow_date: litter.farrow_date || new Date().toISOString().split("T")[0],
+      alive_born: Number(litter.alive_born || 0),
+      boar_used: boar,
+      notes: (litter.notes || "").replace(/\[Đực:\s*[^\]]+\]/i, "").trim()
+    });
+    setShowLitterFormModal(true);
+  };
+
+  // LƯU FORM LỨA ĐẺ (THÊM MỚI HOẶC SỬA)
+  const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reproHistorySow || !user) return;
 
     const sowTag = reproHistorySow.ear_tag.trim().toUpperCase();
-    const newLitterCode = `L-${sowTag}-${Date.now().toString().slice(-4)}`;
-
-    const payload = {
-      litter_code: newLitterCode,
-      sow_ear_tag: sowTag,
-      farrow_date: pastLitterForm.farrow_date,
-      alive_born: Number(pastLitterForm.alive_born || 0),
-      weaning_date: pastLitterForm.weaning_date || pastLitterForm.farrow_date,
-      notes: "Nhập bổ sung lịch sử nái rạ",
-      status: "Đã cai sữa"
-    };
+    const boarNote = litterFormData.boar_used.trim() ? `[Đực: ${litterFormData.boar_used.trim().toUpperCase()}]` : "";
+    const cleanNotes = `${boarNote} ${litterFormData.notes.trim()}`.trim();
 
     try {
-      const { error } = await supabase.from("farrowings").insert([payload]);
-      if (error) throw error;
+      if (editingLitterId) {
+        // CẬP NHẬT LỨA CŨ
+        const payload = {
+          litter_code: litterFormData.litter_code.trim().toUpperCase(),
+          farrow_date: litterFormData.farrow_date,
+          alive_born: Number(litterFormData.alive_born || 0),
+          notes: cleanNotes || "Đã cập nhật"
+        };
+        const { error } = await supabase.from("farrowings").update(payload).eq("id", editingLitterId);
+        if (error) throw error;
 
-      await logAction("ADD_PAST_LITTER", sowTag, `Bổ sung lứa cũ cho nái ${sowTag}: Đẻ ${pastLitterForm.alive_born} con ngày ${formatDateVN(pastLitterForm.farrow_date)}`);
-      alert(`Đã thêm thành công lứa đẻ lịch sử cho nái ${sowTag}!`);
-      setShowAddPastLitter(false);
+        await logAction("UPDATE_LITTER", sowTag, `Sửa thông tin lứa ${litterFormData.litter_code} nái ${sowTag}: Đẻ ${litterFormData.alive_born} con`);
+        alert("Đã cập nhật lứa đẻ thành công!");
+      } else {
+        // THÊM LỨA MỚI (NÁI RẠ / TRƯỚC KHI DÙNG APP)
+        const payload = {
+          litter_code: litterFormData.litter_code.trim().toUpperCase() || `L-${sowTag}-${Date.now().toString().slice(-4)}`,
+          sow_ear_tag: sowTag,
+          farrow_date: litterFormData.farrow_date,
+          alive_born: Number(litterFormData.alive_born || 0),
+          weaning_date: litterFormData.farrow_date,
+          notes: cleanNotes || "Nhập bổ sung nái rạ",
+          status: "Đã cai sữa"
+        };
+        const { error } = await supabase.from("farrowings").insert([payload]);
+        if (error) throw error;
+
+        await logAction("ADD_PAST_LITTER", sowTag, `Bổ sung lứa ${payload.litter_code} cho nái ${sowTag} (Đẻ: ${payload.alive_born} con, Đực: ${litterFormData.boar_used || "—"})`);
+        alert(`Đã thêm thành công lứa ${payload.litter_code} cho nái ${sowTag}!`);
+      }
+
+      setShowLitterFormModal(false);
       fetchData();
     } catch (err: any) {
-      alert("Lỗi lưu lứa cũ: " + err.message);
+      alert("Lỗi lưu lứa đẻ: " + err.message);
+    }
+  };
+
+  // XÓA LỨA ĐẺ NHẬP NHẦM
+  const handleDeleteLitter = async (litterId: string, litterCode: string) => {
+    if (!user) return alert("Vui lòng đăng nhập để thao tác!");
+    if (!confirm(`Xác nhận xóa bỏ hoàn toàn lứa đẻ "${litterCode}"? Hành động này không thể hoàn tác!`)) return;
+
+    try {
+      const { error } = await supabase.from("farrowings").delete().eq("id", litterId);
+      if (error) throw error;
+
+      await logAction("DELETE_LITTER", reproHistorySow?.ear_tag || "LITTER", `Xóa lứa đẻ ${litterCode}`);
+      alert(`Đã xóa thành công lứa đẻ ${litterCode}!`);
+      fetchData();
+    } catch (err: any) {
+      alert("Lỗi xóa lứa: " + err.message);
     }
   };
 
@@ -729,7 +761,7 @@ export default function FarmApp() {
 
     const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
     if (check.risk) {
-      const confirmForce = confirm(`⚠️ CẢNH BÁO NGUY HIỂM:\n${check.reason}\n\nPhối giống cận huyết sẽ làm suy thoái đàn, đẻ non và dị tật! Bạn có chắc chắn muốn bỏ qua cảnh báo để phối?`);
+      const confirmForce = confirm(`⚠️ CẢNH BÁO NGUY HIỂM:\n${check.reason}\n\nPhối giống cận huyết sẽ làm suy thoái giống! Bạn có chắc chắn muốn bỏ qua để phối?`);
       if (!confirmForce) return;
     }
 
@@ -754,7 +786,6 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM CAI SỮA DỨT ĐIỂM - LƯU THẲNG TASK HOÀN THÀNH
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
     if (!user) return alert("Vui lòng đăng nhập để thực hiện cai sữa!");
     if (!confirm(`Xác nhận cai sữa cho đàn con của nái ${sowTag}? Nái mẹ sẽ chuyển sang "Chờ phối" và đàn con (${litterCount || ""} con) chuyển sang "Lợn con cai sữa".`)) return;
@@ -768,7 +799,6 @@ export default function FarmApp() {
       try { localStorage.setItem("farm_local_weaned_tags", JSON.stringify(newWeaned)); } catch (e) {}
     }
 
-    // 1. Cập nhật state nội bộ
     setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === tagUpper ? { ...p, stage: "Chờ phối" } : p));
     setLitters(prev => prev.map(l => (l.id === litterId || l.sow_ear_tag.trim().toUpperCase() === tagUpper) ? { ...l, notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr } : l));
 
@@ -779,7 +809,6 @@ export default function FarmApp() {
       try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
     }
 
-    // 2. Ghi nhận chính thức vào Database
     try {
       await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", sowTag);
       let q = supabase.from("farrowings").update({ notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr });
@@ -787,7 +816,6 @@ export default function FarmApp() {
       else q = q.eq("sow_ear_tag", sowTag);
       await q;
 
-      // Ghi task cai sữa đã xong vào farm_tasks để mục "Đã làm xong" trên web và Telegram hiển thị
       await supabase.from("farm_tasks").insert([{
         title: `Cai sữa đàn con nái ${sowTag} (${litterCount || 0} con)`,
         due_date: todayStr,
@@ -801,7 +829,7 @@ export default function FarmApp() {
     }
 
     await logAction("WEAN_LITTER", sowTag, `Cai sữa đàn con nái ${sowTag} (${litterCount || ""} con) -> Nái chuyển Chờ phối`);
-    alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con (${litterCount || ""} con): Đã chuyển sang nhóm "Lợn con cai sữa".\n- Đã lưu vào danh sách công việc hoàn thành!`);
+    alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con (${litterCount || ""} con): Đã chuyển sang nhóm "Lợn con cai sữa".`);
     fetchData();
   };
 
@@ -858,11 +886,10 @@ export default function FarmApp() {
     }
   };
 
-  // KHỬ TRÙNG LẶP TUYỆT ĐỐI TOÀN BỘ CÔNG VIỆC TRÊN MÀN HÌNH
+  // KHỬ TRÙNG LẶP TOÀN BỘ TASK HIỂN THỊ
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
-    // 1. Quét công việc tự động từ sinh sản
     (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
       const tagUpper = ins.sow_ear_tag.trim().toUpperCase();
@@ -895,7 +922,6 @@ export default function FarmApp() {
       }
     });
 
-    // 2. Quét công việc cai sữa tự động
     suckingLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
       const tagUpper = lit.sow_ear_tag.trim().toUpperCase();
@@ -917,13 +943,10 @@ export default function FarmApp() {
       }
     });
 
-    // 3. Quét công việc từ Database (farm_tasks) & KHỬ TRÙNG LẶP THEO TIÊU ĐỀ + THẺ TAI
     (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
       if (!t?.title) return;
       const cleanTitle = t.title.trim();
       const tag = (t.related_tag || "").trim().toUpperCase();
-      
-      // Khóa phân biệt: Cùng tiêu đề và cùng thẻ tai thì chỉ giữ 1 bản ghi duy nhất!
       const uniqueKey = `${cleanTitle}-${tag}`;
 
       let cat = t.category;
@@ -944,7 +967,6 @@ export default function FarmApp() {
         cat = "VET";
       }
 
-      // Nếu đã có task này rồi, ưu tiên giữ trạng thái đã hoàn thành (is_completed = true)
       if (taskMap.has(uniqueKey)) {
         const existing = taskMap.get(uniqueKey)!;
         if (!existing.is_completed && t.is_completed) {
@@ -997,7 +1019,6 @@ export default function FarmApp() {
     }
 
     try {
-      // Kiểm tra xem trong DB đã có task này chưa trước khi thao tác
       const { data: existing } = await supabase
         .from("farm_tasks")
         .select("id")
@@ -1005,10 +1026,8 @@ export default function FarmApp() {
         .eq("related_tag", selectedTask.related_tag || "");
 
       if (existing && existing.length > 0) {
-        // Đã có thì chỉ UPDATE is_completed = true, KHÔNG INSERT THÊM DÒNG MỚI
         await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", existing[0].id);
       } else {
-        // Chưa có thì mới tạo mới 1 lần duy nhất
         await supabase.from("farm_tasks").insert([{
           title: selectedTask.title,
           due_date: selectedTask.due_date,
@@ -1110,13 +1129,11 @@ export default function FarmApp() {
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const yy = String(today.getFullYear()).slice(-2);
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
-
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
     const masterRows: { stt: number; type: string; details: string; count: string; operator: string }[] = [];
     let counter = 1;
 
-    // 1. Đực giống
     const boarByBreed: Record<string, number> = {};
     boarList.forEach(b => {
       const br = b.breed_id?.trim() || "Chưa rõ";
@@ -1134,7 +1151,6 @@ export default function FarmApp() {
       }
     });
 
-    // 2. Nái sinh sản
     const sowByBreedAndStage: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
       const br = s.breed_id?.trim() || "Chưa rõ";
@@ -1196,22 +1212,6 @@ export default function FarmApp() {
       }
     });
 
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - reportDays);
-    const recentCompletedTasks = completedTasks.filter(t => {
-      if (!t.due_date) return false;
-      return new Date(t.due_date) >= pastDate;
-    });
-    recentCompletedTasks.forEach(t => {
-      masterRows.push({
-        stt: counter++,
-        type: `Kỹ thuật / Thú y`,
-        details: `Đã làm: ${t.title}`,
-        count: `1 nhiệm vụ`,
-        operator: activeOperator
-      });
-    });
-
     let contentHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
@@ -1228,36 +1228,31 @@ export default function FarmApp() {
       </head>
       <body>
         <h2>TRẠI LỢN NÀ ROÁC</h2>
-        <h3>BÁO CÁO TỔNG HỢP CƠ CẤU ĐÀN & VẬN HÀNH KỸ THUẬT (${reportDays} NGÀY QUA)</h3>
+        <h3>BÁO CÁO TỔNG HỢP CƠ CẤU ĐÀN (${reportDays} NGÀY QUA)</h3>
         <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người thực hiện: ${activeOperator}</div>
-
-        <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực giống: ${formatNum(boarList.length)} con | Tổng lợn con: ${formatNum(totalPigletsCount)} con [Theo mẹ: ${formatNum(suckingPigletsCount)}, Đã cai sữa: ${formatNum(weanedPigletsCount)}] | Lợn thịt: ${formatNum(meatList.length)} con | Chỉ số PSY trại: <b>${psyScore} con/nái/năm</b>).</p>
-
+        <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực: ${formatNum(boarList.length)} con | Lợn con: ${formatNum(totalPigletsCount)} con | Lợn thịt: ${formatNum(meatList.length)} con).</p>
         <table>
           <thead>
             <tr>
               <th style='width: 40px;'>STT</th>
-              <th style='width: 180px;'>Phân Loại & Giống Lợn</th>
+              <th style='width: 180px;'>Phân Loại & Giống</th>
               <th>Chi Tiết Số Lượng & Trạng Thái</th>
               <th style='width: 100px;'>Số Lượng</th>
               <th style='width: 130px;'>Người Thực Hiện</th>
             </tr>
           </thead>
           <tbody>
-            ${masterRows.length === 0 ? `<tr><td colspan='5' style='text-align: center;'>Chưa có dữ liệu</td></tr>` :
-              masterRows.map(r => `
-                <tr>
-                  <td style='text-align: center;'>${r.stt}</td>
-                  <td><b>${r.type}</b></td>
-                  <td>${r.details}</td>
-                  <td style='text-align: center;'><b>${r.count}</b></td>
-                  <td style='text-align: center;'><b>${r.operator}</b></td>
-                </tr>
-              `).join("")
-            }
+            ${masterRows.map(r => `
+              <tr>
+                <td style='text-align: center;'>${r.stt}</td>
+                <td><b>${r.type}</b></td>
+                <td>${r.details}</td>
+                <td style='text-align: center;'><b>${r.count}</b></td>
+                <td style='text-align: center;'><b>${r.operator}</b></td>
+              </tr>
+            `).join("")}
           </tbody>
         </table>
-
         <br/>
         <table style='border: none; margin-top: 30px;'>
           <tr style='border: none;'>
@@ -1284,7 +1279,7 @@ export default function FarmApp() {
     URL.revokeObjectURL(url);
   };
 
-  // RENDER THẺ CÁ THỂ: CÓ ĐỒNG HỒ THAI KỲ 114 NGÀY & NÚT SINH SẢN
+  // RENDER THẺ CÁ THỂ
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
@@ -1310,7 +1305,7 @@ export default function FarmApp() {
             <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
             {hasCullAlert && (
               <span style={{ fontSize: "10px", background: "#fef2f2", color: "#b91c1c", padding: "2px 6px", borderRadius: "8px", fontWeight: "800", border: "1px solid #fecaca" }}>
-                ⚠️ Loại thải
+                ⚠️ Cảnh báo
               </span>
             )}
           </div>
@@ -1361,7 +1356,7 @@ export default function FarmApp() {
           )}
         </div>
 
-        {/* ĐỒNG HỒ ĐẾM THAI KỲ 114 NGÀY TRỰC QUAN */}
+        {/* ĐỒNG HỒ 114 NGÀY */}
         {gestation && (
           <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "4px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>
@@ -1371,8 +1366,9 @@ export default function FarmApp() {
             <div style={{ height: "6px", width: "100%", background: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${gestation.pct}%`, background: gestation.badgeColor, transition: "width 0.3s" }} />
             </div>
-            <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px", fontStyle: "italic" }}>
-              Giai đoạn: <b>{gestation.stageTitle}</b>
+            <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px", display: "flex", justifyContent: "space-between" }}>
+              <span>Giai đoạn: <b>{gestation.stageTitle}</b></span>
+              <span>Đực phối: <b>{gestation.boarTag}</b></span>
             </div>
           </div>
         )}
@@ -1500,7 +1496,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 1. TỔNG QUAN SINH ĐỘNG (CÓ CHỈ SỐ PSY TRẠI) */}
+        {/* 1. TỔNG QUAN (ĐÃ LOẠI BỎ PSY, HIỂN THỊ ĐỦ HẬU BỊ) */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             
@@ -1521,12 +1517,14 @@ export default function FarmApp() {
                     {grandTotal} <span style={{ fontSize: "14px", fontWeight: "600", color: "#c7d2fe" }}>cá thể</span>
                   </div>
                 </div>
-                
-                {/* CHỈ SỐ PSY TRỰC QUAN */}
-                <div style={{ background: "rgba(255,255,255,0.12)", padding: "6px 12px", borderRadius: "10px", textAlign: "right" }}>
-                  <div style={{ fontSize: "10px", color: "#cbd5e1" }}>CHỈ SỐ PSY TRẠI</div>
-                  <div style={{ fontSize: "16px", fontWeight: "900", color: "#34d399" }}>{psyScore} <span style={{ fontSize: "10px", fontWeight: "600" }}>con/nái/năm</span></div>
-                </div>
+                {user && (
+                  <button
+                    onClick={() => setShowAddPigModal(true)}
+                    style={{ padding: "8px 14px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
+                  >
+                    + Thêm Lợn
+                  </button>
+                )}
               </div>
 
               {/* THANH TỶ LỆ CƠ CẤU */}
@@ -1588,7 +1586,7 @@ export default function FarmApp() {
               </button>
             </div>
 
-            {/* BẢNG 4 Ô CƠ CẤU */}
+            {/* BẢNG 4 Ô CƠ CẤU: ĐÃ BỔ SUNG ĐẦY ĐỦ NÁI HẬU BỊ */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
               <div onClick={() => { navigateTo("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer", border: "1px solid #fce7f3" }}>
                 <div style={{ fontSize: "12px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
@@ -1597,6 +1595,7 @@ export default function FarmApp() {
                   <div>• Chửa: <strong>{sowList.filter(p => checkSowState(p) === "CHUA").length}</strong> con</div>
                   <div>• Nuôi con: <strong>{sowList.filter(p => checkSowState(p) === "NUOICON").length}</strong> con</div>
                   <div>• Chờ phối: <strong style={{ color: "#2563eb" }}>{sowList.filter(p => checkSowState(p) === "CHOPHOI").length}</strong> con</div>
+                  <div>• Hậu bị: <strong style={{ color: "#7c3aed" }}>{sowList.filter(p => checkSowState(p) === "HAUBI").length}</strong> con</div>
                 </div>
               </div>
 
@@ -1704,12 +1703,28 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* 2. QUẢN LÝ NÁI */}
+        {/* 2. QUẢN LÝ NÁI (BỔ SUNG TAB HẬU BỊ) */}
         {currentMenu === "SOW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto" }}>
-              {[{ id: "ALL", label: `Tất cả (${sowList.length})` }, { id: "CHUA", label: `Chửa` }, { id: "NUOICON", label: `Nuôi con` }, { id: "CHOPHOI", label: `Chờ phối` }].map((tab) => (
-                <button key={tab.id} onClick={() => setSubFilter(tab.id)} style={{ padding: "8px 12px", borderRadius: "20px", border: "none", fontSize: "12px", fontWeight: "700", cursor: "pointer", backgroundColor: subFilter === tab.id ? "#db2777" : "#fff", color: subFilter === tab.id ? "#fff" : "#475569" }}>{tab.label}</button>
+              {[
+                { id: "ALL", label: `Tất cả (${sowList.length})` },
+                { id: "CHUA", label: `Chửa (${sowList.filter(p => checkSowState(p) === "CHUA").length})` },
+                { id: "NUOICON", label: `Nuôi con (${sowList.filter(p => checkSowState(p) === "NUOICON").length})` },
+                { id: "CHOPHOI", label: `Chờ phối (${sowList.filter(p => checkSowState(p) === "CHOPHOI").length})` },
+                { id: "HAUBI", label: `Hậu bị (${sowList.filter(p => checkSowState(p) === "HAUBI").length})` }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSubFilter(tab.id)}
+                  style={{
+                    padding: "8px 12px", borderRadius: "20px", border: "none", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+                    backgroundColor: subFilter === tab.id ? "#db2777" : "#fff",
+                    color: subFilter === tab.id ? "#fff" : "#475569"
+                  }}
+                >
+                  {tab.label}
+                </button>
               ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -2060,12 +2075,12 @@ export default function FarmApp() {
         <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
       </footer>
 
-      {/* MODAL XEM LỊCH SỬ SINH SẢN & BỔ SUNG LỨA ĐẺ LỊCH SỬ CỦA NÁI */}
+      {/* MODAL XEM CHI TIẾT SINH SẢN - CÓ CỘT ĐỰC PHỐI, LỨA THỨ MẤY & NÚT SỬA/XÓA TỪNG LỨA */}
       {reproHistorySow && (() => {
         const analysis = getSowReproAnalysis(reproHistorySow.ear_tag);
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: "18px" }}>
+            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "460px", maxHeight: "88vh", display: "flex", flexDirection: "column", padding: "18px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#db2777" }}>
@@ -2073,7 +2088,7 @@ export default function FarmApp() {
                   </h3>
                   <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {reproHistorySow.breed_id} • Trạng thái: {reproHistorySow.stage}</span>
                 </div>
-                <button onClick={() => { setReproHistorySow(null); setShowAddPastLitter(false); }} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+                <button onClick={() => { setReproHistorySow(null); setShowLitterFormModal(false); }} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
               </div>
 
               <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -2106,76 +2121,84 @@ export default function FarmApp() {
                   </div>
                 )}
 
-                {/* BẢNG CHI TIẾT TỪNG LỨA & NÚT THÊM LỨA CŨ */}
+                {/* DANH SÁCH CHI TIẾT TỪNG LỨA ĐẺ */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
-                    <h4 style={{ margin: 0, fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Các lứa đẻ ghi nhận:</h4>
+                    <h4 style={{ margin: 0, fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Các lứa đẻ chi tiết ({analysis.sowLitters.length}):</h4>
                     {user && (
                       <button
-                        onClick={() => setShowAddPastLitter(!showAddPastLitter)}
-                        style={{ padding: "4px 8px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                        onClick={openAddLitterModal}
+                        style={{ padding: "5px 10px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
                       >
-                        {showAddPastLitter ? "Đóng nhập" : "+ Nhập lứa cũ (Nái rạ)"}
+                        + Bổ sung lứa đẻ
                       </button>
                     )}
                   </div>
 
-                  {/* FORM NHẬP LỨA CŨ (NÁI RẠ / TRƯỚC KHI TẠO APP) */}
-                  {showAddPastLitter && (
-                    <form onSubmit={handleSavePastLitter} style={{ background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                      <div style={{ fontSize: "11px", fontWeight: "800", color: "#047857" }}>Nhập dữ liệu lứa cũ của nái:</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                        <div>
-                          <label style={{ fontSize: "10px", fontWeight: "700" }}>Ngày đẻ:</label>
-                          <input type="date" required value={pastLitterForm.farrow_date} onChange={(e) => setPastLitterForm({ ...pastLitterForm, farrow_date: e.target.value })} style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: "10px", fontWeight: "700" }}>Số con sơ sinh sống:</label>
-                          <input type="number" required min="1" max="25" value={pastLitterForm.alive_born} onChange={(e) => setPastLitterForm({ ...pastLitterForm, alive_born: Number(e.target.value) })} style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
-                        </div>
-                      </div>
-                      <button type="submit" style={{ padding: "6px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "11px", cursor: "pointer", marginTop: "4px" }}>
-                        Lưu lứa đẻ lịch sử
-                      </button>
-                    </form>
-                  )}
-
                   {analysis.sowLitters.length === 0 ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic", padding: "6px 0" }}>Chưa có ghi nhận lứa đẻ nào. Bấm "+ Nhập lứa cũ" để bổ sung số lứa cho nái rạ!</div>
+                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic", padding: "10px", background: "#f8fafc", borderRadius: "8px", textAlign: "center" }}>
+                      Chưa có ghi nhận lứa đẻ nào. Bấm "+ Bổ sung lứa đẻ" để nhập các lứa cũ của nái rạ!
+                    </div>
                   ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                      <thead>
-                        <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Lứa</th>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Ngày đẻ</th>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Sơ sinh sống</th>
-                          <th style={{ padding: "6px", border: "1px solid #cbd5e1" }}>Ghi chú</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analysis.sowLitters.map((l, idx) => (
-                          <tr key={l.id}>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800" }}>Lứa {idx + 1}</td>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{formatDateVN(l.farrow_date)}</td>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1", fontWeight: "800", color: "#059669" }}>{l.alive_born} con</td>
-                            <td style={{ padding: "6px", border: "1px solid #cbd5e1" }}>{l.notes || (l.weaning_date ? "Đã cai sữa" : "Đang bú")}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {analysis.sowLitters.map((l, idx) => {
+                        // Tách thông tin đực phối từ ghi chú
+                        let boarUsed = "—";
+                        const match = (l.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
+                        if (match) boarUsed = match[1].trim();
+
+                        const displayNotes = (l.notes || "").replace(/\[Đực:\s*[^\]]+\]/i, "").trim() || (l.weaning_date ? "Đã cai sữa" : "Đang nuôi con");
+
+                        return (
+                          <div key={l.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "10px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                              <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e1b4b" }}>
+                                🐽 {l.litter_code || `Lứa ${idx + 1}`} (Lứa thứ {idx + 1})
+                              </span>
+                              <span style={{ fontSize: "13px", fontWeight: "900", color: "#059669" }}>
+                                {l.alive_born} con
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.5" }}>
+                              <div>• Ngày đẻ: <b>{formatDateVN(l.farrow_date)}</b></div>
+                              <div>• Phối đực: <b style={{ color: "#2563eb" }}>{boarUsed}</b></div>
+                              <div>• Tình trạng/Ghi chú: {displayNotes}</div>
+                            </div>
+
+                            {user && (
+                              <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px", borderTop: "1px dashed #e2e8f0", paddingTop: "6px" }}>
+                                <button
+                                  onClick={() => openEditLitterModal(l, idx)}
+                                  style={{ padding: "3px 8px", borderRadius: "6px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                                >
+                                  ✎ Sửa lứa này
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteLitter(l.id, l.litter_code || `Lứa ${idx + 1}`)}
+                                  style={{ padding: "3px 8px", borderRadius: "6px", background: "#fef2f2", color: "#ef4444", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                                >
+                                  ✕ Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
 
-                {/* LỊCH SỬ PHỐI */}
+                {/* LỊCH SỬ PHỐI GIỐNG GẦN ĐÂY */}
                 <div>
-                  <h4 style={{ margin: "6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Lịch sử phối giống:</h4>
+                  <h4 style={{ margin: "8px 0 6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Lịch sử phối giống:</h4>
                   {analysis.sowInsems.length === 0 ? (
                     <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có dữ liệu phối giống.</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       {analysis.sowInsems.slice(0, 4).map((ins) => (
                         <div key={ins.id} style={{ fontSize: "11px", padding: "6px 8px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          Phối ngày <b>{formatDateVN(ins.mating_date)}</b> với đực <b>{ins.boar_ear_tag}</b> (Dự sinh: {formatDateVN(ins.expected_farrow_date)}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
+                          Phối ngày <b>{formatDateVN(ins.mating_date)}</b> với đực <b style={{ color: "#2563eb" }}>{ins.boar_ear_tag}</b> (Dự sinh: {formatDateVN(ins.expected_farrow_date)}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
                         </div>
                       ))}
                     </div>
@@ -2184,7 +2207,7 @@ export default function FarmApp() {
               </div>
 
               <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
-                <button onClick={() => { setReproHistorySow(null); setShowAddPastLitter(false); }} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                <button onClick={() => { setReproHistorySow(null); setShowLitterFormModal(false); }} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
                   Đóng
                 </button>
               </div>
@@ -2192,6 +2215,95 @@ export default function FarmApp() {
           </div>
         );
       })()}
+
+      {/* MODAL THÊM / SỬA LỨA ĐẺ (CHO PHÉP SỬA CHI TIẾT SỐ LỨA, ĐỰC PHỐI, SỐ CON) */}
+      {showLitterFormModal && reproHistorySow && user && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#059669" }}>
+              {editingLitterId ? "✎ Chỉnh Sửa Lứa Đẻ" : "+ Bổ Sung Lứa Đẻ Cũ"}
+            </h3>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+              Nái: <b>{reproHistorySow.ear_tag}</b> ({reproHistorySow.breed_id})
+            </div>
+
+            <form onSubmit={handleSaveLitter} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Mã / Tên lứa (*):</label>
+                  <input
+                    required
+                    placeholder="VD: L1, Lứa 1..."
+                    value={litterFormData.litter_code}
+                    onChange={(e) => setLitterFormData({ ...litterFormData, litter_code: e.target.value })}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Đực phối giống:</label>
+                  <input
+                    placeholder="VD: D-01, MC-02..."
+                    value={litterFormData.boar_used}
+                    onChange={(e) => setLitterFormData({ ...litterFormData, boar_used: e.target.value })}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Ngày đẻ (*):</label>
+                  <input
+                    type="date"
+                    required
+                    value={litterFormData.farrow_date}
+                    onChange={(e) => setLitterFormData({ ...litterFormData, farrow_date: e.target.value })}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Số con sơ sinh sống:</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="30"
+                    value={litterFormData.alive_born}
+                    onChange={(e) => setLitterFormData({ ...litterFormData, alive_born: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "700" }}>Ghi chú thêm:</label>
+                <input
+                  placeholder="Ghi chú thể trạng, nái rạ..."
+                  value={litterFormData.notes}
+                  onChange={(e) => setLitterFormData({ ...litterFormData, notes: e.target.value })}
+                  style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowLitterFormModal(false)}
+                  style={{ padding: "7px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer", fontSize: "12px" }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: "7px 16px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "12px" }}
+                >
+                  {editingLitterId ? "Lưu thay đổi" : "Lưu lứa mới"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CÂY GIA PHẢ 3 ĐỜI */}
       {pedigreePig && (() => {
@@ -2519,7 +2631,6 @@ export default function FarmApp() {
                 </div>
               </div>
 
-              {/* Ô NHẬP BỐ & MẸ */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", background: "#f8fafc", padding: "8px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <div>
                   <label style={{ fontSize: "11px", fontWeight: "700", color: "#1e40af" }}>Số tai Bố (Đực giống):</label>
