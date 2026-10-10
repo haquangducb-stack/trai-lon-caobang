@@ -63,7 +63,6 @@ interface FarmConfig {
   pens: string[];
 }
 
-// CHUẨN HÓA NGÀY DD/MM/YYYY TOÀN BỘ APP (KHÔNG DÙNG EXPORT ĐỂ TRÁNH LỖI NEXT.JS BUILD)
 const formatDateVN = (dStr?: string) => {
   if (!dStr) return "—";
   const d = new Date(dStr);
@@ -85,12 +84,12 @@ const formatVietnameseStage = (rawStage?: string) => {
   if (!rawStage) return "Bình thường";
   const s = rawStage.toUpperCase().trim();
   if (s === "DUC_GIONG" || s === "DUC" || s === "BOAR") return "Đực giống";
-  if (s === "CHUA" || s === "DANG_CHUA" || s === "PREGNANT") return "Đang chửa";
-  if (s === "NUOICON" || s === "NUOI_CON" || s === "LACTATING") return "Nuôi con";
-  if (s === "HAU_BI" || s === "HAUBI" || s === "GILT") return "Hậu bị";
-  if (s === "CHO_PHOI" || s === "CHOPHOI" || s === "WEANED") return "Chờ phối";
+  if (s === "CHUA" || s === "DANG_CHUA" || s === "PREGNANT" || s.includes("CHỬA")) return "Đang chửa";
+  if (s === "NUOICON" || s === "NUOI_CON" || s === "LACTATING" || s.includes("NUÔI")) return "Nuôi con";
+  if (s === "HAU_BI" || s === "HAUBI" || s === "GILT" || s.includes("HẬU")) return "Hậu bị";
+  if (s === "CHO_PHOI" || s === "CHOPHOI" || s === "WEANED" || s.includes("CHỜ")) return "Chờ phối";
   if (s === "CAI_SUA" || s === "CAISUA" || s === "DA_CAI_SUA") return "Đã cai sữa";
-  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT" || s === "FATTEN") return "Vỗ béo thịt";
+  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT" || s === "FATTEN" || s.includes("THỊT")) return "Vỗ béo thịt";
   return rawStage;
 };
 
@@ -117,7 +116,6 @@ export default function FarmApp() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   const [completedTaskKeys, setCompletedTaskKeys] = useState<string[]>([]);
-  const [localWeanedTags, setLocalWeanedTags] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Tabs điều hướng
@@ -134,9 +132,6 @@ export default function FarmApp() {
   });
 
   const [newBreedInput, setNewBreedInput] = useState("");
-  const [newStageInput, setNewStageInput] = useState("");
-  const [newPenInput, setNewPenInput] = useState("");
-
   const [showAddPigModal, setShowAddPigModal] = useState(false);
   const [newPig, setNewPig] = useState<Partial<Pig>>({
     ear_tag: "",
@@ -151,22 +146,15 @@ export default function FarmApp() {
   });
   const [isAddingPig, setIsAddingPig] = useState(false);
 
-  const [editingPig, setEditingPig] = useState<Pig | null>(null);
+  // =========================================================================
+  // MODAL HỒ SƠ TỔNG HỢP DUY NHẤT (SỬA + SINH SẢN + GIA PHẢ TRONG 1 NƠI)
+  // =========================================================================
+  const [activeProfilePig, setActiveProfilePig] = useState<Pig | null>(null);
+  const [profileTab, setProfileTab] = useState<"EDIT" | "REPRO" | "PEDIGREE">("EDIT");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
-  const [showTaskModal, setShowTaskModal] = useState(false);
-
-  // Modal xem lô lợn con & Tích chọn hàng loạt
-  const [viewingLitter, setViewingLitter] = useState<FarrowingLitter | null>(null);
-  const [selectedPigletTags, setSelectedPigletTags] = useState<string[]>([]);
-
-  // Modal Gia phả
-  const [pedigreePig, setPedigreePig] = useState<Pig | null>(null);
-
-  // Modal Lịch sử Sinh sản & Form Thêm/Sửa lứa đẻ
-  const [reproHistorySow, setReproHistorySow] = useState<Pig | null>(null);
-  const [showLitterFormModal, setShowLitterFormModal] = useState(false);
+  // Form Thêm/Sửa lứa đẻ trong tab Sinh sản
+  const [showLitterForm, setShowLitterForm] = useState(false);
   const [editingLitterId, setEditingLitterId] = useState<string | null>(null);
   const [litterFormData, setLitterFormData] = useState({
     litter_code: "",
@@ -175,6 +163,12 @@ export default function FarmApp() {
     boar_used: "",
     notes: ""
   });
+
+  // Modal Công việc & Lô lợn con
+  const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [viewingLitter, setViewingLitter] = useState<FarrowingLitter | null>(null);
+  const [selectedPigletTags, setSelectedPigletTags] = useState<string[]>([]);
 
   // Modal Phối giống tránh cận huyết
   const [showMatingModal, setShowMatingModal] = useState(false);
@@ -191,12 +185,10 @@ export default function FarmApp() {
 
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (showLitterFormModal) { setShowLitterFormModal(false); return; }
-      if (reproHistorySow) { setReproHistorySow(null); return; }
-      if (pedigreePig) { setPedigreePig(null); return; }
+      if (showLitterForm) { setShowLitterForm(false); return; }
+      if (activeProfilePig) { setActiveProfilePig(null); return; }
       if (showMatingModal) { setShowMatingModal(false); return; }
       if (viewingLitter) { setViewingLitter(null); setSelectedPigletTags([]); return; }
-      if (editingPig) { setEditingPig(null); return; }
       if (showTaskModal) { setShowTaskModal(false); return; }
       if (showAddPigModal) { setShowAddPigModal(false); return; }
       if (isSidebarOpen) { setIsSidebarOpen(false); return; }
@@ -210,7 +202,7 @@ export default function FarmApp() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [showLitterFormModal, reproHistorySow, pedigreePig, showMatingModal, viewingLitter, editingPig, showTaskModal, showAddPigModal, isSidebarOpen]);
+  }, [showLitterForm, activeProfilePig, showMatingModal, viewingLitter, showTaskModal, showAddPigModal, isSidebarOpen]);
 
   useEffect(() => {
     setMounted(true);
@@ -220,7 +212,6 @@ export default function FarmApp() {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed?.breeds && parsed?.stages && parsed?.pens) {
-            if (!parsed.stages.includes("Đã cai sữa")) parsed.stages.push("Đã cai sữa");
             setConfig(parsed);
           }
         }
@@ -241,12 +232,6 @@ export default function FarmApp() {
         if (savedDoneTasks) {
           const parsedDone = JSON.parse(savedDoneTasks);
           if (Array.isArray(parsedDone)) setCompletedTaskKeys(parsedDone);
-        }
-
-        const savedWeaned = localStorage.getItem("farm_local_weaned_tags");
-        if (savedWeaned) {
-          const parsedWeaned = JSON.parse(savedWeaned);
-          if (Array.isArray(parsedWeaned)) setLocalWeanedTags(parsedWeaned);
         }
       } catch (e) {
         console.error("Lỗi nạp config:", e);
@@ -386,17 +371,6 @@ export default function FarmApp() {
     alert(`Đã lưu cố định tên hiển thị: "${name}"`);
   };
 
-  const saveConfig = (newCfg: FarmConfig) => {
-    setConfig(newCfg);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("farm_config_persistent", JSON.stringify(newCfg));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  };
-
   const handleCreatePig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
@@ -417,27 +391,25 @@ export default function FarmApp() {
       };
 
       const { error } = await supabase.from("pigs").insert([pigPayload]);
-      if (error) {
-        alert("Lỗi thêm lợn: " + error.message);
-      } else {
-        await logAction("CREATE_PIG", pigPayload.ear_tag, `Thêm cá thể mới ${pigPayload.ear_tag} (${pigPayload.breed_id})`);
-        alert(`Đã thêm thành công cá thể ${pigPayload.ear_tag}!`);
-        setShowAddPigModal(false);
-        setNewPig({
-          ear_tag: "",
-          breed_id: config.breeds[0] || "Hạ Lang",
-          sex: "Cái",
-          stage: config.stages[0] || "Hậu bị",
-          current_pen_code: config.pens[0] || "CA1",
-          status: "Bình thường",
-          sire_ear_tag: "",
-          dam_ear_tag: "",
-          notes: ""
-        });
-        fetchData();
-      }
+      if (error) throw error;
+
+      await logAction("CREATE_PIG", pigPayload.ear_tag, `Thêm cá thể mới ${pigPayload.ear_tag} (${pigPayload.breed_id})`);
+      alert(`Đã thêm thành công cá thể ${pigPayload.ear_tag}!`);
+      setShowAddPigModal(false);
+      setNewPig({
+        ear_tag: "",
+        breed_id: config.breeds[0] || "Hạ Lang",
+        sex: "Cái",
+        stage: config.stages[0] || "Hậu bị",
+        current_pen_code: config.pens[0] || "CA1",
+        status: "Bình thường",
+        sire_ear_tag: "",
+        dam_ear_tag: "",
+        notes: ""
+      });
+      fetchData();
     } catch (err: any) {
-      alert("Lỗi: " + err.message);
+      alert("Lỗi thêm lợn: " + err.message);
     } finally {
       setIsAddingPig(false);
     }
@@ -467,45 +439,34 @@ export default function FarmApp() {
     return true;
   };
 
+  // LOGIC TRẠNG THÁI NÁI: ƯU TIÊN THEO DATABASE HOẶC ĐỢT PHỐI GIỐNG THỰC TẾ
   const checkSowState = useCallback((pig?: Pig) => {
     if (!pig) return "HAUBI";
     const tagUpper = (pig.ear_tag || "").trim().toUpperCase();
 
-    // 1. KIỂM TRA LỊCH SỬ PHỐI GIỐNG MỚI NHẤT TRƯỚC TIÊN
+    // 1. Nếu có đợt phối giống gần nhất và chưa đẻ lứa mới
     const sowInsems = (Array.isArray(inseminations) ? inseminations : [])
       .filter(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
       .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime());
-
     const latestInsem = sowInsems[0];
 
-    // Lấy lứa đẻ gần nhất
     const sowLitters = (Array.isArray(litters) ? litters : [])
       .filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
       .sort((a, b) => new Date(b.farrow_date).getTime() - new Date(a.farrow_date).getTime());
     const latestLitter = sowLitters[0];
 
-    // Nếu đã phối giống và lần phối này DIỄN RA SAU lần đẻ gần nhất
     if (latestInsem && latestInsem.mating_date) {
       const insemTime = new Date(latestInsem.mating_date).getTime();
       const litterTime = latestLitter?.farrow_date ? new Date(latestLitter.farrow_date).getTime() : 0;
-
       const st = (latestInsem.status || "").toLowerCase();
-      const isFailed = st.includes("lốc") || st.includes("trượt");
 
-      // Nếu phối sau khi đẻ và không bị lốc/trượt -> Chắc chắn đang chửa!
-      if (insemTime >= litterTime && !isFailed) {
+      // Nếu phối sau khi đẻ và không bị lốc/trượt -> CHỬA
+      if (insemTime >= litterTime && !st.includes("lốc") && !st.includes("trượt")) {
         return "CHUA";
       }
     }
 
-    // 2. NẾU ĐANG CÓ ĐÀN CON BÚ MẸ -> NUÔI CON
-    const hasSucking = suckingLitters.some(l => (l.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
-    if (hasSucking) return "NUOICON";
-
-    // 3. NẾU ĐÃ CAI SỮA VÀ CHƯA PHỐI LẠI -> CHỜ PHỐI
-    if (localWeanedTags.includes(tagUpper)) return "CHOPHOI";
-
-    // 4. KIỂM TRA TRƯỜNG STAGE GỐC TRONG BẢNG PIGS
+    // 2. Đọc trực tiếp trường stage trong bảng pigs
     const rawStage = (pig.stage || "").toLowerCase();
     if (rawStage.includes("chửa") || rawStage.includes("chua")) return "CHUA";
     if (rawStage.includes("nuôi con") || rawStage.includes("nuoi con")) return "NUOICON";
@@ -513,57 +474,37 @@ export default function FarmApp() {
     if (rawStage.includes("hậu bị") || rawStage.includes("hau bi")) return "HAUBI";
 
     return "HAUBI";
-  }, [inseminations, litters, suckingLitters, localWeanedTags]);
+  }, [inseminations, litters]);
 
   const safePigs = Array.isArray(pigs) ? pigs : [];
   const sowList = safePigs.filter(isSow);
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
-  // =========================================================================
-  // BỘ LỌC ĐÀN CON: LOẠI BỎ TRIỆT ĐỂ LỨA ĐÃ XUẤT BÁN / LỨA LỊCH SỬ NÁI RẠ
-  // =========================================================================
+  // ĐÀN CON: BỎ QUA HOÀN TOÀN LỨA LỊCH SỬ / ĐÃ BÁN
   const suckingLitters = useMemo(() => {
     return (Array.isArray(litters) ? litters : []).filter(l => {
       if (!l?.sow_ear_tag) return false;
       const st = (l?.status || "").toUpperCase();
       const n = (l?.notes || "").toLowerCase();
-
-      // Bỏ qua lứa lịch sử / đã xuất bán
-      if (st === "DA_XUAT_BAN" || st === "LICH_SU" || n.includes("xuat ban") || n.includes("nái rạ") || n.includes("lịch sử") || n.includes("nhập bổ sung")) {
+      if (st === "DA_XUAT_BAN" || st === "LICH_SU" || n.includes("xuat ban") || n.includes("nái rạ") || n.includes("lịch sử")) {
         return false;
       }
-
-      const tag = l.sow_ear_tag.trim().toUpperCase();
-      if (localWeanedTags.includes(tag)) return false;
-
-      const sowInFarm = safePigs.find(p => p.ear_tag.trim().toUpperCase() === tag);
-      if (sowInFarm && checkSowState(sowInFarm) === "CHOPHOI") return false;
-
       return !n.includes("da cai") && !n.includes("cai sua") && !st.includes("cai");
     });
-  }, [litters, localWeanedTags, safePigs, checkSowState]);
+  }, [litters]);
 
   const weanedLitters = useMemo(() => {
     return (Array.isArray(litters) ? litters : []).filter(l => {
       if (!l?.sow_ear_tag) return false;
       const st = (l?.status || "").toUpperCase();
       const n = (l?.notes || "").toLowerCase();
-
-      // Bỏ qua lứa lịch sử / đã xuất bán
-      if (st === "DA_XUAT_BAN" || st === "LICH_SU" || n.includes("xuat ban") || n.includes("nái rạ") || n.includes("lịch sử") || n.includes("nhập bổ sung")) {
+      if (st === "DA_XUAT_BAN" || st === "LICH_SU" || n.includes("xuat ban") || n.includes("nái rạ") || n.includes("lịch sử")) {
         return false;
       }
-
-      const tag = l.sow_ear_tag.trim().toUpperCase();
-      if (localWeanedTags.includes(tag)) return true;
-
-      const sowInFarm = safePigs.find(p => p.ear_tag.trim().toUpperCase() === tag);
-      if (sowInFarm && checkSowState(sowInFarm) === "CHOPHOI") return true;
-
       return n.includes("da cai") || n.includes("cai sua") || st.includes("cai");
     });
-  }, [litters, localWeanedTags, safePigs, checkSowState]);
+  }, [litters]);
 
   const suckingPigletsCount = suckingLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
   const weanedPigletsCount = weanedLitters.reduce((s, l) => s + Number(l?.alive_born || 0), 0);
@@ -585,7 +526,7 @@ export default function FarmApp() {
     return d.toISOString().split("T")[0];
   };
 
-  // ĐỒNG HỒ ĐẾM THAI KỲ 114 NGÀY TRỰC QUAN
+  // ĐỒNG HỒ 114 NGÀY
   const getGestationProgress = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
     const latestInsem = inseminations.find(ins => ins.sow_ear_tag.trim().toUpperCase() === sTag);
@@ -638,32 +579,14 @@ export default function FarmApp() {
     const boarSire = (boar.sire_ear_tag || "").trim().toUpperCase();
     const boarDam = (boar.dam_ear_tag || "").trim().toUpperCase();
 
-    if (sowSire && sowSire === bTag) {
-      return { risk: true, reason: `CẬN HUYẾT NẶNG: Đực ${bTag} là BỐ của nái ${sTag}!` };
-    }
-    if (sowSire && boarSire && sowSire === boarSire) {
-      return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng BỐ (${sowSire})!` };
-    }
-    if (sowDam && boarDam && sowDam === boarDam) {
-      return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng MẸ (${sowDam})!` };
-    }
-    if (sowSire) {
-      const sireOfSow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sowSire);
-      if (sireOfSow && (sireOfSow.sire_ear_tag || "").trim().toUpperCase() === bTag) {
-        return { risk: true, reason: `CẬN HUYẾT THẾ HỆ 2: Đực ${bTag} là ÔNG NỘI của nái ${sTag}!` };
-      }
-    }
-    if (sowDam) {
-      const damOfSow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sowDam);
-      if (damOfSow && (damOfSow.sire_ear_tag || "").trim().toUpperCase() === bTag) {
-        return { risk: true, reason: `CẬN HUYẾT THẾ HỆ 2: Đực ${bTag} là ÔNG NGOẠI của nái ${sTag}!` };
-      }
-    }
+    if (sowSire && sowSire === bTag) return { risk: true, reason: `CẬN HUYẾT NẶNG: Đực ${bTag} là BỐ của nái ${sTag}!` };
+    if (sowSire && boarSire && sowSire === boarSire) return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng BỐ (${sowSire})!` };
+    if (sowDam && boarDam && sowDam === boarDam) return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng MẸ (${sowDam})!` };
 
     return { risk: false, reason: "Phối giống an toàn (Khác dòng máu)" };
   }, [safePigs]);
 
-  // PHÂN TÍCH NĂNG SUẤT NÁI & CẢNH BÁO LOẠI THẢI
+  // PHÂN TÍCH NĂNG SUẤT SINH SẢN NÁI
   const getSowReproAnalysis = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
     const sowLitters = (Array.isArray(litters) ? litters : [])
@@ -678,65 +601,50 @@ export default function FarmApp() {
     const totalBorn = sowLitters.reduce((acc, l) => acc + Number(l.alive_born || 0), 0);
     const avgBorn = totalLitters > 0 ? (totalBorn / totalLitters).toFixed(1) : "0";
 
-    let consecutiveFails = 0;
-    for (const ins of sowInsems) {
-      if ((ins.status || "").toLowerCase().includes("lốc") || (ins.status || "").toLowerCase().includes("trượt")) {
-        consecutiveFails++;
-      } else {
-        break;
-      }
-    }
-
-    const cullWarnings: string[] = [];
-    if (consecutiveFails >= 3) {
-      cullWarnings.push(`⚠️ Phối lốc/trượt ${consecutiveFails} lần liên tiếp (Nghi ngờ vô sinh/viêm tử cung)`);
-    }
-    if (totalLitters >= 2 && Number(avgBorn) < 7) {
-      cullWarnings.push(`⚠️ Năng suất đẻ quá thấp (Trung bình chỉ ${avgBorn} con/lứa qua ${totalLitters} lứa)`);
-    }
-    if (totalLitters >= 8) {
-      cullWarnings.push(`🔔 Nái đã đẻ ${totalLitters} lứa (Nái già, cần theo dõi thoái hóa giống và năng suất sữa)`);
-    }
-
-    return { totalLitters, totalBorn, avgBorn, consecutiveFails, cullWarnings, sowLitters, sowInsems };
+    return { totalLitters, totalBorn, avgBorn, sowLitters, sowInsems };
   }, [litters, inseminations]);
 
-  // MỞ MODAL THÊM LỨA CŨ
-  const openAddLitterModal = () => {
-    setEditingLitterId(null);
-    setLitterFormData({
-      litter_code: `L${(getSowReproAnalysis(reproHistorySow?.ear_tag || "").totalLitters + 1)}`,
-      farrow_date: new Date().toISOString().split("T")[0],
-      alive_born: 10,
-      boar_used: "",
-      notes: ""
-    });
-    setShowLitterFormModal(true);
+  // LƯU CẬP NHẬT THÔNG TIN NÁI (TẠI TAB EDIT CỦA PROFILE)
+  const handleSaveProfileEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeProfilePig || !user) return;
+    setIsSavingEdit(true);
+
+    try {
+      const payload = {
+        ear_tag: activeProfilePig.ear_tag.trim().toUpperCase(),
+        breed_id: activeProfilePig.breed_id,
+        sex: formatVietnameseSex(activeProfilePig.sex),
+        stage: formatVietnameseStage(activeProfilePig.stage),
+        current_pen_code: activeProfilePig.current_pen_code,
+        status: activeProfilePig.status || "Bình thường",
+        sire_ear_tag: activeProfilePig.sire_ear_tag?.trim().toUpperCase() || null,
+        dam_ear_tag: activeProfilePig.dam_ear_tag?.trim().toUpperCase() || null,
+        notes: activeProfilePig.notes || null
+      };
+
+      const { error } = await supabase.from("pigs").update(payload).eq("id", activeProfilePig.id);
+      if (error) throw error;
+
+      // Cập nhật state trực tiếp
+      setPigs(prev => prev.map(p => p.id === activeProfilePig.id ? { ...p, ...payload } : p));
+      await logAction("UPDATE_PIG", payload.ear_tag, `Cập nhật thông tin nái ${payload.ear_tag} (Trạng thái: ${payload.stage}, Ô: ${payload.current_pen_code})`);
+      
+      alert(`✅ Đã lưu thành công thông tin nái ${payload.ear_tag}!`);
+      fetchData();
+    } catch (err: any) {
+      alert("Lỗi lưu nái: " + err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
-  // MỞ MODAL SỬA LỨA ĐÃ CÓ
-  const openEditLitterModal = (litter: FarrowingLitter, litterIndex: number) => {
-    setEditingLitterId(litter.id);
-    let boar = "";
-    const match = (litter.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
-    if (match) boar = match[1].trim();
-
-    setLitterFormData({
-      litter_code: litter.litter_code || `L${litterIndex + 1}`,
-      farrow_date: litter.farrow_date || new Date().toISOString().split("T")[0],
-      alive_born: Number(litter.alive_born || 0),
-      boar_used: boar,
-      notes: (litter.notes || "").replace(/\[Đực:\s*[^\]]+\]/i, "").trim()
-    });
-    setShowLitterFormModal(true);
-  };
-
-  // LƯU LỨA ĐẺ: LUÔN GẮN DA_XUAT_BAN CHO LỨA LỊCH SỬ ĐỂ KHÔNG BỊ CỘNG VÀO LỢN CON
+  // THÊM HOẶC SỬA LỨA ĐẺ TRONG TAB SINH SẢN
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reproHistorySow || !user) return;
+    if (!activeProfilePig || !user) return;
 
-    const sowTag = reproHistorySow.ear_tag.trim().toUpperCase();
+    const sowTag = activeProfilePig.ear_tag.trim().toUpperCase();
     const boarNote = litterFormData.boar_used.trim() ? `[Đực: ${litterFormData.boar_used.trim().toUpperCase()}]` : "";
     const cleanNotes = `${boarNote} ${litterFormData.notes.trim()}`.trim();
 
@@ -746,14 +654,12 @@ export default function FarmApp() {
           litter_code: litterFormData.litter_code.trim().toUpperCase(),
           farrow_date: litterFormData.farrow_date,
           alive_born: Number(litterFormData.alive_born || 0),
-          notes: cleanNotes || "Lịch sử nái rạ",
+          notes: cleanNotes || "Lịch sử nái",
           status: "DA_XUAT_BAN"
         };
         const { error } = await supabase.from("farrowings").update(payload).eq("id", editingLitterId);
         if (error) throw error;
-
-        await logAction("UPDATE_LITTER", sowTag, `Sửa lứa ${litterFormData.litter_code} nái ${sowTag}: Đẻ ${litterFormData.alive_born} con`);
-        alert("Đã cập nhật lứa đẻ thành công!");
+        alert("Đã cập nhật thông tin lứa đẻ!");
       } else {
         const payload = {
           litter_code: litterFormData.litter_code.trim().toUpperCase() || `L-${sowTag}-${Date.now().toString().slice(-4)}`,
@@ -766,35 +672,32 @@ export default function FarmApp() {
         };
         const { error } = await supabase.from("farrowings").insert([payload]);
         if (error) throw error;
-
-        await logAction("ADD_PAST_LITTER", sowTag, `Bổ sung lứa ${payload.litter_code} cho nái ${sowTag} (Đẻ: ${payload.alive_born} con, Đực: ${litterFormData.boar_used || "—"})`);
-        alert(`Đã lưu lứa ${payload.litter_code} cho nái ${sowTag} (Không tính vào đàn lợn con hiện diện)!`);
+        alert(`Đã lưu lứa ${payload.litter_code} cho nái ${sowTag}!`);
       }
 
-      setShowLitterFormModal(false);
+      setShowLitterForm(false);
+      setEditingLitterId(null);
       fetchData();
     } catch (err: any) {
       alert("Lỗi lưu lứa đẻ: " + err.message);
     }
   };
 
-  // XÓA LỨA ĐẺ
   const handleDeleteLitter = async (litterId: string, litterCode: string) => {
     if (!user) return alert("Vui lòng đăng nhập để thao tác!");
-    if (!confirm(`Xác nhận xóa bỏ hoàn toàn lứa đẻ "${litterCode}"?`)) return;
+    if (!confirm(`Xác nhận xóa bỏ lứa đẻ "${litterCode}"?`)) return;
 
     try {
       const { error } = await supabase.from("farrowings").delete().eq("id", litterId);
       if (error) throw error;
-
-      await logAction("DELETE_LITTER", reproHistorySow?.ear_tag || "LITTER", `Xóa lứa đẻ ${litterCode}`);
       alert(`Đã xóa thành công lứa đẻ ${litterCode}!`);
       fetchData();
     } catch (err: any) {
-      alert("Lỗi xóa lứa: " + err.message);
+      alert("Lỗi: " + err.message);
     }
   };
 
+  // PHỐI GIỐNG TRÁNH CẬN HUYẾT
   const handleSaveInsemination = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return alert("Vui lòng đăng nhập để phối giống!");
@@ -802,8 +705,7 @@ export default function FarmApp() {
 
     const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
     if (check.risk) {
-      const confirmForce = confirm(`⚠️ CẢNH BÁO NGUY HIỂM:\n${check.reason}\n\nBạn có chắc chắn muốn bỏ qua để phối?`);
-      if (!confirmForce) return;
+      if (!confirm(`⚠️ CẢNH BÁO: ${check.reason}\nBạn có chắc chắn muốn bỏ qua để phối?`)) return;
     }
 
     const expFarrow = safeAddDays(matingDate, 114);
@@ -818,7 +720,7 @@ export default function FarmApp() {
     try {
       await supabase.from("inseminations").insert([payload]);
       await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
-      await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} (Dự sinh: ${formatDateVN(expFarrow)})`);
+      await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag}`);
       alert(`Đã ghi nhận phối giống nái ${matingSowTag} thành công!\n- Ngày dự kiến đẻ: ${formatDateVN(expFarrow)}`);
       setShowMatingModal(false);
       fetchData();
@@ -827,183 +729,46 @@ export default function FarmApp() {
     }
   };
 
-  const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
-    if (!user) return alert("Vui lòng đăng nhập để thực hiện cai sữa!");
-    if (!confirm(`Xác nhận cai sữa cho đàn con của nái ${sowTag}? Nái mẹ sẽ chuyển sang "Chờ phối" và đàn con (${litterCount || ""} con) chuyển sang "Lợn con cai sữa".`)) return;
-
-    const tagUpper = sowTag.trim().toUpperCase();
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    const newWeaned = Array.from(new Set([...localWeanedTags, tagUpper]));
-    setLocalWeanedTags(newWeaned);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_local_weaned_tags", JSON.stringify(newWeaned)); } catch (e) {}
-    }
-
-    setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === tagUpper ? { ...p, stage: "Chờ phối" } : p));
-    setLitters(prev => prev.map(l => (l.id === litterId || l.sow_ear_tag.trim().toUpperCase() === tagUpper) ? { ...l, notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr } : l));
-
-    const taskKey = `wean-${tagUpper}`;
-    const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
-    setCompletedTaskKeys(newDone);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
-    }
-
-    try {
-      await supabase.from("pigs").update({ stage: "Chờ phối" }).eq("ear_tag", sowTag);
-      let q = supabase.from("farrowings").update({ notes: "Đã cai sữa", status: "DA_CAI_SUA", weaning_date: todayStr });
-      if (litterId) q = q.eq("id", litterId);
-      else q = q.eq("sow_ear_tag", sowTag);
-      await q;
-
-      await supabase.from("farm_tasks").insert([{
-        title: `Cai sữa đàn con nái ${sowTag} (${litterCount || 0} con)`,
-        due_date: todayStr,
-        related_tag: sowTag,
-        category: "WEAN",
-        is_completed: true,
-        is_dismissed: false
-      }]);
-    } catch (err) {
-      console.error("Lỗi đồng bộ DB:", err);
-    }
-
-    await logAction("WEAN_LITTER", sowTag, `Cai sữa đàn con nái ${sowTag} (${litterCount || ""} con) -> Nái chuyển Chờ phối`);
-    alert(`Đã hoàn tất cai sữa đàn nái ${sowTag}!\n- Nái mẹ: Đã chuyển sang "Chờ phối".\n- Lô con (${litterCount || ""} con): Đã chuyển sang nhóm "Lợn con cai sữa".`);
-    fetchData();
-  };
-
-  // =========================================================================
-  // XỬ LÝ HÀNG LOẠT: XUẤT BÁN / CHUYỂN NUÔI THỊT / CHỌN HẬU BỊ NHIỀU CON
-  // =========================================================================
+  // XUẤT BÁN HÀNG LOẠT LỢN CON
   const handleBulkAction = async (targetStage: "Xuất bán" | "Vỗ béo thịt" | "Hậu bị") => {
-    if (!user) return alert("Vui lòng đăng nhập để thực hiện thao tác này!");
-    if (!viewingLitter || selectedPigletTags.length === 0) {
-      return alert("Vui lòng tích chọn ít nhất 1 con!");
-    }
+    if (!user) return alert("Vui lòng đăng nhập để thao tác!");
+    if (!viewingLitter || selectedPigletTags.length === 0) return alert("Vui lòng chọn ít nhất 1 con!");
 
     const count = selectedPigletTags.length;
     const sowTag = viewingLitter.sow_ear_tag?.trim().toUpperCase();
     const currentAlive = Number(viewingLitter.alive_born || 0);
-
-    if (count > currentAlive) {
-      return alert(`Lỗi: Số lượng chọn (${count} con) lớn hơn số lợn con hiện có (${currentAlive} con)!`);
-    }
-
     const remainingAlive = Math.max(0, currentAlive - count);
 
-    // TRƯỜNG HỢP 1: XUẤT BÁN HÀNG LOẠT
     if (targetStage === "Xuất bán") {
-      if (!confirm(`Xác nhận XUẤT BÁN ${count} con lợn con của nái ${sowTag}?\nSố con còn lại trong đàn: ${remainingAlive} con.`)) {
-        return;
-      }
+      if (!confirm(`Xác nhận XUẤT BÁN ${count} con lợn con nái ${sowTag}? Còn lại: ${remainingAlive} con.`)) return;
 
       try {
-        const updatePayload: any = {
-          alive_born: remainingAlive,
-        };
-
+        const updatePayload: any = { alive_born: remainingAlive };
         if (remainingAlive === 0) {
           updatePayload.status = "DA_XUAT_BAN";
-          updatePayload.notes = "Đã xuất bán hết toàn bộ";
+          updatePayload.notes = "Đã xuất bán hết";
         }
 
-        let query = supabase.from("farrowings").update(updatePayload);
-        if (viewingLitter.id) {
-          query = query.eq("id", viewingLitter.id);
-        } else {
-          query = query.eq("sow_ear_tag", sowTag);
-        }
+        let q = supabase.from("farrowings").update(updatePayload);
+        if (viewingLitter.id) q = q.eq("id", viewingLitter.id);
+        else q = q.eq("sow_ear_tag", sowTag);
 
-        const { error } = await query;
+        const { error } = await q;
         if (error) throw error;
 
-        // Cập nhật state cục bộ để giao diện đổi số ngay lập tức
-        setLitters(prev => prev.map(l => {
-          const isTarget = (viewingLitter.id && l.id === viewingLitter.id) || (l.sow_ear_tag?.trim().toUpperCase() === sowTag);
-          return isTarget ? { ...l, ...updatePayload } : l;
-        }));
-
-        await logAction("BULK_SELL", sowTag, `Xuất bán ${count} con từ lô nái ${sowTag} (Còn lại: ${remainingAlive} con)`);
-        alert(`✅ Đã xuất bán thành công ${count} con!\nSĩ số đàn con còn lại: ${remainingAlive} con.`);
-
+        await logAction("BULK_SELL", sowTag, `Xuất bán ${count} con từ lô nái ${sowTag}`);
+        alert(`✅ Đã xuất bán thành công ${count} con!`);
         setSelectedPigletTags([]);
-        if (remainingAlive === 0) {
-          setViewingLitter(null);
-        } else {
-          setViewingLitter(prev => prev ? { ...prev, alive_born: remainingAlive } : null);
-        }
-
-        await fetchData();
+        if (remainingAlive === 0) setViewingLitter(null);
+        else setViewingLitter(prev => prev ? { ...prev, alive_born: remainingAlive } : null);
+        fetchData();
       } catch (err: any) {
-        alert("Lỗi khi xuất bán vào cơ sở dữ liệu: " + (err?.message || JSON.stringify(err)));
+        alert("Lỗi xuất bán: " + err.message);
       }
-      return;
-    }
-
-    // TRƯỜNG HỢP 2: CHUYỂN NUÔI THỊT HOẶC HẬU BỊ HÀNG LOẠT
-    if (!confirm(`Xác nhận chuyển ${count} con sang nhóm "${targetStage}"?`)) return;
-
-    try {
-      const insem = (Array.isArray(inseminations) ? inseminations : []).find(
-        ins => (ins.sow_ear_tag || "").trim().toUpperCase() === sowTag
-      );
-      const sireTag = insem?.boar_ear_tag || "";
-      const damSow = safePigs.find(p => p.ear_tag?.trim().toUpperCase() === sowTag);
-      const breed = damSow?.breed_id || config.breeds[0] || "Hạ Lang";
-
-      const payloadList = selectedPigletTags.map(tag => ({
-        ear_tag: tag,
-        breed_id: breed,
-        sex: targetStage === "Hậu bị" ? "Cái" : "Đực",
-        stage: targetStage,
-        current_pen_code: targetStage === "Hậu bị" ? "CA1" : "CB1",
-        status: "Bình thường",
-        sire_ear_tag: sireTag || null,
-        dam_ear_tag: sowTag || null,
-        notes: `Tách từ đàn con nái ${sowTag} (${viewingLitter.litter_code || "Lô con"})`
-      }));
-
-      const { error: insertError } = await supabase.from("pigs").insert(payloadList);
-      if (insertError) throw insertError;
-
-      const updatePayload: any = {
-        alive_born: remainingAlive,
-      };
-      if (remainingAlive === 0) {
-        updatePayload.status = "DA_XUAT_BAN";
-      }
-
-      let q = supabase.from("farrowings").update(updatePayload);
-      if (viewingLitter.id) q = q.eq("id", viewingLitter.id);
-      else q = q.eq("sow_ear_tag", sowTag);
-
-      const { error: updateError } = await q;
-      if (updateError) throw updateError;
-
-      setLitters(prev => prev.map(l => {
-        const isTarget = (viewingLitter.id && l.id === viewingLitter.id) || (l.sow_ear_tag?.trim().toUpperCase() === sowTag);
-        return isTarget ? { ...l, ...updatePayload } : l;
-      }));
-
-      await logAction("BULK_CONVERT", sowTag, `Chuyển ${count} con sang ${targetStage} (Mẹ ${sowTag})`);
-      alert(`✅ Đã chuyển thành công ${count} con sang ${targetStage}!`);
-
-      setSelectedPigletTags([]);
-      if (remainingAlive === 0) {
-        setViewingLitter(null);
-      } else {
-        setViewingLitter(prev => prev ? { ...prev, alive_born: remainingAlive } : null);
-      }
-
-      await fetchData();
-    } catch (err: any) {
-      alert("Lỗi thao tác: " + (err?.message || JSON.stringify(err)));
     }
   };
 
-  // KHỬ TRÙNG LẶP TOÀN BỘ TASK HIỂN THỊ
+  // NHIỆM VỤ & KHỬ TRÙNG LẶP
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -1039,27 +804,6 @@ export default function FarmApp() {
       }
     });
 
-    suckingLitters.forEach(lit => {
-      if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
-      const tagUpper = lit.sow_ear_tag.trim().toUpperCase();
-      const key = `wean-${tagUpper}`;
-
-      const age = safeDateDiff(lit.farrow_date);
-      if (age === -999) return;
-
-      if (age >= 24) {
-        taskMap.set(key, {
-          id: key,
-          title: `${age >= 28 ? "⚠️ QUÁ HẠN: " : "🔔 "}Cai sữa đàn con nái ${lit.sow_ear_tag} (${Number(lit.alive_born || 0)} con)`,
-          due_date: lit.weaning_date || safeAddDays(lit.farrow_date, 28),
-          related_tag: lit.sow_ear_tag,
-          category: "WEAN",
-          is_completed: completedTaskKeys.includes(key),
-          is_auto: true
-        });
-      }
-    });
-
     (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
       if (!t?.title) return;
       const cleanTitle = t.title.trim();
@@ -1068,19 +812,7 @@ export default function FarmApp() {
 
       let cat = t.category;
       const normTitle = cleanTitle.toLowerCase();
-      if (
-        normTitle.includes("vaccine") ||
-        normTitle.includes("tiêm") ||
-        normTitle.includes("tiem") ||
-        normTitle.includes("phòng") ||
-        normTitle.includes("thú y") ||
-        normTitle.includes("thu y") ||
-        normTitle.includes("e.coli") ||
-        normTitle.includes("dịch tả") ||
-        normTitle.includes("tai xanh") ||
-        normTitle.includes("lở mồm") ||
-        normTitle.includes("giun")
-      ) {
+      if (normTitle.includes("vaccine") || normTitle.includes("tiêm") || normTitle.includes("phòng") || normTitle.includes("e.coli")) {
         cat = "VET";
       }
 
@@ -1095,313 +827,18 @@ export default function FarmApp() {
     });
 
     return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
-  }, [inseminations, suckingLitters, dbTasks, completedTaskKeys]);
+  }, [inseminations, dbTasks, completedTaskKeys]);
 
   const filteredTasks = fullTasks.filter(t => taskCategoryFilter === "ALL" || t?.category === taskCategoryFilter);
   const pendingTasks = filteredTasks.filter(t => !t.is_completed);
   const completedTasks = filteredTasks.filter(t => t.is_completed);
 
-  const handleTaskClick = (task: FarmTask) => {
-    if (!user) return alert("Vui lòng đăng nhập để xử lý công việc!");
-    setSelectedTask(task);
-    setShowTaskModal(true);
-  };
-
-  const confirmCompleteTask = async () => {
-    if (!selectedTask) return;
-
-    if (selectedTask.category === "WEAN") {
-      setShowTaskModal(false);
-      setSelectedTask(null);
-      navigateTo("PIGLET");
-      alert(`Đã chuyển sang tab "Lợn con theo lô". Anh vui lòng bấm nút "✓ Cai sữa đàn này" tại nái ${selectedTask.related_tag}!`);
-      return;
-    }
-
-    const todayStr = new Date().toISOString().split("T")[0];
-    const taskKey = selectedTask.id;
-
-    const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
-    setCompletedTaskKeys(newDone);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
-    }
-
-    if (selectedTask.is_auto && selectedTask.id.startsWith("repro-cd-")) {
-      const sowTag = selectedTask.related_tag;
-      setPigs(prev => prev.map(p => p.ear_tag.trim().toUpperCase() === sowTag.trim().toUpperCase() ? { ...p, current_pen_code: "CD1" } : p));
-      try {
-        await supabase.from("pigs").update({ current_pen_code: "CD1" }).eq("ear_tag", sowTag);
-      } catch (e) {}
-    }
-
-    try {
-      const { data: existing } = await supabase
-        .from("farm_tasks")
-        .select("id")
-        .eq("title", selectedTask.title)
-        .eq("related_tag", selectedTask.related_tag || "");
-
-      if (existing && existing.length > 0) {
-        await supabase.from("farm_tasks").update({ is_completed: true }).eq("id", existing[0].id);
-      } else {
-        await supabase.from("farm_tasks").insert([{
-          title: selectedTask.title,
-          due_date: selectedTask.due_date,
-          related_tag: selectedTask.related_tag,
-          category: selectedTask.category,
-          is_completed: true,
-          is_dismissed: false
-        }]);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-
-    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`);
-    setShowTaskModal(false);
-    setSelectedTask(null);
-    fetchData();
-  };
-
-  const confirmDismissTask = async () => {
-    if (!selectedTask) return;
-    const taskKey = selectedTask.id;
-
-    const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
-    setCompletedTaskKeys(newDone);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
-    }
-
-    try {
-      if (selectedTask.is_auto) {
-        await supabase.from("farm_tasks").insert([{
-          title: selectedTask.title,
-          due_date: selectedTask.due_date,
-          related_tag: selectedTask.related_tag,
-          category: selectedTask.category,
-          is_completed: false,
-          is_dismissed: true
-        }]);
-      } else {
-        await supabase.from("farm_tasks").update({ is_dismissed: true }).eq("id", selectedTask.id);
-      }
-    } catch (e) {}
-
-    await logAction("DISMISS_TASK", selectedTask.related_tag || "TASK", `Bỏ qua việc: ${selectedTask.title}`);
-    setShowTaskModal(false);
-    setSelectedTask(null);
-    fetchData();
-  };
-
-  const confirmPostponeTask = async () => {
-    if (!selectedTask) return;
-    const newDueDate = safeAddDays(new Date().toISOString().split("T")[0], 3);
-    const newTitle = selectedTask.title.replace("⚠️ QUÁ HẠN: ", "").replace("🔔 ", "") + " (Gia hạn)";
-
-    const newDone = Array.from(new Set([...completedTaskKeys, selectedTask.id]));
-    setCompletedTaskKeys(newDone);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
-    }
-
-    try {
-      if (selectedTask.is_auto) {
-        await supabase.from("farm_tasks").insert([
-          { title: selectedTask.title, due_date: selectedTask.due_date, related_tag: selectedTask.related_tag, category: selectedTask.category, is_dismissed: true, is_completed: false },
-          { title: newTitle, due_date: newDueDate, related_tag: selectedTask.related_tag, category: selectedTask.category, is_completed: false, is_dismissed: false }
-        ]);
-      } else {
-        await supabase.from("farm_tasks").update({ title: newTitle, due_date: newDueDate }).eq("id", selectedTask.id);
-      }
-    } catch (e) {}
-
-    await logAction("POSTPONE_TASK", selectedTask.related_tag || "TASK", `Gia hạn việc đến ngày ${newDueDate}`);
-    setShowTaskModal(false);
-    setSelectedTask(null);
-    fetchData();
-  };
-
-  const handleUpdatePig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingPig || !user) return;
-    setIsSavingEdit(true);
-    await supabase.from("pigs").update({
-      ...editingPig,
-      sex: formatVietnameseSex(editingPig.sex),
-      stage: formatVietnameseStage(editingPig.stage),
-      sire_ear_tag: editingPig.sire_ear_tag?.trim().toUpperCase() || null,
-      dam_ear_tag: editingPig.dam_ear_tag?.trim().toUpperCase() || null
-    }).eq("id", editingPig.id);
-    await logAction("UPDATE_PIG", editingPig.ear_tag, `Sửa cá thể ${editingPig.ear_tag} (Bố: ${editingPig.sire_ear_tag || "—"}, Mẹ: ${editingPig.dam_ear_tag || "—"})`);
-    setEditingPig(null);
-    fetchData();
-    setIsSavingEdit(false);
-  };
-
-  const handleExportWord = () => {
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, "0");
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const yy = String(today.getFullYear()).slice(-2);
-    const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
-    const formatNum = (n: number) => String(n).padStart(2, "0");
-
-    const masterRows: { stt: number; type: string; details: string; count: string; operator: string }[] = [];
-    let counter = 1;
-
-    const boarByBreed: Record<string, number> = {};
-    boarList.forEach(b => {
-      const br = b.breed_id?.trim() || "Chưa rõ";
-      boarByBreed[br] = (boarByBreed[br] || 0) + 1;
-    });
-    Object.entries(boarByBreed).forEach(([br, cnt]) => {
-      if (cnt > 0) {
-        masterRows.push({
-          stt: counter++,
-          type: `Đực giống ${br}`,
-          details: `Khai thác tinh dịch phối giống`,
-          count: `${formatNum(cnt)} con`,
-          operator: activeOperator
-        });
-      }
-    });
-
-    const sowByBreedAndStage: Record<string, Record<string, number>> = {};
-    sowList.forEach(s => {
-      const br = s.breed_id?.trim() || "Chưa rõ";
-      const st = formatVietnameseStage(s.stage);
-      if (!sowByBreedAndStage[br]) sowByBreedAndStage[br] = {};
-      sowByBreedAndStage[br][st] = (sowByBreedAndStage[br][st] || 0) + 1;
-    });
-    Object.entries(sowByBreedAndStage).forEach(([br, stages]) => {
-      const stageText = Object.entries(stages)
-        .filter(([_, cnt]) => cnt > 0)
-        .map(([st, cnt]) => `${st} ${formatNum(cnt)} con`)
-        .join(", ");
-      const totalSow = Object.values(stages).reduce((a, b) => a + b, 0);
-      if (totalSow > 0) {
-        masterRows.push({
-          stt: counter++,
-          type: `Nái sinh sản ${br}`,
-          details: stageText,
-          count: `${formatNum(totalSow)} con`,
-          operator: activeOperator
-        });
-      }
-    });
-
-    if (suckingPigletsCount > 0) {
-      masterRows.push({
-        stt: counter++,
-        type: `Lợn con theo mẹ (Bú sữa)`,
-        details: `Đang theo ${suckingLitters.length} nái mẹ`,
-        count: `${formatNum(suckingPigletsCount)} con`,
-        operator: activeOperator
-      });
-    }
-
-    if (weanedPigletsCount > 0) {
-      masterRows.push({
-        stt: counter++,
-        type: `Lợn con cai sữa (Tách mẹ)`,
-        details: `Đã tách mẹ (${weanedLitters.length} lô)`,
-        count: `${formatNum(weanedPigletsCount)} con`,
-        operator: activeOperator
-      });
-    }
-
-    const meatByBreed: Record<string, number> = {};
-    meatList.forEach(m => {
-      const br = m.breed_id?.trim() || "Chưa rõ";
-      meatByBreed[br] = (meatByBreed[br] || 0) + 1;
-    });
-    Object.entries(meatByBreed).forEach(([br, cnt]) => {
-      if (cnt > 0) {
-        masterRows.push({
-          stt: counter++,
-          type: `Lợn thịt (${br})`,
-          details: `Đang nuôi vỗ béo xuất bán`,
-          count: `${formatNum(cnt)} con`,
-          operator: activeOperator
-        });
-      }
-    });
-
-    let contentHtml = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset='utf-8'>
-        <title>Báo Cáo Trại Lợn Nà Roác</title>
-        <style>
-          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.6; margin: 35px; }
-          h2, h3 { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
-          .header-info { text-align: center; margin-bottom: 20px; font-style: italic; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; }
-          th, td { border: 1px solid #333; padding: 8px 10px; font-size: 11pt; text-align: left; }
-          th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <h2>TRẠI LỢN NÀ ROÁC</h2>
-        <h3>BÁO CÁO TỔNG HỢP CƠ CẤU ĐÀN (${reportDays} NGÀY QUA)</h3>
-        <div class='header-info'>Thời điểm lập: Ngày ${dd}/${mm}/20${yy} | Người thực hiện: ${activeOperator}</div>
-        <p><b>Tổng quy mô đàn hiện diện: ${formatNum(grandTotal)} con</b> (Nái: ${formatNum(sowList.length)} con | Đực: ${formatNum(boarList.length)} con | Lợn con: ${formatNum(totalPigletsCount)} con | Lợn thịt: ${formatNum(meatList.length)} con).</p>
-        <table>
-          <thead>
-            <tr>
-              <th style='width: 40px;'>STT</th>
-              <th style='width: 180px;'>Phân Loại & Giống</th>
-              <th>Chi Tiết Số Lượng & Trạng Thái</th>
-              <th style='width: 100px;'>Số Lượng</th>
-              <th style='width: 130px;'>Người Thực Hiện</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${masterRows.map(r => `
-              <tr>
-                <td style='text-align: center;'>${r.stt}</td>
-                <td><b>${r.type}</b></td>
-                <td>${r.details}</td>
-                <td style='text-align: center;'><b>${r.count}</b></td>
-                <td style='text-align: center;'><b>${r.operator}</b></td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-        <br/>
-        <table style='border: none; margin-top: 30px;'>
-          <tr style='border: none;'>
-            <td style='border: none; text-align: center; width: 50%;'></td>
-            <td style='border: none; text-align: center; width: 50%;'>
-              <b>NGƯỜI THỰC HIỆN BÁO CÁO</b><br/>
-              <i>(Ký và ghi rõ họ tên)</i><br/><br/><br/><br/>
-              <b>${activeOperator}</b>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([contentHtml], { type: "application/msword;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // RENDER THẺ CÁ THỂ
+  // RENDER THẺ CÁ THỂ: GỌN GÀNG, CHỈ 1 NÚT CHI TIẾT & SỬA
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
-    const hasCullAlert = reproData && reproData.cullWarnings.length > 0;
-    const gestation = isThisSow && checkSowState(pig) === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
+    const currentState = isThisSow ? checkSowState(pig) : "";
+    const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
 
     return (
       <div
@@ -1410,7 +847,7 @@ export default function FarmApp() {
           backgroundColor: "#ffffff",
           borderRadius: "14px",
           padding: "14px 16px",
-          border: hasCullAlert ? "2px solid #f87171" : "1px solid #f1e5f0",
+          border: "1px solid #f1e5f0",
           boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
           display: "flex",
           flexDirection: "column",
@@ -1418,41 +855,21 @@ export default function FarmApp() {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
-            {hasCullAlert && (
-              <span style={{ fontSize: "10px", background: "#fef2f2", color: "#b91c1c", padding: "2px 6px", borderRadius: "8px", fontWeight: "800", border: "1px solid #fecaca" }}>
-                ⚠️ Cảnh báo
-              </span>
-            )}
-          </div>
+          <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag}</span>
           
-          <div style={{ display: "flex", gap: "4px" }}>
-            <button
-              onClick={() => setPedigreePig(pig)}
-              style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#ede9fe", color: "#6d28d9", border: "none", cursor: "pointer" }}
-            >
-              Gia phả 🌳
-            </button>
-
-            {isThisSow && (
-              <button
-                onClick={() => setReproHistorySow(pig)}
-                style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#fce7f3", color: "#db2777", border: "none", cursor: "pointer" }}
-              >
-                Sinh sản 📊
-              </button>
-            )}
-
-            {user ? (
-              <button
-                onClick={() => setEditingPig({ ...pig })}
-                style={{ fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px", background: "#f1f5f9", color: "#334155", border: "none", cursor: "pointer" }}
-              >
-                Sửa ✎
-              </button>
-            ) : null}
-          </div>
+          <button
+            onClick={() => {
+              setActiveProfilePig({ ...pig });
+              setProfileTab("EDIT");
+              setShowLitterForm(false);
+            }}
+            style={{
+              fontSize: "11px", fontWeight: "800", padding: "5px 10px", borderRadius: "8px",
+              background: "#ede9fe", color: "#6d28d9", border: "1px solid #ddd6fe", cursor: "pointer"
+            }}
+          >
+            ⚙️ Chi tiết & Sửa
+          </button>
         </div>
 
         <div style={{ fontSize: "13px", color: "#475569" }}>
@@ -1464,7 +881,7 @@ export default function FarmApp() {
             Ô: {pig.current_pen_code || "Chưa xếp"}
           </span>
           <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
-            {formatVietnameseStage(pig.stage)}
+            {formatVietnameseStage(currentState === "CHUA" ? "Đang chửa" : currentState === "NUOICON" ? "Nuôi con" : currentState === "CHOPHOI" ? "Chờ phối" : currentState === "HAUBI" ? "Hậu bị" : pig.stage)}
           </span>
           {isThisSow && (
             <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "11px", background: "#eff6ff", color: "#1d4ed8", fontWeight: "700" }}>
@@ -1473,7 +890,6 @@ export default function FarmApp() {
           )}
         </div>
 
-        {/* ĐỒNG HỒ 114 NGÀY */}
         {gestation && (
           <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "4px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: "700", marginBottom: "4px" }}>
@@ -1481,11 +897,7 @@ export default function FarmApp() {
               <span style={{ color: "#64748b" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
             </div>
             <div style={{ height: "6px", width: "100%", background: "#e2e8f0", borderRadius: "3px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${gestation.pct}%`, background: gestation.badgeColor, transition: "width 0.3s" }} />
-            </div>
-            <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px", display: "flex", justifyContent: "space-between" }}>
-              <span>Giai đoạn: <b>{gestation.stageTitle}</b></span>
-              <span>Đực phối: <b>{gestation.boarTag}</b></span>
+              <div style={{ height: "100%", width: `${gestation.pct}%`, background: gestation.badgeColor }} />
             </div>
           </div>
         )}
@@ -1499,11 +911,7 @@ export default function FarmApp() {
   };
 
   if (!mounted) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#fdf8fb", fontFamily: "sans-serif" }}>
-        Đang tải Trại Lợn Nà Roác...
-      </div>
-    );
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Đang tải...</div>;
   }
 
   const sowPct = grandTotal > 0 ? ((sowList.length / grandTotal) * 100).toFixed(0) : "0";
@@ -1512,7 +920,7 @@ export default function FarmApp() {
   const meatPct = grandTotal > 0 ? ((meatList.length / grandTotal) * 100).toFixed(0) : "0";
 
   return (
-    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif", color: "#2d1633", maxWidth: "480px", margin: "0 auto", position: "relative" }}>
+    <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", position: "relative" }}>
       <div style={{ paddingBottom: "50px" }}>
         
         {/* HEADER */}
@@ -1525,302 +933,66 @@ export default function FarmApp() {
               {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
               {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
               {currentMenu === "MEAT" && "LỢN THỊT"}
-              {currentMenu === "PEDIGREE" && "GIA PHẢ ĐÀN"}
-              {currentMenu === "GUIDE" && "QUY TRÌNH THÚ Y"}
-              {currentMenu === "SEARCH" && "TRA CỨU"}
               {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
             </h1>
           </div>
           <div style={{ display: "flex", gap: "6px" }}>
             {user ? (
-              <>
-                <button onClick={() => setShowChangePwdModal(true)} style={{ padding: "5px 8px", borderRadius: "8px", border: "1px solid #e2e8f0", background: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>Đổi MK</button>
-                <button onClick={handleLogout} style={{ padding: "5px 8px", borderRadius: "8px", border: "1px solid #fecaca", background: "#fef2f2", fontSize: "11px", fontWeight: "700", color: "#ef4444", cursor: "pointer" }}>Thoát</button>
-              </>
+              <button onClick={handleLogout} style={{ padding: "5px 8px", borderRadius: "8px", border: "1px solid #fecaca", background: "#fef2f2", fontSize: "11px", fontWeight: "700", color: "#ef4444", cursor: "pointer" }}>Thoát</button>
             ) : (
               <button onClick={() => setShowAuthModal(true)} style={{ padding: "5px 12px", borderRadius: "8px", border: "none", background: "#5b21b6", color: "#fff", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>Đăng nhập</button>
             )}
           </div>
         </header>
 
-        {/* NÚT THAO TÁC NHANH */}
-        {(currentMenu === "SOW" || currentMenu === "BOAR" || currentMenu === "MEAT") && (
+        {/* NÚT THÊM & PHỐI GIỐNG */}
+        {currentMenu === "SOW" && (
           <div style={{ padding: "12px 16px 0 16px", display: "flex", gap: "8px" }}>
-            <button
-              onClick={() => {
-                if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
-                setNewPig(prev => ({
-                  ...prev,
-                  sex: currentMenu === "BOAR" ? "Đực" : "Cái",
-                  stage: currentMenu === "MEAT" ? "Vỗ béo thịt" : currentMenu === "BOAR" ? "Đực giống" : "Hậu bị"
-                }));
-                setShowAddPigModal(true);
-              }}
-              style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-            >
-              + Thêm cá thể mới
+            <button onClick={() => setShowAddPigModal(true)} style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}>
+              + Thêm nái mới
             </button>
-            {currentMenu === "SOW" && (
-              <button
-                onClick={() => {
-                  if (!user) return alert("Vui lòng đăng nhập để phối giống!");
-                  setShowMatingModal(true);
-                }}
-                style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-              >
-                🔬 Phối giống (Tránh cận huyết)
-              </button>
-            )}
+            <button onClick={() => setShowMatingModal(true)} style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}>
+              🔬 Phối giống (Tránh cận huyết)
+            </button>
           </div>
         )}
 
-        {/* MENU TRƯỢT */}
-        {isSidebarOpen && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
-            <div onClick={() => setIsSidebarOpen(false)} style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
-            <div style={{ width: "260px", backgroundColor: "#fff", height: "100%", zIndex: 101, padding: "20px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <h2 style={{ margin: 0, color: "#5b21b6" }}>APPTRAILON</h2>
-              <div style={{ fontSize: "12px", color: user ? "#059669" : "#64748b", fontWeight: "700", marginBottom: "8px" }}>
-                {user ? `👤 Người thực hiện: ${activeOperator}` : "👀 Chế độ Khách (Chỉ xem)"}
-              </div>
-              {[
-                { k: "OVERVIEW", l: "Tổng quan", icon: "📊" },
-                { k: "SOW", l: "Quản lý nái", icon: "🐖" },
-                { k: "BOAR", l: "Quản lý đực", icon: "🐗" },
-                { k: "PIGLET", l: "Lợn con theo lô", icon: "🍼" },
-                { k: "MEAT", l: "Lợn thịt", icon: "🥩" },
-                { k: "PEDIGREE", l: "Gia phả toàn đàn", icon: "🌳" },
-                { k: "GUIDE", l: "Quy trình thú y", icon: "🩺" },
-                { k: "SEARCH", l: "Tra cứu cá thể", icon: "🔍" },
-                { k: "SETTINGS", l: "Cài đặt", icon: "⚙️" },
-              ].map(item => (
-                <button
-                  key={item.k}
-                  onClick={() => { navigateTo(item.k as any); setIsSidebarOpen(false); }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", borderRadius: "10px", border: "none",
-                    background: currentMenu === item.k ? "#ede9fe" : "none",
-                    color: currentMenu === item.k ? "#5b21b6" : "#334155",
-                    fontWeight: currentMenu === item.k ? "800" : "600",
-                    fontSize: "14px", cursor: "pointer", textAlign: "left"
-                  }}
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.l}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 1. TỔNG QUAN (ĐÃ LOẠI BỎ PSY 100%, HIỂN THỊ ĐỦ HẬU BỊ) */}
+        {/* TỔNG QUAN */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
-            
-            <div style={{
-              background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
-              borderRadius: "16px",
-              padding: "16px 18px",
-              marginBottom: "14px",
-              color: "#fff",
-              boxShadow: "0 4px 12px rgba(49, 46, 129, 0.2)"
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#a5b4fc", letterSpacing: "0.5px" }}>
-                    Quy mô trang trại
-                  </div>
-                  <div style={{ fontSize: "26px", fontWeight: "900", margin: "2px 0 6px 0" }}>
-                    {grandTotal} <span style={{ fontSize: "14px", fontWeight: "600", color: "#c7d2fe" }}>cá thể</span>
-                  </div>
-                </div>
-                {user && (
-                  <button
-                    onClick={() => setShowAddPigModal(true)}
-                    style={{ padding: "8px 14px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-                  >
-                    + Thêm Lợn
-                  </button>
-                )}
-              </div>
-
-              {/* THANH TỶ LỆ CƠ CẤU */}
-              <div style={{ height: "7px", width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "4px", overflow: "hidden", display: "flex", margin: "8px 0 8px 0" }}>
-                <div style={{ width: `${sowPct}%`, backgroundColor: "#ec4899" }} title="Nái" />
-                <div style={{ width: `${boarPct}%`, backgroundColor: "#3b82f6" }} title="Đực" />
-                <div style={{ width: `${pigletPct}%`, backgroundColor: "#10b981" }} title="Lợn con" />
-                <div style={{ width: `${meatPct}%`, backgroundColor: "#eab308" }} title="Thịt" />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#cbd5e1" }}>
-                <span><span style={{ color: "#ec4899" }}>●</span> Nái: {sowList.length}</span>
-                <span><span style={{ color: "#3b82f6" }}>●</span> Đực: {boarList.length}</span>
-                <span><span style={{ color: "#10b981" }}>●</span> Con: {totalPigletsCount}</span>
-                <span><span style={{ color: "#eab308" }}>●</span> Thịt: {meatList.length}</span>
+            <div style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)", borderRadius: "16px", padding: "16px 18px", marginBottom: "14px", color: "#fff" }}>
+              <div style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#a5b4fc" }}>Quy mô trang trại</div>
+              <div style={{ fontSize: "26px", fontWeight: "900", margin: "2px 0 6px 0" }}>{grandTotal} <span style={{ fontSize: "14px", color: "#c7d2fe" }}>cá thể</span></div>
+              <div style={{ height: "7px", width: "100%", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "4px", overflow: "hidden", display: "flex", margin: "8px 0" }}>
+                <div style={{ width: `${sowPct}%`, backgroundColor: "#ec4899" }} />
+                <div style={{ width: `${boarPct}%`, backgroundColor: "#3b82f6" }} />
+                <div style={{ width: `${pigletPct}%`, backgroundColor: "#10b981" }} />
+                <div style={{ width: `${meatPct}%`, backgroundColor: "#eab308" }} />
               </div>
             </div>
 
-            {/* XUẤT BÁO CÁO & ĐỔI TÊN */}
-            <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "14px", marginBottom: "16px", border: "1px solid #bfdbfe" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e40af" }}>📄 BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>1 bảng duy nhất</span>
-              </div>
-
-              <form onSubmit={handleSaveDisplayName} style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
-                <input
-                  type="text"
-                  placeholder="Tên người thực hiện / ký tên..."
-                  value={inputDisplayName}
-                  onChange={(e) => setInputDisplayName(e.target.value)}
-                  style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px" }}
-                />
-                <button type="submit" style={{ padding: "6px 12px", background: "#5b21b6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", fontSize: "11px", cursor: "pointer" }}>
-                  Lưu cố định
-                </button>
-              </form>
-
-              <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
-                {[7, 10, 30].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setReportDays(d as any)}
-                    style={{
-                      flex: 1, padding: "7px 0", borderRadius: "6px", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer",
-                      background: reportDays === d ? "#2563eb" : "#dbeafe",
-                      color: reportDays === d ? "#fff" : "#1e40af"
-                    }}
-                  >
-                    {d} ngày qua
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={handleExportWord}
-                style={{ width: "100%", padding: "9px", borderRadius: "8px", background: "#1d4ed8", color: "#fff", border: "none", fontWeight: "900", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-              >
-                <span>📥 Tải File Word Báo Cáo ({reportDays} ngày)</span>
-              </button>
-            </div>
-
-            {/* BẢNG 4 Ô CƠ CẤU: ĐÃ BỔ SUNG ĐẦY ĐỦ NÁI HẬU BỊ */}
+            {/* 4 Ô CƠ CẤU */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "22px" }}>
-              <div onClick={() => { navigateTo("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer", border: "1px solid #fce7f3" }}>
+              <div onClick={() => { navigateTo("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
                 <div style={{ fontSize: "12px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
-                <div style={{ fontSize: "24px", fontWeight: "900", color: "#e11d48", margin: "2px 0" }}>{sowList.length} con</div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#e11d48" }}>{sowList.length} con</div>
                 <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                  <div>• Chửa: <strong>{sowList.filter(p => checkSowState(p) === "CHUA").length}</strong> con</div>
-                  <div>• Nuôi con: <strong>{sowList.filter(p => checkSowState(p) === "NUOICON").length}</strong> con</div>
-                  <div>• Chờ phối: <strong style={{ color: "#2563eb" }}>{sowList.filter(p => checkSowState(p) === "CHOPHOI").length}</strong> con</div>
-                  <div>• Hậu bị: <strong style={{ color: "#7c3aed" }}>{sowList.filter(p => checkSowState(p) === "HAUBI").length}</strong> con</div>
+                  <div>• Chửa: <strong>{sowList.filter(p => checkSowState(p) === "CHUA").length}</strong></div>
+                  <div>• Nuôi con: <strong>{sowList.filter(p => checkSowState(p) === "NUOICON").length}</strong></div>
+                  <div>• Chờ phối: <strong>{sowList.filter(p => checkSowState(p) === "CHOPHOI").length}</strong></div>
+                  <div>• Hậu bị: <strong>{sowList.filter(p => checkSowState(p) === "HAUBI").length}</strong></div>
                 </div>
               </div>
 
-              <div onClick={() => { navigateTo("BOAR"); }} style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "14px", cursor: "pointer", border: "1px solid #dbeafe" }}>
+              <div onClick={() => navigateTo("BOAR")} style={{ backgroundColor: "#f0f5ff", borderRadius: "16px", padding: "14px", cursor: "pointer" }}>
                 <div style={{ fontSize: "12px", fontWeight: "800", color: "#2563eb" }}>ĐỰC GIỐNG</div>
-                <div style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb", margin: "2px 0" }}>{boarList.length} con</div>
-                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                  <div>• Đang khai thác tinh</div>
-                </div>
+                <div style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb" }}>{boarList.length} con</div>
               </div>
-
-              <div onClick={() => { navigateTo("PIGLET"); }} style={{ backgroundColor: "#f0fdf4", borderRadius: "16px", padding: "14px", cursor: "pointer", border: "1px solid #dcfce7" }}>
-                <div style={{ fontSize: "12px", fontWeight: "800", color: "#16a34a" }}>LỢN CON</div>
-                <div style={{ fontSize: "24px", fontWeight: "900", color: "#16a34a", margin: "2px 0" }}>{totalPigletsCount} con</div>
-                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                  <div>• Theo mẹ: <strong>{suckingPigletsCount}</strong> con ({suckingLitters.length} lô)</div>
-                  <div>• Đã cai sữa: <strong style={{ color: "#047857" }}>{weanedPigletsCount}</strong> con ({weanedLitters.length} lô)</div>
-                </div>
-              </div>
-
-              <div onClick={() => { navigateTo("MEAT"); }} style={{ backgroundColor: "#fefce8", borderRadius: "16px", padding: "14px", cursor: "pointer", border: "1px solid #fef08a" }}>
-                <div style={{ fontSize: "12px", fontWeight: "800", color: "#854d0e" }}>LỢN THỊT</div>
-                <div style={{ fontSize: "24px", fontWeight: "900", color: "#854d0e", margin: "2px 0" }}>{meatList.length} con</div>
-                <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.6" }}>
-                  <div>• Đang vỗ béo</div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
-                  🔔 VIỆC CẦN LÀM ({pendingTasks.length})
-                </h3>
-              </div>
-
-              <div style={{ display: "flex", gap: "6px", marginBottom: "12px", overflowX: "auto" }}>
-                {[{ id: "ALL", label: "Tất cả" }, { id: "VET", label: "Thú y" }, { id: "REPRO", label: "Sinh sản" }, { id: "WEAN", label: "Cai sữa" }].map((tab) => (
-                  <button key={tab.id} onClick={() => setTaskCategoryFilter(tab.id)} style={{ padding: "6px 10px", borderRadius: "16px", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer", backgroundColor: taskCategoryFilter === tab.id ? "#5b21b6" : "#e2e8f0", color: taskCategoryFilter === tab.id ? "#fff" : "#475569" }}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
-                {pendingTasks.length === 0 ? (
-                  <div style={{ padding: "14px", textAlign: "center", background: "#fff", borderRadius: "10px", fontSize: "12px", color: "#64748b" }}>
-                    ✨ Không có công việc nào tồn đọng trong mục này.
-                  </div>
-                ) : (
-                  pendingTasks.map((task) => {
-                    const isOverdue = String(task.title).includes("QUÁ HẠN");
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => handleTaskClick(task)}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          cursor: user ? "pointer" : "not-allowed",
-                          background: isOverdue ? "#fef2f2" : "#fff",
-                          padding: "10px 14px", borderRadius: "10px",
-                          border: isOverdue ? "1px solid #fecaca" : "1px solid #f1e5f0"
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: "13px", fontWeight: "700", color: isOverdue ? "#b91c1c" : "#1e1b4b" }}>{task.title}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                            Hạn: <strong>{formatDateVN(task.due_date)}</strong> {task.related_tag && `(Tai: ${task.related_tag})`} • <span style={{ color: "#7c3aed", fontWeight: "700" }}>{task.category === "VET" ? "Thú y" : task.category === "REPRO" ? "Sinh sản" : task.category === "WEAN" ? "Cai sữa" : "Chung"}</span>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: "18px" }}>⚪</div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {completedTasks.length > 0 && (
-                <div>
-                  <h4 style={{ fontSize: "14px", fontWeight: "800", color: "#047857", margin: "0 0 8px 0" }}>
-                    ✅ CÔNG VIỆC ĐÃ LÀM XONG ({completedTasks.length})
-                  </h4>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {completedTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          background: "#f0fdf4", padding: "8px 12px", borderRadius: "8px",
-                          border: "1px solid #bbf7d0", opacity: 0.85
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: "12px", fontWeight: "700", color: "#166534", textDecoration: "line-through" }}>{task.title}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>Đã hoàn thành (Hạn: {formatDateVN(task.due_date)})</div>
-                        </div>
-                        <div style={{ fontSize: "16px" }}>🟢</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
             </div>
           </div>
         )}
 
-        {/* 2. QUẢN LÝ NÁI (BỔ SUNG TAB HẬU BỊ) */}
+        {/* TAB QUẢN LÝ NÁI */}
         {currentMenu === "SOW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto" }}>
@@ -1830,7 +1002,7 @@ export default function FarmApp() {
                 { id: "NUOICON", label: `Nuôi con (${sowList.filter(p => checkSowState(p) === "NUOICON").length})` },
                 { id: "CHOPHOI", label: `Chờ phối (${sowList.filter(p => checkSowState(p) === "CHOPHOI").length})` },
                 { id: "HAUBI", label: `Hậu bị (${sowList.filter(p => checkSowState(p) === "HAUBI").length})` }
-              ].map((tab) => (
+              ].map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setSubFilter(tab.id)}
@@ -1844,690 +1016,314 @@ export default function FarmApp() {
                 </button>
               ))}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {sowList.filter((p) => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
-            </div>
-          </div>
-        )}
-
-        {/* 3. QUẢN LÝ ĐỰC */}
-        {currentMenu === "BOAR" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ fontSize: "14px", fontWeight: "800", color: "#2563eb", marginBottom: "12px" }}>ĐÀN ĐỰC GIỐNG ({boarList.length} CON)</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>{boarList.map(renderPigCard)}</div>
-          </div>
-        )}
-
-        {/* 4. LỢN CON THEO LÔ */}
-        {currentMenu === "PIGLET" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ fontSize: "14px", fontWeight: "800", color: "#16a34a", marginBottom: "12px" }}>
-              TỔNG ĐÀN CON: {totalPigletsCount} CON (Theo mẹ: {suckingPigletsCount} • Đã cai sữa: {weanedPigletsCount})
-            </div>
-
-            <h4 style={{ fontSize: "13px", fontWeight: "800", color: "#ea580c", margin: "0 0 10px 0" }}>
-              🍼 LỢN CON ĐANG THEO MẸ ({suckingPigletsCount} CON / {suckingLitters.length} LÔ)
-            </h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-              {suckingLitters.length === 0 ? (
-                <div style={{ padding: "12px", background: "#fff", borderRadius: "10px", fontSize: "12px", color: "#64748b" }}>
-                  Không có lô con nào đang bú mẹ.
-                </div>
-              ) : (
-                suckingLitters.map((lit) => {
-                  const sow = safePigs.find(p => p.ear_tag === lit.sow_ear_tag);
-                  const ageDays = safeDateDiff(lit.farrow_date);
-                  const isReadyWean = ageDays >= 24;
-                  return (
-                    <div
-                      key={lit.id}
-                      style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "16px", border: isReadyWean ? "1px solid #fed7aa" : "1px solid #f1e5f0" }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-                          Lô nái {lit.sow_ear_tag} ({lit.litter_code})
-                        </span>
-                        <span style={{ padding: "3px 8px", borderRadius: "12px", fontSize: "12px", fontWeight: "800", backgroundColor: "#ecfdf5", color: "#047857" }}>{lit.alive_born} con</span>
-                      </div>
-                      <div style={{ margin: "8px 0", fontSize: "12px", color: isReadyWean ? "#ea580c" : "#64748b", fontWeight: "700" }}>
-                        Chuồng: {sow?.current_pen_code || "—"} | {ageDays !== -999 ? ageDays : 0} ngày tuổi {isReadyWean && "🔔 (Đến hạn cai sữa)"}
-                      </div>
-
-                      <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                        <button
-                          onClick={() => { setViewingLitter(lit); setSelectedPigletTags([]); }}
-                          style={{
-                            flex: 1, padding: "8px", borderRadius: "8px", border: "1px solid #c7d2fe",
-                            backgroundColor: "#e0e7ff", color: "#4338ca", fontSize: "12px", fontWeight: "800", cursor: "pointer"
-                          }}
-                        >
-                          🔍 Xem & Chọn cá thể
-                        </button>
-                        {user && (
-                          <button
-                            onClick={() => executeWeaning(lit.sow_ear_tag, lit.id, lit.alive_born)}
-                            style={{
-                              flex: 1, padding: "8px", borderRadius: "8px", border: "none",
-                              backgroundColor: isReadyWean ? "#ea580c" : "#0f172a",
-                              color: "#fff", fontSize: "12px", fontWeight: "800", cursor: "pointer"
-                            }}
-                          >
-                            ✓ Cai sữa đàn này
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {weanedLitters.length > 0 && (
-              <div>
-                <h4 style={{ fontSize: "13px", fontWeight: "800", color: "#047857", margin: "0 0 10px 0" }}>
-                  ✅ LỢN CON ĐÃ CAI SỮA ({weanedPigletsCount} CON / {weanedLitters.length} LÔ)
-                </h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {weanedLitters.map((lit) => (
-                    <div
-                      key={lit.id}
-                      style={{ backgroundColor: "#f0fdf4", borderRadius: "12px", padding: "12px 14px", border: "1px solid #bbf7d0" }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "15px", fontWeight: "800", color: "#166534" }}>
-                          Lô nái {lit.sow_ear_tag} ({lit.litter_code})
-                        </span>
-                        <span style={{ padding: "2px 8px", borderRadius: "10px", fontSize: "12px", fontWeight: "800", backgroundColor: "#dcfce7", color: "#15803d" }}>{lit.alive_born} con</span>
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 8px 0" }}>
-                        Trạng thái: <strong>Đã cai sữa tách mẹ</strong> {lit.weaning_date && `(Ngày cai: ${formatDateVN(lit.weaning_date)})`}
-                      </div>
-                      <button
-                        onClick={() => { setViewingLitter(lit); setSelectedPigletTags([]); }}
-                        style={{
-                          width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #bbf7d0",
-                          backgroundColor: "#fff", color: "#166534", fontSize: "11px", fontWeight: "800", cursor: "pointer"
-                        }}
-                      >
-                        🔍 Xem & Chọn cá thể lợn con
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {/* 5. LỢN THỊT */}
-        {currentMenu === "MEAT" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ fontSize: "14px", fontWeight: "800", color: "#854d0e", marginBottom: "12px" }}>ĐÀN LỢN THỊT ({meatList.length} CON)</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>{meatList.map(renderPigCard)}</div>
-          </div>
-        )}
-
-        {/* 6. TAB GIA PHẢ TOÀN ĐÀN */}
-        {currentMenu === "PEDIGREE" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ background: "#ede9fe", borderRadius: "12px", padding: "14px", marginBottom: "14px", border: "1px solid #ddd6fe" }}>
-              <h3 style={{ margin: "0 0 6px 0", fontSize: "15px", fontWeight: "900", color: "#5b21b6" }}>
-                🌳 CÂY PHẢ HỆ VÀ DÒNG GIỐNG
-              </h3>
-              <div style={{ fontSize: "12px", color: "#475569" }}>
-                Theo dõi dòng máu Bố - Mẹ - Đàn con, phòng tránh cận huyết thoái hóa giống trong trại.
-              </div>
-            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {safePigs.filter(p => !isIndividualPiglet(p)).map((pig) => {
-                const hasSire = !!pig.sire_ear_tag;
-                const hasDam = !!pig.dam_ear_tag;
-                return (
-                  <div key={pig.id} style={{ background: "#fff", borderRadius: "12px", padding: "12px 14px", border: "1px solid #f1e5f0" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>{pig.ear_tag} ({pig.breed_id})</span>
-                      <button
-                        onClick={() => setPedigreePig(pig)}
-                        style={{ padding: "4px 10px", borderRadius: "8px", background: "#7c3aed", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-                      >
-                        Xem cây gia phả 🌳
-                      </button>
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                      Thế hệ bố mẹ: {hasSire ? `Bố [${pig.sire_ear_tag}]` : "Chưa rõ bố"} • {hasDam ? `Mẹ [${pig.dam_ear_tag}]` : "Chưa rõ mẹ"}
-                    </div>
-                  </div>
-                );
-              })}
+              {sowList.filter(p => (subFilter === "ALL" ? true : checkSowState(p) === subFilter)).map(renderPigCard)}
             </div>
           </div>
         )}
 
-        {/* 7. TAB QUY TRÌNH THÚ Y */}
-        {currentMenu === "GUIDE" && (
-          <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div style={{ background: "#eff6ff", borderRadius: "12px", padding: "14px", border: "1px solid #bfdbfe" }}>
-              <h3 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: "900", color: "#1e40af" }}>
-                🩺 CẨM NANG QUY TRÌNH PHÒNG BỆNH VACCINE
-              </h3>
-              <div style={{ fontSize: "12px", color: "#475569" }}>
-                Áp dụng chuẩn quy trình chăn nuôi an toàn sinh học tại Trại Lợn Nà Roác.
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#047857" }}>
-                1. Quy Trình Lợn Con Theo Mẹ & Lợn Thịt
-              </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 3 ngày tuổi:</b> Tiêm Sắt (Dextran 200mg) + Nhỏ thuốc phòng Cầu trùng (Toltrazuril).
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 7 - 10 ngày tuổi:</b> Tiêm phòng Suyễn lợn (Mycoplasma hyopneumoniae) mũi 1.
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 14 - 16 ngày tuổi:</b> Tiêm phòng Phù đầu / Phân trắng (E.Coli + Phù đầu).
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 21 ngày tuổi (trước cai sữa):</b> Tiêm nhắc lại Suyễn mũi 2 hoặc phòng PRRS (Tai xanh).
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 30 - 35 ngày tuổi (sau cai sữa):</b> Tiêm Vaccine Dịch tả lợn cổ điển mũi 1 (CSF).
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 45 - 50 ngày tuổi:</b> Tiêm Vaccine Lở mồm long móng (FMD) mũi 1.
-                </div>
-                <div style={{ padding: "8px", background: "#f8fafc", borderRadius: "6px" }}>
-                  <b>• 60 ngày tuổi:</b> Tiêm nhắc lại Dịch tả mũi 2 + Tẩy giun sán đường ruột.
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#db2777" }}>
-                2. Quy Trình Nái Hậu Bị & Nái Chửa
-              </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
-                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
-                  <b>• Trước phối 4 tuần (Hậu bị):</b> Tiêm Parvovirus (Khô thai) mũi 1 + Giả dại (Aujeszky).
-                </div>
-                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
-                  <b>• Trước phối 2 tuần (Hậu bị):</b> Tiêm nhắc lại Parvovirus mũi 2 + Dịch tả cổ điển.
-                </div>
-                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
-                  <b>• Chửa 80 - 85 ngày:</b> Tiêm Vaccine Tai xanh (PRRS) hoặc Dịch tả định kỳ lứa chửa.
-                </div>
-                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
-                  <b>• Chửa 95 - 100 ngày:</b> Tiêm phòng E.Coli tạo kháng thể mẹ truyền sữa đầu phòng tiêu chảy phân trắng cho đàn con.
-                </div>
-                <div style={{ padding: "8px", background: "#fdf2f4", borderRadius: "6px" }}>
-                  <b>• Chửa 107 ngày:</b> Tắm rửa sạch sẽ, sát trùng vú và chuyển lên ô chuồng đẻ.
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", borderRadius: "12px", padding: "14px", border: "1px solid #2563eb" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "800", color: "#2563eb" }}>
-                3. Quy Trình Đực Giống
-              </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
-                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
-                  <b>• Định kỳ 6 tháng/lần:</b> Tiêm nhắc lại Vaccine Lở mồm long móng (FMD) + Dịch tả lợn cổ điển.
-                </div>
-                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
-                  <b>• Định kỳ 6 tháng/lần:</b> Tiêm Ivermectin tẩy giun sán nội ngoại ký sinh trùng.
-                </div>
-                <div style={{ padding: "8px", background: "#f0f5ff", borderRadius: "6px" }}>
-                  <b>• Định kỳ 1 năm/lần:</b> Tiêm phòng Khô thai (Parvo) và Giả dại (Aujeszky).
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 8. TRA CỨU */}
-        {currentMenu === "SEARCH" && (
-          <div style={{ padding: "16px" }}>
-            <input placeholder="Gõ số tai, chuồng, giống..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", boxSizing: "border-box", marginBottom: "14px" }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {safePigs.filter(p => !isIndividualPiglet(p)).filter(p => String(p?.ear_tag || "").toLowerCase().includes(searchQuery.toLowerCase()) || String(p?.breed_id || "").toLowerCase().includes(searchQuery.toLowerCase())).map(renderPigCard)}
-            </div>
-          </div>
-        )}
-
-        {/* 9. CÀI ĐẶT */}
-        {currentMenu === "SETTINGS" && (
-          <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>Trạng thái tài khoản</h4>
-              <div style={{ fontSize: "13px", color: user ? "#059669" : "#64748b", fontWeight: "700" }}>
-                {user ? `Đang đăng nhập: ${user.email} (${activeOperator})` : "Chế độ xem tự do (Khách)"}
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Giống lợn</h4>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-                {(config?.breeds || []).map((b) => (
-                  <span key={b} style={{ padding: "4px 10px", borderRadius: "20px", background: "#f1f5f9", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                    {b}
-                    {user && (
-                      <span onClick={() => saveConfig({ ...config, breeds: config.breeds.filter(item => item !== b) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-              {user && (
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <input placeholder="Thêm giống mới..." value={newBreedInput} onChange={(e) => setNewBreedInput(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
-                  <button onClick={() => { if (newBreedInput.trim() && !config.breeds.includes(newBreedInput.trim())) { saveConfig({ ...config, breeds: [...config.breeds, newBreedInput.trim()] }); setNewBreedInput(""); } }} style={{ padding: "8px 14px", background: "#059669", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "700", cursor: "pointer" }}>+ Thêm</button>
-                </div>
-              )}
-            </div>
-
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Giai đoạn / Trạng thái</h4>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-                {(config?.stages || []).map((st) => (
-                  <span key={st} style={{ padding: "4px 10px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                    {formatVietnameseStage(st)}
-                    {user && (
-                      <span onClick={() => saveConfig({ ...config, stages: config.stages.filter(item => item !== st) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800" }}>Danh mục Ô Chuồng</h4>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
-                {(config?.pens || []).map((pen) => (
-                  <span key={pen} style={{ padding: "4px 10px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                    {pen}
-                    {user && (
-                      <span onClick={() => saveConfig({ ...config, pens: config.pens.filter(item => item !== pen) })} style={{ cursor: "pointer", color: "#ef4444", fontWeight: "800" }}>✕</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "800", color: "#1e1b4b" }}>📜 Nhật Ký Thao Tác Gần Đây</h4>
-              {(auditLogs || []).length === 0 ? (
-                <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có lịch sử thao tác nào.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
-                  {(auditLogs || []).map((log) => {
-                    let formattedTime = "";
-                    if (log.created_at) {
-                      const t = new Date(log.created_at);
-                      if (!isNaN(t.getTime())) {
-                        formattedTime = t.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " - " + formatDateVN(log.created_at);
-                      }
-                    }
-                    return (
-                      <div key={log.id} style={{ fontSize: "11px", padding: "8px", borderRadius: "8px", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700" }}>
-                          <span style={{ color: "#5b21b6" }}>👤 {log.performed_by || "Hà Quang Dự"}</span>
-                          <span style={{ color: "#64748b" }}>{formattedTime}</span>
-                        </div>
-                        <div style={{ color: "#334155", marginTop: "3px" }}>{log.details}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* FOOTER */}
-      <footer style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: "36px", backgroundColor: "rgba(253, 248, 251, 0.95)", borderTop: "1px solid #f1e5f0", display: "flex", alignItems: "center", justifyContent: "flex-start", paddingLeft: "16px", zIndex: 40, maxWidth: "480px", margin: "0 auto", pointerEvents: "none" }}>
-        <span style={{ fontSize: "12px", fontWeight: "800", color: "#64748b" }}>AppWeb: Trại Lợn Nà Roác</span>
-      </footer>
-
-      {/* MODAL XEM CHI TIẾT SINH SẢN - CÓ CỘT ĐỰC PHỐI, LỨA THỨ MẤY & NÚT SỬA/XÓA TỪNG LỨA */}
-      {reproHistorySow && (() => {
-        const analysis = getSowReproAnalysis(reproHistorySow.ear_tag);
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "460px", maxHeight: "88vh", display: "flex", flexDirection: "column", padding: "18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#db2777" }}>
-                    📊 Sinh Sản: Nái {reproHistorySow.ear_tag}
-                  </h3>
-                  <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {reproHistorySow.breed_id} • Trạng thái: {reproHistorySow.stage}</span>
-                </div>
-                <button onClick={() => { setReproHistorySow(null); setShowLitterFormModal(false); }} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+      {/* ========================================================================= */}
+      {/* 🎯 MODAL HỒ SƠ NÁI DUY NHẤT: CHỈNH SỬA + SINH SẢN + GIA PHẢ TRONG 1 NƠI    */}
+      {/* ========================================================================= */}
+      {activeProfilePig && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "460px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            
+            {/* Header Modal */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+                  Hồ Sơ Nái: {activeProfilePig.ear_tag}
+                </h3>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {activeProfilePig.breed_id} • Ô: {activeProfilePig.current_pen_code}</span>
               </div>
+              <button onClick={() => setActiveProfilePig(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
+            </div>
 
-              <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px" }}>
-                
-                {/* 3 CHỈ SỐ NĂNG SUẤT */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-                  <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
-                    <div style={{ fontSize: "10px", color: "#db2777", fontWeight: "700" }}>TỔNG LỨA</div>
-                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#e11d48" }}>{analysis.totalLitters}</div>
-                  </div>
-                  <div style={{ background: "#eff6ff", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
-                    <div style={{ fontSize: "10px", color: "#2563eb", fontWeight: "700" }}>TỔNG CON</div>
-                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#1d4ed8" }}>{analysis.totalBorn}</div>
-                  </div>
-                  <div style={{ background: "#ecfdf5", padding: "10px", borderRadius: "8px", textAlign: "center" }}>
-                    <div style={{ fontSize: "10px", color: "#059669", fontWeight: "700" }}>TB CON/LỨA</div>
-                    <div style={{ fontSize: "18px", fontWeight: "900", color: "#047857" }}>{analysis.avgBorn}</div>
-                  </div>
-                </div>
+            {/* 3 Tab Lựa Chọn Gọn Gàng */}
+            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "10px", padding: "3px", marginBottom: "14px" }}>
+              {[
+                { k: "EDIT", label: "📝 Thông Tin & Trạng Thái" },
+                { k: "REPRO", label: "📊 Sinh Sản & Lứa Đẻ" },
+                { k: "PEDIGREE", label: "🌳 Gia Phả 3 Đời" }
+              ].map(t => (
+                <button
+                  key={t.k}
+                  onClick={() => setProfileTab(t.k as any)}
+                  style={{
+                    flex: 1, padding: "8px 0", borderRadius: "8px", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer",
+                    background: profileTab === t.k ? "#fff" : "transparent",
+                    color: profileTab === t.k ? "#5b21b6" : "#64748b",
+                    boxShadow: profileTab === t.k ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-                {/* CẢNH BÁO LOẠI THẢI */}
-                {analysis.cullWarnings.length > 0 && (
-                  <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "10px", borderRadius: "10px" }}>
-                    <div style={{ fontSize: "12px", fontWeight: "900", color: "#b91c1c", marginBottom: "4px" }}>
-                      ⚠️ ĐÁNH GIÁ NĂNG SUẤT & LOẠI THẢI:
+            <div style={{ overflowY: "auto", flex: 1, paddingRight: "4px" }}>
+
+              {/* TAB 1: FORM CHỈNH SỬA THÔNG TIN & TRẠNG THÁI */}
+              {profileTab === "EDIT" && (
+                <form onSubmit={handleSaveProfileEdit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700" }}>Số tai (*):</label>
+                      <input
+                        required
+                        value={activeProfilePig.ear_tag}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, ear_tag: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                      />
                     </div>
-                    {analysis.cullWarnings.map((w, idx) => (
-                      <div key={idx} style={{ fontSize: "11px", color: "#991b1b", marginBottom: "2px", fontWeight: "600" }}>{w}</div>
-                    ))}
-                  </div>
-                )}
-
-                {/* DANH SÁCH CHI TIẾT TỪNG LỨA ĐẺ */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
-                    <h4 style={{ margin: 0, fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Các lứa đẻ chi tiết ({analysis.sowLitters.length}):</h4>
-                    {user && (
-                      <button
-                        onClick={openAddLitterModal}
-                        style={{ padding: "5px 10px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700" }}>Giống:</label>
+                      <select
+                        value={activeProfilePig.breed_id || config.breeds[0]}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, breed_id: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
                       >
-                        + Bổ sung lứa đẻ
-                      </button>
-                    )}
+                        {config.breeds.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
                   </div>
 
-                  {analysis.sowLitters.length === 0 ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic", padding: "10px", background: "#f8fafc", borderRadius: "8px", textAlign: "center" }}>
-                      Chưa có ghi nhận lứa đẻ nào. Bấm "+ Bổ sung lứa đẻ" để nhập các lứa cũ của nái rạ!
+                  {/* CHỌN TRẠNG THÁI TRỰC TIẾP TẠI ĐÂY - KHÔNG LO BỊ KẸT */}
+                  <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px", border: "1px solid #fce7f3" }}>
+                    <label style={{ fontSize: "11px", fontWeight: "800", color: "#db2777" }}>Trạng thái sinh sản hiện tại (*):</label>
+                    <select
+                      value={activeProfilePig.stage}
+                      onChange={(e) => setActiveProfilePig({ ...activeProfilePig, stage: e.target.value })}
+                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #f472b6", marginTop: "4px", fontWeight: "800" }}
+                    >
+                      <option value="Đang chửa">🤰 Đang chửa</option>
+                      <option value="Nuôi con">🍼 Nuôi con</option>
+                      <option value="Chờ phối">⏳ Chờ phối</option>
+                      <option value="Hậu bị">🐖 Hậu bị</option>
+                    </select>
+                    <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px" }}>
+                      * Chọn chính xác trạng thái để nái nhảy đúng tab Chửa / Chờ phối / Nuôi con.
                     </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {analysis.sowLitters.map((l, idx) => {
-                        let boarUsed = "—";
-                        const match = (l.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
-                        if (match) boarUsed = match[1].trim();
+                  </div>
 
-                        const displayNotes = (l.notes || "").replace(/\[Đực:\s*[^\]]+\]/i, "").trim() || (l.weaning_date ? "Đã cai sữa" : "Đang nuôi con");
-
-                        return (
-                          <div key={l.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "10px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                              <span style={{ fontSize: "13px", fontWeight: "900", color: "#1e1b4b" }}>
-                                🐽 {l.litter_code || `Lứa ${idx + 1}`} (Lứa thứ {idx + 1})
-                              </span>
-                              <span style={{ fontSize: "13px", fontWeight: "900", color: "#059669" }}>
-                                {l.alive_born} con
-                              </span>
-                            </div>
-
-                            <div style={{ fontSize: "11px", color: "#475569", lineHeight: "1.5" }}>
-                              <div>• Ngày đẻ: <b>{formatDateVN(l.farrow_date)}</b></div>
-                              <div>• Phối đực: <b style={{ color: "#2563eb" }}>{boarUsed}</b></div>
-                              <div>• Tình trạng/Ghi chú: {displayNotes}</div>
-                            </div>
-
-                            {user && (
-                              <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px", borderTop: "1px dashed #e2e8f0", paddingTop: "6px" }}>
-                                <button
-                                  onClick={() => openEditLitterModal(l, idx)}
-                                  style={{ padding: "3px 8px", borderRadius: "6px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-                                >
-                                  ✎ Sửa lứa này
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteLitter(l.id, l.litter_code || `Lứa ${idx + 1}`)}
-                                  style={{ padding: "3px 8px", borderRadius: "6px", background: "#fef2f2", color: "#ef4444", border: "none", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
-                                >
-                                  ✕ Xóa
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700" }}>Ô Chuồng:</label>
+                      <select
+                        value={activeProfilePig.current_pen_code || config.pens[0]}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, current_pen_code: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                      >
+                        {config.pens.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
                     </div>
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700" }}>Thể trạng:</label>
+                      <input
+                        value={activeProfilePig.status || "Bình thường"}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, status: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700", color: "#1e40af" }}>Số tai Bố:</label>
+                      <input
+                        placeholder="Trống nếu chưa rõ"
+                        value={activeProfilePig.sire_ear_tag || ""}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, sire_ear_tag: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "11px", fontWeight: "700", color: "#b91c1c" }}>Số tai Mẹ:</label>
+                      <input
+                        placeholder="Trống nếu chưa rõ"
+                        value={activeProfilePig.dam_ear_tag || ""}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, dam_ear_tag: e.target.value })}
+                        style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  </div>
+
+                  {user && (
+                    <button
+                      type="submit"
+                      disabled={isSavingEdit}
+                      style={{ padding: "10px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", marginTop: "6px" }}
+                    >
+                      {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi Nái"}
+                    </button>
                   )}
-                </div>
+                </form>
+              )}
 
-                {/* LỊCH SỬ PHỐI GIỐNG GẦN ĐÂY */}
-                <div>
-                  <h4 style={{ margin: "8px 0 6px 0", fontSize: "13px", fontWeight: "800", color: "#1e1b4b" }}>Lịch sử phối giống:</h4>
-                  {analysis.sowInsems.length === 0 ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8", fontStyle: "italic" }}>Chưa có dữ liệu phối giống.</div>
-                  ) : (
+              {/* TAB 2: SINH SẢN & DANH SÁCH LỨA ĐẺ */}
+              {profileTab === "REPRO" && (() => {
+                const analysis = getSowReproAnalysis(activeProfilePig.ear_tag);
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                      <div style={{ background: "#fdf2f4", padding: "8px", borderRadius: "8px", textAlign: "center" }}>
+                        <div style={{ fontSize: "10px", color: "#db2777", fontWeight: "700" }}>TỔNG LỨA</div>
+                        <div style={{ fontSize: "18px", fontWeight: "900", color: "#e11d48" }}>{analysis.totalLitters}</div>
+                      </div>
+                      <div style={{ background: "#eff6ff", padding: "8px", borderRadius: "8px", textAlign: "center" }}>
+                        <div style={{ fontSize: "10px", color: "#2563eb", fontWeight: "700" }}>TỔNG CON</div>
+                        <div style={{ fontSize: "18px", fontWeight: "900", color: "#1d4ed8" }}>{analysis.totalBorn}</div>
+                      </div>
+                      <div style={{ background: "#ecfdf5", padding: "8px", borderRadius: "8px", textAlign: "center" }}>
+                        <div style={{ fontSize: "10px", color: "#059669", fontWeight: "700" }}>TB CON/LỨA</div>
+                        <div style={{ fontSize: "18px", fontWeight: "900", color: "#047857" }}>{analysis.avgBorn}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0" }}>
+                      <h4 style={{ margin: 0, fontSize: "12px", fontWeight: "800" }}>Chi tiết lứa đẻ ({analysis.sowLitters.length}):</h4>
+                      {user && (
+                        <button
+                          onClick={() => {
+                            setEditingLitterId(null);
+                            setLitterFormData({
+                              litter_code: `L${analysis.totalLitters + 1}`,
+                              farrow_date: new Date().toISOString().split("T")[0],
+                              alive_born: 10,
+                              boar_used: "",
+                              notes: ""
+                            });
+                            setShowLitterForm(true);
+                          }}
+                          style={{ padding: "4px 8px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+                        >
+                          + Bổ sung lứa
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Form Nhập/Sửa Lứa */}
+                    {showLitterForm && user && (
+                      <form onSubmit={handleSaveLitter} style={{ background: "#f8fafc", padding: "10px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ fontSize: "12px", fontWeight: "800", color: "#059669" }}>{editingLitterId ? "✎ Sửa lứa đẻ" : "+ Thêm lứa đẻ cũ"}</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                          <input required placeholder="Mã lứa (VD: L1...)" value={litterFormData.litter_code} onChange={e => setLitterFormData({ ...litterFormData, litter_code: e.target.value })} style={{ padding: "6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                          <input placeholder="Đực phối" value={litterFormData.boar_used} onChange={e => setLitterFormData({ ...litterFormData, boar_used: e.target.value })} style={{ padding: "6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                          <input type="date" required value={litterFormData.farrow_date} onChange={e => setLitterFormData({ ...litterFormData, farrow_date: e.target.value })} style={{ padding: "6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                          <input type="number" required min="1" max="30" value={litterFormData.alive_born} onChange={e => setLitterFormData({ ...litterFormData, alive_born: Number(e.target.value) })} style={{ padding: "6px", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "11px" }} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+                          <button type="button" onClick={() => setShowLitterForm(false)} style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px" }}>Hủy</button>
+                          <button type="submit" style={{ padding: "4px 10px", borderRadius: "4px", background: "#059669", color: "#fff", border: "none", fontSize: "11px", fontWeight: "700" }}>Lưu lứa</button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Danh sách lứa */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {analysis.sowInsems.slice(0, 4).map((ins) => (
-                        <div key={ins.id} style={{ fontSize: "11px", padding: "6px 8px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          Phối ngày <b>{formatDateVN(ins.mating_date)}</b> với đực <b style={{ color: "#2563eb" }}>{ins.boar_ear_tag}</b> (Dự sinh: {formatDateVN(ins.expected_farrow_date)}) • <span style={{ color: ins.status?.includes("lốc") ? "#ef4444" : "#059669", fontWeight: "700" }}>{ins.status || "Đã phối"}</span>
+                      {analysis.sowLitters.map((l, idx) => (
+                        <div key={l.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 10px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "800", fontSize: "12px" }}>
+                            <span>🐽 {l.litter_code || `Lứa ${idx + 1}`} (Ngày: {formatDateVN(l.farrow_date)})</span>
+                            <span style={{ color: "#059669" }}>{l.alive_born} con</span>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "#64748b", margin: "2px 0" }}>Ghi chú: {l.notes || "—"}</div>
+                          {user && (
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "4px" }}>
+                              <button
+                                onClick={() => {
+                                  setEditingLitterId(l.id);
+                                  setLitterFormData({
+                                    litter_code: l.litter_code || `Lứa ${idx + 1}`,
+                                    farrow_date: l.farrow_date,
+                                    alive_born: Number(l.alive_born || 0),
+                                    boar_used: "",
+                                    notes: l.notes || ""
+                                  });
+                                  setShowLitterForm(true);
+                                }}
+                                style={{ padding: "2px 6px", borderRadius: "4px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "10px", fontWeight: "700", cursor: "pointer" }}
+                              >
+                                ✎ Sửa
+                              </button>
+                              <button
+                                onClick={() => handleDeleteLitter(l.id, l.litter_code || `Lứa ${idx + 1}`)}
+                                style={{ padding: "2px 6px", borderRadius: "4px", background: "#fef2f2", color: "#ef4444", border: "none", fontSize: "10px", fontWeight: "700", cursor: "pointer" }}
+                              >
+                                ✕ Xóa
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
-              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
-                <button onClick={() => { setReproHistorySow(null); setShowLitterFormModal(false); }} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
-                  Đóng
-                </button>
-              </div>
+              {/* TAB 3: GIA PHẢ 3 ĐỜI */}
+              {profileTab === "PEDIGREE" && (() => {
+                const sire = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (activeProfilePig.sire_ear_tag || "").trim().toUpperCase());
+                const dam = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (activeProfilePig.dam_ear_tag || "").trim().toUpperCase());
+
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
+                    <div style={{ background: "#ede9fe", padding: "10px", borderRadius: "10px", textAlign: "center" }}>
+                      <div style={{ fontSize: "10px", color: "#6d28d9", fontWeight: "800" }}>CÁ THỂ HIỆN TẠI</div>
+                      <div style={{ fontSize: "16px", fontWeight: "900", color: "#4c1d95" }}>{activeProfilePig.ear_tag}</div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      <div style={{ background: "#eff6ff", padding: "8px", borderRadius: "8px" }}>
+                        <div style={{ fontSize: "10px", color: "#1d4ed8", fontWeight: "800" }}>BỐ (ĐỰC)</div>
+                        <div style={{ fontSize: "14px", fontWeight: "900", color: "#1e3a8a" }}>{activeProfilePig.sire_ear_tag || "Chưa rõ"}</div>
+                        <div style={{ fontSize: "10px", color: "#64748b" }}>{sire ? `Giống: ${sire.breed_id}` : "Nhập ngoài"}</div>
+                      </div>
+                      <div style={{ background: "#fdf2f4", padding: "8px", borderRadius: "8px" }}>
+                        <div style={{ fontSize: "10px", color: "#be185d", fontWeight: "800" }}>MẸ (NÁI)</div>
+                        <div style={{ fontSize: "14px", fontWeight: "900", color: "#831843" }}>{activeProfilePig.dam_ear_tag || "Chưa rõ"}</div>
+                        <div style={{ fontSize: "10px", color: "#64748b" }}>{dam ? `Giống: ${dam.breed_id}` : "Nhập ngoài"}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
             </div>
-          </div>
-        );
-      })()}
 
-      {/* MODAL THÊM / SỬA LỨA ĐẺ */}
-      {showLitterFormModal && reproHistorySow && user && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#059669" }}>
-              {editingLitterId ? "✎ Chỉnh Sửa Lứa Đẻ" : "+ Bổ Sung Lứa Đẻ Cũ"}
-            </h3>
-            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
-              Nái: <b>{reproHistorySow.ear_tag}</b> ({reproHistorySow.breed_id})
+            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "10px", textAlign: "right" }}>
+              <button onClick={() => setActiveProfilePig(null)} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                Đóng
+              </button>
             </div>
 
-            <form onSubmit={handleSaveLitter} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Mã / Tên lứa (*):</label>
-                  <input
-                    required
-                    placeholder="VD: L1, Lứa 1..."
-                    value={litterFormData.litter_code}
-                    onChange={(e) => setLitterFormData({ ...litterFormData, litter_code: e.target.value })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Đực phối giống:</label>
-                  <input
-                    placeholder="VD: D-01, MC-02..."
-                    value={litterFormData.boar_used}
-                    onChange={(e) => setLitterFormData({ ...litterFormData, boar_used: e.target.value })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Ngày đẻ (*):</label>
-                  <input
-                    type="date"
-                    required
-                    value={litterFormData.farrow_date}
-                    onChange={(e) => setLitterFormData({ ...litterFormData, farrow_date: e.target.value })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Số con sơ sinh sống:</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    max="30"
-                    value={litterFormData.alive_born}
-                    onChange={(e) => setLitterFormData({ ...litterFormData, alive_born: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "700" }}>Ghi chú thêm:</label>
-                <input
-                  placeholder="Ghi chú thể trạng, nái rạ..."
-                  value={litterFormData.notes}
-                  onChange={(e) => setLitterFormData({ ...litterFormData, notes: e.target.value })}
-                  style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowLitterFormModal(false)}
-                  style={{ padding: "7px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer", fontSize: "12px" }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "7px 16px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "12px" }}
-                >
-                  {editingLitterId ? "Lưu thay đổi" : "Lưu lứa mới"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
 
-      {/* MODAL CÂY GIA PHẢ 3 ĐỜI */}
-      {pedigreePig && (() => {
-        const sire = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (pedigreePig.sire_ear_tag || "").trim().toUpperCase());
-        const dam = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (pedigreePig.dam_ear_tag || "").trim().toUpperCase());
-
-        const grandSirePaternal = sire ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (sire.sire_ear_tag || "").trim().toUpperCase()) : null;
-        const grandDamPaternal = sire ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (sire.dam_ear_tag || "").trim().toUpperCase()) : null;
-
-        const grandSireMaternal = dam ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (dam.sire_ear_tag || "").trim().toUpperCase()) : null;
-        const grandDamMaternal = dam ? safePigs.find(p => p.ear_tag.trim().toUpperCase() === (dam.dam_ear_tag || "").trim().toUpperCase()) : null;
-
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-            <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "85vh", display: "flex", flexDirection: "column", padding: "18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>
-                    🌳 Cây Gia Phả: {pedigreePig.ear_tag}
-                  </h3>
-                  <span style={{ fontSize: "11px", color: "#64748b" }}>Giống: {pedigreePig.breed_id} • Giới tính: {formatVietnameseSex(pedigreePig.sex)}</span>
-                </div>
-                <button onClick={() => setPedigreePig(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
-              </div>
-
-              <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
-                <div style={{ background: "#ede9fe", padding: "10px", borderRadius: "10px", border: "1px solid #c4b5fd", textAlign: "center" }}>
-                  <div style={{ fontSize: "10px", color: "#6d28d9", fontWeight: "800" }}>CÁ THỂ HIỆN TẠI</div>
-                  <div style={{ fontSize: "16px", fontWeight: "900", color: "#4c1d95" }}>{pedigreePig.ear_tag}</div>
-                  <div style={{ fontSize: "11px", color: "#5b21b6" }}>Giống: {pedigreePig.breed_id} | {pedigreePig.stage}</div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div style={{ background: "#eff6ff", padding: "8px", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
-                    <div style={{ fontSize: "10px", color: "#1d4ed8", fontWeight: "800" }}>BỐ (ĐỰC)</div>
-                    <div style={{ fontSize: "14px", fontWeight: "900", color: "#1e3a8a" }}>{pedigreePig.sire_ear_tag || "Chưa rõ"}</div>
-                    <div style={{ fontSize: "10px", color: "#64748b" }}>{sire ? `Giống: ${sire.breed_id}` : "Nhập ngoài"}</div>
-                  </div>
-                  <div style={{ background: "#fdf2f4", padding: "8px", borderRadius: "8px", border: "1px solid #fbcfe8" }}>
-                    <div style={{ fontSize: "10px", color: "#be185d", fontWeight: "800" }}>MẸ (NÁI)</div>
-                    <div style={{ fontSize: "14px", fontWeight: "900", color: "#831843" }}>{pedigreePig.dam_ear_tag || "Chưa rõ"}</div>
-                    <div style={{ fontSize: "10px", color: "#64748b" }}>{dam ? `Giống: ${dam.breed_id}` : "Nhập ngoài"}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", fontSize: "10px", textAlign: "center" }}>
-                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ color: "#64748b" }}>Ông nội</div>
-                    <b>{grandSirePaternal?.ear_tag || sire?.sire_ear_tag || "—"}</b>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ color: "#64748b" }}>Bà nội</div>
-                    <b>{grandDamPaternal?.ear_tag || sire?.dam_ear_tag || "—"}</b>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ color: "#64748b" }}>Ông ngoại</div>
-                    <b>{grandSireMaternal?.ear_tag || dam?.sire_ear_tag || "—"}</b>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "6px 2px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ color: "#64748b" }}>Bà ngoại</div>
-                    <b>{grandDamMaternal?.ear_tag || dam?.dam_ear_tag || "—"}</b>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "12px", textAlign: "right" }}>
-                <button onClick={() => setPedigreePig(null)} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* MODAL PHỐI GIỐNG CÓ KIỂM TRA CẬN HUYẾT */}
+      {/* MODAL PHỐI GIỐNG TRÁNH CẬN HUYẾT */}
       {showMatingModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>
-              🔬 Lập Kế Hoạch Phối Giống
-            </h3>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Lập Kế Hoạch Phối Giống</h3>
             <form onSubmit={handleSaveInsemination} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "700" }}>Chọn Nái phối:</label>
-                <select
-                  required
-                  value={matingSowTag}
-                  onChange={(e) => setMatingSowTag(e.target.value)}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                >
+                <select required value={matingSowTag} onChange={e => setMatingSowTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
                   <option value="">-- Chọn Nái giống --</option>
-                  {sowList.map(s => (
-                    <option key={s.id} value={s.ear_tag}>
-                      {s.ear_tag} ({s.breed_id}) - {s.stage}
-                    </option>
-                  ))}
+                  {sowList.map(s => <option key={s.id} value={s.ear_tag}>{s.ear_tag} ({s.breed_id})</option>)}
                 </select>
               </div>
 
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "700" }}>Chọn Đực giống:</label>
-                <select
-                  required
-                  value={selectedBoarTag}
-                  onChange={(e) => setSelectedBoarTag(e.target.value)}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                >
+                <select required value={selectedBoarTag} onChange={e => setSelectedBoarTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
                   <option value="">-- Chọn Đực giống --</option>
                   {boarList.map(b => {
                     const check = matingSowTag ? checkInbreedingRisk(matingSowTag, b.ear_tag) : { risk: false, reason: "" };
@@ -2540,437 +1336,33 @@ export default function FarmApp() {
                 </select>
               </div>
 
-              {matingSowTag && selectedBoarTag && (() => {
-                const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
-                return (
-                  <div style={{
-                    padding: "8px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: "700",
-                    background: check.risk ? "#fef2f2" : "#f0fdf4",
-                    border: check.risk ? "1px solid #fecaca" : "1px solid #bbf7d0",
-                    color: check.risk ? "#b91c1c" : "#166534"
-                  }}>
-                    {check.risk ? `⚠️ ${check.reason}` : `✓ ${check.reason}`}
-                  </div>
-                );
-              })()}
-
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "700" }}>Ngày phối giống:</label>
-                <input
-                  type="date"
-                  required
-                  value={matingDate}
-                  onChange={(e) => setMatingDate(e.target.value)}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-                />
+                <input type="date" required value={matingDate} onChange={e => setMatingDate(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" }}>
-                <button type="button" onClick={() => setShowMatingModal(false)} style={{ padding: "8px 14px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" style={{ padding: "8px 16px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>
-                  Xác nhận Phối
-                </button>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
+                <button type="button" onClick={() => setShowMatingModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>Xác nhận Phối</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL THÊM CÁ THỂ LỢN */}
+      {/* MODAL THÊM CÁ THỂ MỚI */}
       {showAddPigModal && user && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "400px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", fontWeight: "800", color: "#059669" }}>+ Thêm Cá Thể Lợn Mới</h3>
-            <form onSubmit={handleCreatePig} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "700" }}>Số tai (*):</label>
-                <input required placeholder="VD: HL-01, D-01..." value={newPig.ear_tag} onChange={(e) => setNewPig({ ...newPig, ear_tag: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giống:</label>
-                  <select value={newPig.breed_id || config.breeds[0]} onChange={(e) => setNewPig({ ...newPig, breed_id: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.breeds.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giới tính:</label>
-                  <select value={newPig.sex} onChange={(e) => setNewPig({ ...newPig, sex: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    <option value="Cái">Cái</option>
-                    <option value="Đực">Đực</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giai đoạn:</label>
-                  <select value={newPig.stage || config.stages[0]} onChange={(e) => setNewPig({ ...newPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Ô Chuồng:</label>
-                  <select value={newPig.current_pen_code || config.pens[0]} onChange={(e) => setNewPig({ ...newPig, current_pen_code: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.pens.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Số tai Bố:</label>
-                  <input placeholder="Trống nếu không rõ" value={newPig.sire_ear_tag} onChange={(e) => setNewPig({ ...newPig, sire_ear_tag: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Số tai Mẹ:</label>
-                  <input placeholder="Trống nếu không rõ" value={newPig.dam_ear_tag} onChange={(e) => setNewPig({ ...newPig, dam_ear_tag: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "700" }}>Ghi chú:</label>
-                <input placeholder="Ghi chú thêm..." value={newPig.notes} onChange={(e) => setNewPig({ ...newPig, notes: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" }}>
-                <button type="button" onClick={() => setShowAddPigModal(false)} style={{ padding: "7px 14px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" disabled={isAddingPig} style={{ padding: "7px 16px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>
-                  {isAddingPig ? "Đang lưu..." : "Thêm Ngay"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DIALOG XÁC NHẬN CÔNG VIỆC */}
-      {showTaskModal && selectedTask && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>
-              Xác nhận công việc
-            </h3>
-            <div style={{ fontSize: "13px", fontWeight: "700", color: "#334155", marginBottom: "8px", lineHeight: "1.4" }}>
-              {selectedTask.title}
-            </div>
-            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>
-              Hạn: <strong>{formatDateVN(selectedTask.due_date)}</strong> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
-            </div>
-
-            {selectedTask.category === "WEAN" ? (
-              <div>
-                <div style={{ fontSize: "12px", color: "#0369a1", background: "#f0f9ff", padding: "10px", borderRadius: "8px", marginBottom: "14px" }}>
-                  💡 Để đảm bảo chuẩn quy trình, hệ thống sẽ dẫn anh sang tab <b>Lợn con theo lô</b> để xác nhận trực tiếp.
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <button onClick={confirmCompleteTask} style={{ padding: "10px", borderRadius: "8px", background: "#0284c7", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "13px" }}>
-                    👉 Chuyển đến tab Lợn con để thực hiện
-                  </button>
-                  <button onClick={() => setShowTaskModal(false)} style={{ padding: "8px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", cursor: "pointer", fontSize: "12px" }}>
-                    Đóng lại
-                  </button>
-                </div>
-              </div>
-            ) : String(selectedTask.title).includes("QUÁ HẠN") ? (
-              <div>
-                <div style={{ fontSize: "12px", color: "#b91c1c", fontWeight: "700", marginBottom: "14px", background: "#fef2f2", padding: "8px", borderRadius: "6px" }}>
-                  ⚠️ Công việc này đã quá hạn! Bạn muốn làm tiếp hay bỏ qua?
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <button onClick={confirmCompleteTask} style={{ padding: "10px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "13px" }}>
-                    ✓ Đã làm xong ngay bây giờ
-                  </button>
-                  <button onClick={confirmPostponeTask} style={{ padding: "9px", borderRadius: "8px", background: "#f59e0b", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "13px" }}>
-                    ⏳ Làm tiếp (Gia hạn thêm 3 ngày)
-                  </button>
-                  <button onClick={confirmDismissTask} style={{ padding: "9px", borderRadius: "8px", background: "#ef4444", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer", fontSize: "13px" }}>
-                    ✕ Bỏ qua (Xóa khỏi danh sách)
-                  </button>
-                  <button onClick={() => setShowTaskModal(false)} style={{ padding: "8px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", cursor: "pointer", fontSize: "12px" }}>
-                    Đóng lại
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: "12px", color: "#475569", marginBottom: "16px" }}>
-                  Bấm xác nhận hệ thống sẽ tự động cập nhật trạng thái cá thể và hoàn tất công việc.
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                  <button onClick={() => setShowTaskModal(false)} style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: "700" }}>
-                    Chưa làm
-                  </button>
-                  <button onClick={confirmCompleteTask} style={{ padding: "8px 16px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>
-                    ✓ Xác nhận đã làm xong
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL SỬA CÁ THỂ */}
-      {editingPig && user && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "420px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", fontWeight: "800" }}>Sửa cá thể: {editingPig.ear_tag}</h3>
-            <form onSubmit={handleUpdatePig} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "700" }}>Số tai:</label>
-                <input required value={editingPig.ear_tag} onChange={(e) => setEditingPig({ ...editingPig, ear_tag: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giống:</label>
-                  <select value={editingPig.breed_id || config.breeds[0]} onChange={(e) => setEditingPig({ ...editingPig, breed_id: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.breeds.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Giới tính:</label>
-                  <select value={formatVietnameseSex(editingPig.sex)} onChange={(e) => setEditingPig({ ...editingPig, sex: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    <option value="Cái">Cái</option>
-                    <option value="Đực">Đực</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Trạng thái:</label>
-                  <select value={formatVietnameseStage(editingPig.stage)} onChange={(e) => setEditingPig({ ...editingPig, stage: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700" }}>Chuồng:</label>
-                  <select value={editingPig.current_pen_code || config.pens[0]} onChange={(e) => setEditingPig({ ...editingPig, current_pen_code: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                    {config.pens.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", background: "#f8fafc", padding: "8px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700", color: "#1e40af" }}>Số tai Bố (Đực giống):</label>
-                  <input
-                    placeholder="VD: D-01..."
-                    value={editingPig.sire_ear_tag || ""}
-                    onChange={(e) => setEditingPig({ ...editingPig, sire_ear_tag: e.target.value })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "11px", fontWeight: "700", color: "#b91c1c" }}>Số tai Mẹ (Nái mẹ):</label>
-                  <input
-                    placeholder="VD: HL01, HL02..."
-                    value={editingPig.dam_ear_tag || ""}
-                    onChange={(e) => setEditingPig({ ...editingPig, dam_ear_tag: e.target.value })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box", fontSize: "12px" }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "700" }}>Ghi chú:</label>
-                <input value={editingPig.notes || ""} onChange={(e) => setEditingPig({ ...editingPig, notes: e.target.value })} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button type="button" onClick={() => setEditingPig(null)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" disabled={isSavingEdit} style={{ padding: "6px 14px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>
-                  {isSavingEdit ? "Lưu..." : "Lưu"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL XEM CHI TIẾT & CHỌN HÀNG LOẠT LỢN CON (XUẤT BÁN, NUÔI THỊT, HẬU BỊ) */}
-      {viewingLitter && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 125, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "440px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
-            
-            {/* TIÊU ĐỀ & ĐÓNG */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "10px" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "900", color: "#1e1b4b" }}>
-                  Lô nái {viewingLitter.sow_ear_tag} ({viewingLitter.alive_born} con)
-                </h3>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>Mã lô: {viewingLitter.litter_code} • Ngày đẻ: {formatDateVN(viewingLitter.farrow_date)}</span>
-              </div>
-              <button onClick={() => { setViewingLitter(null); setSelectedPigletTags([]); }} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
-            </div>
-
-            {/* THANH THAO TÁC CHỌN TẤT CẢ & XUẤT HÀNG LOẠT */}
-            {user && (
-              <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "10px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: "800", color: "#1e293b", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedPigletTags.length > 0 && selectedPigletTags.length === Number(viewingLitter.alive_born || 0)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          const allTags = Array.from({ length: Number(viewingLitter.alive_born || 0) }).map(
-                            (_, idx) => `${viewingLitter.sow_ear_tag}-C${String(idx + 1).padStart(2, "0")}`
-                          );
-                          setSelectedPigletTags(allTags);
-                        } else {
-                          setSelectedPigletTags([]);
-                        }
-                      }}
-                      style={{ width: "16px", height: "16px", cursor: "pointer" }}
-                    />
-                    <span>Chọn tất cả ({viewingLitter.alive_born} con)</span>
-                  </label>
-
-                  <span style={{ fontSize: "11px", fontWeight: "800", color: selectedPigletTags.length > 0 ? "#2563eb" : "#64748b" }}>
-                    Đã chọn: {selectedPigletTags.length} con
-                  </span>
-                </div>
-
-                {/* CÁC NÚT BẤM HÀNG LOẠT */}
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <button
-                    onClick={() => handleBulkAction("Xuất bán")}
-                    disabled={selectedPigletTags.length === 0}
-                    style={{
-                      flex: 1.2, padding: "8px 6px", borderRadius: "8px", border: "none",
-                      background: selectedPigletTags.length > 0 ? "#0284c7" : "#cbd5e1",
-                      color: "#fff", fontSize: "11px", fontWeight: "800",
-                      cursor: selectedPigletTags.length > 0 ? "pointer" : "not-allowed"
-                    }}
-                  >
-                    🏷️ Xuất bán ({selectedPigletTags.length})
-                  </button>
-
-                  <button
-                    onClick={() => handleBulkAction("Vỗ béo thịt")}
-                    disabled={selectedPigletTags.length === 0}
-                    style={{
-                      flex: 1, padding: "8px 6px", borderRadius: "8px", border: "none",
-                      background: selectedPigletTags.length > 0 ? "#854d0e" : "#cbd5e1",
-                      color: "#fff", fontSize: "11px", fontWeight: "800",
-                      cursor: selectedPigletTags.length > 0 ? "pointer" : "not-allowed"
-                    }}
-                  >
-                    🥩 Nuôi thịt
-                  </button>
-
-                  <button
-                    onClick={() => handleBulkAction("Hậu bị")}
-                    disabled={selectedPigletTags.length === 0}
-                    style={{
-                      flex: 1, padding: "8px 6px", borderRadius: "8px", border: "none",
-                      background: selectedPigletTags.length > 0 ? "#db2777" : "#cbd5e1",
-                      color: "#fff", fontSize: "11px", fontWeight: "800",
-                      cursor: selectedPigletTags.length > 0 ? "pointer" : "not-allowed"
-                    }}
-                  >
-                    🐖 Hậu bị
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* DANH SÁCH CON CÓ CHECKBOX TỪNG CON */}
-            <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "6px", paddingRight: "4px" }}>
-              {Array.from({ length: Number(viewingLitter.alive_born || 0) }).map((_, idx) => {
-                const pigletTag = `${viewingLitter.sow_ear_tag}-C${String(idx + 1).padStart(2, "0")}`;
-                const isChecked = selectedPigletTags.includes(pigletTag);
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      if (!user) return;
-                      setSelectedPigletTags(prev =>
-                        prev.includes(pigletTag) ? prev.filter(t => t !== pigletTag) : [...prev, pigletTag]
-                      );
-                    }}
-                    style={{
-                      background: isChecked ? "#eff6ff" : "#f8fafc",
-                      borderRadius: "8px", padding: "8px 10px",
-                      border: isChecked ? "1.5px solid #3b82f6" : "1px solid #e2e8f0",
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      cursor: user ? "pointer" : "default"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      {user && (
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {}}
-                          style={{ width: "16px", height: "16px", cursor: "pointer" }}
-                        />
-                      )}
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: "900", color: isChecked ? "#1d4ed8" : "#0f172a" }}>
-                          {pigletTag}
-                        </div>
-                        <div style={{ fontSize: "10px", color: "#64748b" }}>Mẹ: <strong>{viewingLitter.sow_ear_tag}</strong></div>
-                      </div>
-                    </div>
-
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: isChecked ? "#2563eb" : "#94a3b8" }}>
-                      {isChecked ? "✓ Đã chọn" : "Bấm để chọn"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "10px", marginTop: "10px", textAlign: "right" }}>
-              <button onClick={() => { setViewingLitter(null); setSelectedPigletTags([]); }} style={{ padding: "6px 14px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL ĐĂNG NHẬP */}
-      {showAuthModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", fontWeight: "800" }}>Đăng nhập</h3>
-            {authError && <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "8px" }}>{authError}</div>}
-            <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <input
-                type="text"
-                required
-                placeholder="Tên đăng nhập (VD: kithuat1)..."
-                value={authAccount}
-                onChange={(e) => setAuthAccount(e.target.value)}
-                style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-              />
-              <input
-                type="password"
-                required
-                placeholder="Mật khẩu..."
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button type="button" onClick={() => setShowAuthModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#5b21b6", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>Vào</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL ĐỔI MẬT KHẨU */}
-      {showChangePwdModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", fontWeight: "800" }}>Đổi Mật Khẩu</h3>
-            {changePwdMsg && <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "8px" }}>{changePwdMsg}</div>}
-            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <input type="password" required placeholder="Mật khẩu mới (>= 6 ký tự)..." value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button type="button" onClick={() => setShowChangePwdModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>Lưu</button>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "800", color: "#059669" }}>+ Thêm Cá Thể Lợn Mới</h3>
+            <form onSubmit={handleCreatePig} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input required placeholder="Số tai (VD: HL-01...)" value={newPig.ear_tag} onChange={e => setNewPig({ ...newPig, ear_tag: e.target.value })} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
+              <select value={newPig.stage || config.stages[0]} onChange={e => setNewPig({ ...newPig, stage: e.target.value })} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
+              </select>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
+                <button type="button" onClick={() => setShowAddPigModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" disabled={isAddingPig} style={{ padding: "6px 14px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "700", cursor: "pointer" }}>Lưu</button>
               </div>
             </form>
           </div>
