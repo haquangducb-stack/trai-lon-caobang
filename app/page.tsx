@@ -527,17 +527,44 @@ export default function FarmApp() {
   const grandTotal = sowList.length + boarList.length + meatList.length + totalPigletsCount;
 
   // TÍNH CHỈ SỐ PSY (PIGLETS / SOW / YEAR) TỰ ĐỘNG
+  // MỚI: CHỈ TÍNH TRÊN NÁI SINH SẢN THỰC TẾ (LOẠI BỎ HẬU BỊ CHƯA PHỐI)
+  const activeProductiveSows = useMemo(() => {
+    return sowList.filter(sow => {
+      const tagUpper = sow.ear_tag.trim().toUpperCase();
+      const st = (sow.stage || "").toLowerCase();
+
+      // 1. Nái đang chửa, nuôi con, hoặc chờ phối/cai sữa -> Chắc chắn là nái sinh sản
+      if (st.includes("chửa") || st.includes("chua") || 
+          st.includes("nuôi con") || st.includes("nuoi con") || 
+          st.includes("chờ phối") || st.includes("cho phoi") || 
+          st.includes("cai sữa") || st.includes("cai sua")) {
+        return true;
+      }
+
+      // 2. Nếu đang gắn mác "Hậu bị", kiểm tra xem đã từng phối giống hoặc từng đẻ lứa nào chưa
+      const hasInsem = inseminations.some(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
+      const hasLitter = litters.some(lit => (lit.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
+
+      // Đã từng phối hoặc từng đẻ thì tính là nái sinh sản, còn hậu bị "tinh khôi" chưa phối thì BỎ QUA
+      return hasInsem || hasLitter;
+    });
+  }, [sowList, inseminations, litters]);
+
   const psyScore = useMemo(() => {
-    if (sowList.length === 0) return "0.0";
+    const activeCount = activeProductiveSows.length;
+    if (activeCount === 0) return "0.0";
+
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
+    // Lấy các lứa đẻ trong vòng 365 ngày qua
     const yearLitters = litters.filter(l => l.farrow_date && new Date(l.farrow_date) >= oneYearAgo);
-    const totalWeanedInYear = yearLitters.reduce((sum, l) => sum + Number(l.alive_born || 0), 0);
     
-    // Công thức: (Tổng số con cai sữa trong 1 năm) / (Tổng số nái giống hiện diện)
-    return (totalWeanedInYear / sowList.length).toFixed(1);
-  }, [litters, sowList.length]);
+    // Tổng số con cai sữa thực tế (hoặc sơ sinh sống của lứa trong năm)
+    const totalWeanedInYear = yearLitters.reduce((sum, l) => sum + Number(l.alive_born || 0), 0);
+
+    return (totalWeanedInYear / activeCount).toFixed(1);
+  }, [litters, activeProductiveSows]);
 
   const safeDateDiff = (dStr?: string) => {
     if (!dStr) return -999;
