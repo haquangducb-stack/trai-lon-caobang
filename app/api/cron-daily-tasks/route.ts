@@ -11,14 +11,38 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const TELEGRAM_BOT_TOKEN = "8290400353:AAGE3Ra6Fz7BuJiIAEwMp6OQanZXbWwUzWQ";
 const TELEGRAM_CHAT_IDS = ["-5523221456"];
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const dd = String(today.getDate()).padStart(2, "0");
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const yyyy = today.getFullYear();
+    const url = new URL(request.url);
+    const isForce = url.searchParams.get("force") === "true"; // Chỉ gửi ép buộc nếu có ?force=true để test
+
+    // Lấy ngày hiện tại theo giờ Việt Nam (UTC+7)
+    const nowVN = new Date(new Date().getTime() + 7 * 3600 * 1000);
+    const todayStr = nowVN.toISOString().split("T")[0];
+    const dd = String(nowVN.getUTCDate()).padStart(2, "0");
+    const mm = String(nowVN.getUTCMonth() + 1).padStart(2, "0");
+    const yyyy = nowVN.getUTCFullYear();
     const formattedDate = `${dd}/${mm}/${yyyy}`;
+
+    // ==========================================
+    // KHÓA CHẶN SPAM: KIỂM TRA ĐÃ GỬI HÔM NAY CHƯA
+    // ==========================================
+    if (!isForce) {
+      const { data: sentLog } = await supabase
+        .from("audit_logs")
+        .select("id")
+        .eq("action_type", "TELEGRAM_DAILY_SENT")
+        .eq("target_id", todayStr)
+        .limit(1);
+
+      if (sentLog && sentLog.length > 0) {
+        return NextResponse.json({
+          success: true,
+          message: `Hôm nay (${formattedDate}) đã gửi thông báo rồi. Bỏ qua để tránh spam!`,
+          skipped: true,
+        });
+      }
+    }
 
     // 1. Quét dữ liệu nái ngày 18 - 21 và sắp đẻ (105 - 114)
     const { data: inseminations } = await supabase
@@ -32,7 +56,7 @@ export async function GET() {
       inseminations.forEach((ins: any) => {
         if (!ins?.mating_date) return;
         const mDate = new Date(ins.mating_date).getTime();
-        const diffDays = Math.floor((today.getTime() - mDate) / (1000 * 3600 * 24));
+        const diffDays = Math.floor((nowVN.getTime() - mDate) / (1000 * 3600 * 24));
 
         if (diffDays >= 18 && diffDays <= 21) {
           recheckList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 (Đực: ${ins.boar_ear_tag || "—"}) - Kiểm tra phản xạ đứng im!`);
@@ -55,24 +79,22 @@ export async function GET() {
       (t: any, idx: number) => `${idx + 1}. ${t.title}`
     );
 
-    // 3. Quét CÔNG VIỆC ĐÃ LÀM XONG - KHỚP 100% VỚI DANH SÁCH TRÊN WEB
-    // Lấy tất cả task is_completed = true giống hệt màn hình Tổng quan
+    // 3. Quét CÔNG VIỆC ĐÃ LÀM XONG (Khử trùng lặp)
     const { data: doneTasks } = await supabase
       .from("farm_tasks")
       .select("*")
       .eq("is_completed", true)
       .order("created_at", { ascending: false })
-      .limit(15);
+      .limit(10);
 
-    // Lấy nhật ký audit_logs gần đây để map đúng tên người làm
     const { data: logs } = await supabase
       .from("audit_logs")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(20);
 
     const completedItems: string[] = [];
-    const seenTitles = new Set<string>(); // Khử trùng lặp tuyệt đối
+    const seenTitles = new Set<string>();
 
     if (Array.isArray(doneTasks)) {
       doneTasks.forEach((t: any) => {
@@ -80,7 +102,6 @@ export async function GET() {
         if (!cleanTitle || seenTitles.has(cleanTitle)) return;
         seenTitles.add(cleanTitle);
 
-        // Tìm người làm từ nhật ký log (nếu có, mặc định là Hà Quang Dự)
         let operator = "Hà Quang Dự";
         if (Array.isArray(logs)) {
           const matchLog = logs.find(
@@ -97,7 +118,7 @@ export async function GET() {
       });
     }
 
-    // 4. Soạn tin nhắn gửi Telegram
+    // 4. Soạn thảo nội dung
     let text = `📋 *BÁO CÁO CÔNG VIỆC TRẠI LỢN NÀ ROÁC*\n📅 Ngày: *${formattedDate}*\n\n`;
 
     if (recheckList.length > 0) {
@@ -117,7 +138,7 @@ export async function GET() {
       text += `✨ _Không có công việc nào tồn đọng trong ngày._\n\n`;
     }
 
-    text += `✅ *CÔNG VIỆC ĐÃ HOÀN THÀNH (${completedItems.length}):*\n`;
+    text += `✅ *CÔNG VIỆC ĐÃ HOÀN THÀNH:*\n`;
     if (completedItems.length > 0) {
       text += `${completedItems.join("\n")}\n`;
     } else {
@@ -142,9 +163,21 @@ export async function GET() {
       );
     }
 
+    // ==========================================
+    // GHI NHẬN ĐÃ GỬI VÀO CƠ SỞ DỮ LIỆU ĐỂ KHÓA LẠI
+    // ==========================================
+    await supabase.from("audit_logs").insert([
+      {
+        action_type: "TELEGRAM_DAILY_SENT",
+        target_id: todayStr,
+        performed_by: "Hệ thống tự động",
+        details: `Đã gửi báo cáo Telegram ngày ${formattedDate}`,
+      },
+    ]);
+
     return NextResponse.json({
       success: true,
-      message: `Đã đồng bộ sạch sẽ danh sách việc đã làm!`,
+      message: `Đã gửi báo cáo ngày ${formattedDate} thành công! Khóa chặn đã được kích hoạt.`,
     });
   } catch (error: any) {
     return NextResponse.json(
