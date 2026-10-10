@@ -471,24 +471,49 @@ export default function FarmApp() {
     if (!pig) return "HAUBI";
     const tagUpper = (pig.ear_tag || "").trim().toUpperCase();
 
+    // 1. KIỂM TRA LỊCH SỬ PHỐI GIỐNG MỚI NHẤT TRƯỚC TIÊN
+    const sowInsems = (Array.isArray(inseminations) ? inseminations : [])
+      .filter(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
+      .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime());
+
+    const latestInsem = sowInsems[0];
+
+    // Lấy lứa đẻ gần nhất
+    const sowLitters = (Array.isArray(litters) ? litters : [])
+      .filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
+      .sort((a, b) => new Date(b.farrow_date).getTime() - new Date(a.farrow_date).getTime());
+    const latestLitter = sowLitters[0];
+
+    // Nếu đã phối giống và lần phối này DIỄN RA SAU lần đẻ gần nhất
+    if (latestInsem && latestInsem.mating_date) {
+      const insemTime = new Date(latestInsem.mating_date).getTime();
+      const litterTime = latestLitter?.farrow_date ? new Date(latestLitter.farrow_date).getTime() : 0;
+
+      const st = (latestInsem.status || "").toLowerCase();
+      const isFailed = st.includes("lốc") || st.includes("trượt");
+
+      // Nếu phối sau khi đẻ và không bị lốc/trượt -> Chắc chắn đang chửa!
+      if (insemTime >= litterTime && !isFailed) {
+        return "CHUA";
+      }
+    }
+
+    // 2. NẾU ĐANG CÓ ĐÀN CON BÚ MẸ -> NUÔI CON
+    const hasSucking = suckingLitters.some(l => (l.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
+    if (hasSucking) return "NUOICON";
+
+    // 3. NẾU ĐÃ CAI SỮA VÀ CHƯA PHỐI LẠI -> CHỜ PHỐI
     if (localWeanedTags.includes(tagUpper)) return "CHOPHOI";
 
-    const st = (pig.stage || "").toLowerCase();
-    if (st.includes("hậu bị") || st.includes("hau bi")) {
-      return "HAUBI";
-    }
-    if (st.includes("chờ phối") || st.includes("cho phoi") || st.includes("cai sữa") || st.includes("cai sua") || st.includes("đã cai") || st.includes("da cai")) {
-      return "CHOPHOI";
-    }
-    if (st.includes("nuôi con") || st.includes("nuoi con") || st.includes("đẻ") || st.includes("de")) {
-      return "NUOICON";
-    }
-    if (st.includes("chửa") || st.includes("chua")) {
-      return "CHUA";
-    }
+    // 4. KIỂM TRA TRƯỜNG STAGE GỐC TRONG BẢNG PIGS
+    const rawStage = (pig.stage || "").toLowerCase();
+    if (rawStage.includes("chửa") || rawStage.includes("chua")) return "CHUA";
+    if (rawStage.includes("nuôi con") || rawStage.includes("nuoi con")) return "NUOICON";
+    if (rawStage.includes("chờ phối") || rawStage.includes("cho phoi") || rawStage.includes("cai sữa") || rawStage.includes("cai sua")) return "CHOPHOI";
+    if (rawStage.includes("hậu bị") || rawStage.includes("hau bi")) return "HAUBI";
 
     return "HAUBI";
-  }, [localWeanedTags]);
+  }, [inseminations, litters, suckingLitters, localWeanedTags]);
 
   const safePigs = Array.isArray(pigs) ? pigs : [];
   const sowList = safePigs.filter(isSow);
