@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient, User } from "@supabase/supabase-js";
 
@@ -81,15 +83,15 @@ const formatVietnameseSex = (rawSex?: string) => {
 };
 
 const formatVietnameseStage = (rawStage?: string) => {
-  if (!rawStage) return "Bình thường";
+  if (!rawStage) return "Hậu bị";
   const s = rawStage.toUpperCase().trim();
   if (s === "DUC_GIONG" || s === "DUC" || s === "BOAR") return "Đực giống";
-  if (s === "CHUA" || s === "DANG_CHUA" || s === "PREGNANT" || s.includes("CHỬA")) return "Đang chửa";
-  if (s === "NUOICON" || s === "NUOI_CON" || s === "LACTATING" || s.includes("NUÔI")) return "Nuôi con";
-  if (s === "HAU_BI" || s === "HAUBI" || s === "GILT" || s.includes("HẬU")) return "Hậu bị";
-  if (s === "CHO_PHOI" || s === "CHOPHOI" || s === "WEANED" || s.includes("CHỜ")) return "Chờ phối";
+  if (s === "CHUA" || s === "DANG_CHUA" || s === "PREGNANT" || s.includes("CHỬA") || s.includes("CHUA")) return "Đang chửa";
+  if (s === "NUOICON" || s === "NUOI_CON" || s === "LACTATING" || s.includes("NUÔI") || s.includes("NUOI")) return "Nuôi con";
+  if (s === "HAU_BI" || s === "HAUBI" || s === "GILT" || s.includes("HẬU") || s.includes("HAU")) return "Hậu bị";
+  if (s === "CHO_PHOI" || s === "CHOPHOI" || s === "WEANED" || s.includes("CHỜ") || s.includes("CHO")) return "Chờ phối";
   if (s === "CAI_SUA" || s === "CAISUA" || s === "DA_CAI_SUA") return "Đã cai sữa";
-  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT" || s === "FATTEN" || s.includes("THỊT")) return "Vỗ béo thịt";
+  if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT" || s === "FATTEN" || s.includes("THỊT") || s.includes("THIT")) return "Vỗ béo thịt";
   return rawStage;
 };
 
@@ -105,10 +107,6 @@ export default function FarmApp() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
-  const [showChangePwdModal, setShowChangePwdModal] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [changePwdMsg, setChangePwdMsg] = useState("");
-
   const [pigs, setPigs] = useState<Pig[]>([]);
   const [inseminations, setInseminations] = useState<Insemination[]>([]);
   const [litters, setLitters] = useState<FarrowingLitter[]>([]);
@@ -119,7 +117,7 @@ export default function FarmApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Tabs điều hướng
-  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "PEDIGREE" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
+  const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -131,7 +129,6 @@ export default function FarmApp() {
     pens: ["CA1", "CA2", "CA3", "CA4", "CA5", "CB1", "CB2", "CB3", "CB4", "CD1", "CD2"]
   });
 
-  const [newBreedInput, setNewBreedInput] = useState("");
   const [showAddPigModal, setShowAddPigModal] = useState(false);
   const [newPig, setNewPig] = useState<Partial<Pig>>({
     ear_tag: "",
@@ -147,13 +144,13 @@ export default function FarmApp() {
   const [isAddingPig, setIsAddingPig] = useState(false);
 
   // =========================================================================
-  // MODAL HỒ SƠ TỔNG HỢP DUY NHẤT (SỬA + SINH SẢN + GIA PHẢ TRONG 1 NƠI)
+  // MODAL HỒ SƠ DUY NHẤT: CHỈNH SỬA + SINH SẢN + GIA PHẢ
   // =========================================================================
   const [activeProfilePig, setActiveProfilePig] = useState<Pig | null>(null);
   const [profileTab, setProfileTab] = useState<"EDIT" | "REPRO" | "PEDIGREE">("EDIT");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Form Thêm/Sửa lứa đẻ trong tab Sinh sản
+  // Form lứa đẻ
   const [showLitterForm, setShowLitterForm] = useState(false);
   const [editingLitterId, setEditingLitterId] = useState<string | null>(null);
   const [litterFormData, setLitterFormData] = useState({
@@ -178,64 +175,23 @@ export default function FarmApp() {
 
   const navigateTo = useCallback((menu: typeof currentMenu) => {
     setCurrentMenu(menu);
-    if (typeof window !== "undefined" && window.history) {
-      window.history.pushState({ menu }, "", "");
-    }
   }, []);
-
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      if (showLitterForm) { setShowLitterForm(false); return; }
-      if (activeProfilePig) { setActiveProfilePig(null); return; }
-      if (showMatingModal) { setShowMatingModal(false); return; }
-      if (viewingLitter) { setViewingLitter(null); setSelectedPigletTags([]); return; }
-      if (showTaskModal) { setShowTaskModal(false); return; }
-      if (showAddPigModal) { setShowAddPigModal(false); return; }
-      if (isSidebarOpen) { setIsSidebarOpen(false); return; }
-
-      if (e.state && e.state.menu) {
-        setCurrentMenu(e.state.menu);
-      } else {
-        setCurrentMenu("OVERVIEW");
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [showLitterForm, activeProfilePig, showMatingModal, viewingLitter, showTaskModal, showAddPigModal, isSidebarOpen]);
 
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem("farm_config_persistent");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed?.breeds && parsed?.stages && parsed?.pens) {
-            setConfig(parsed);
-          }
-        }
-
         const savedName = localStorage.getItem("farm_display_name_permanent");
         if (savedName?.trim()) {
           setCustomDisplayName(savedName.trim());
           setInputDisplayName(savedName.trim());
         }
-
         const savedLogs = localStorage.getItem("farm_local_audit_logs");
         if (savedLogs) {
-          const parsedLogs = JSON.parse(savedLogs);
-          if (Array.isArray(parsedLogs)) setAuditLogs(parsedLogs);
+          const parsed = JSON.parse(savedLogs);
+          if (Array.isArray(parsed)) setAuditLogs(parsed);
         }
-
-        const savedDoneTasks = localStorage.getItem("farm_done_task_keys");
-        if (savedDoneTasks) {
-          const parsedDone = JSON.parse(savedDoneTasks);
-          if (Array.isArray(parsedDone)) setCompletedTaskKeys(parsedDone);
-        }
-      } catch (e) {
-        console.error("Lỗi nạp config:", e);
-      }
+      } catch (e) {}
     }
   }, []);
 
@@ -313,11 +269,8 @@ export default function FarmApp() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
-
     let loginAccount = authAccount.trim().toLowerCase();
-    if (!loginAccount.includes("@")) {
-      loginAccount = `${loginAccount}@trailon.local`;
-    }
+    if (!loginAccount.includes("@")) loginAccount = `${loginAccount}@trailon.local`;
 
     const { error } = await supabase.auth.signInWithPassword({
       email: loginAccount,
@@ -340,25 +293,6 @@ export default function FarmApp() {
     setUser(null);
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setChangePwdMsg("");
-    if (newPassword.length < 6) {
-      setChangePwdMsg("Mật khẩu mới phải từ 6 ký tự trở lên!");
-      return;
-    }
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      setChangePwdMsg("Lỗi: " + error.message);
-    } else {
-      await logAction("CHANGE_PASSWORD", user?.id || "", "Tự đổi mật khẩu tài khoản");
-      alert("Đổi mật khẩu thành công!");
-      setShowChangePwdModal(false);
-      setNewPassword("");
-      fetchData();
-    }
-  };
-
   const handleSaveDisplayName = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputDisplayName.trim()) return;
@@ -368,51 +302,7 @@ export default function FarmApp() {
       localStorage.setItem("farm_display_name_permanent", name);
     }
     logAction("UPDATE_NAME", name, `Đổi tên người thực hiện thành ${name}`);
-    alert(`Đã lưu cố định tên hiển thị: "${name}"`);
-  };
-
-  const handleCreatePig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return alert("Vui lòng đăng nhập để thêm lợn!");
-    if (!newPig.ear_tag?.trim()) return alert("Vui lòng nhập số tai!");
-
-    setIsAddingPig(true);
-    try {
-      const pigPayload = {
-        ear_tag: newPig.ear_tag.trim().toUpperCase(),
-        breed_id: newPig.breed_id || config.breeds[0] || "Hạ Lang",
-        sex: formatVietnameseSex(newPig.sex),
-        stage: formatVietnameseStage(newPig.stage || config.stages[0] || "Hậu bị"),
-        current_pen_code: newPig.current_pen_code || config.pens[0] || "CA1",
-        status: newPig.status || "Bình thường",
-        sire_ear_tag: newPig.sire_ear_tag?.trim().toUpperCase() || null,
-        dam_ear_tag: newPig.dam_ear_tag?.trim().toUpperCase() || null,
-        notes: newPig.notes?.trim() || null
-      };
-
-      const { error } = await supabase.from("pigs").insert([pigPayload]);
-      if (error) throw error;
-
-      await logAction("CREATE_PIG", pigPayload.ear_tag, `Thêm cá thể mới ${pigPayload.ear_tag} (${pigPayload.breed_id})`);
-      alert(`Đã thêm thành công cá thể ${pigPayload.ear_tag}!`);
-      setShowAddPigModal(false);
-      setNewPig({
-        ear_tag: "",
-        breed_id: config.breeds[0] || "Hạ Lang",
-        sex: "Cái",
-        stage: config.stages[0] || "Hậu bị",
-        current_pen_code: config.pens[0] || "CA1",
-        status: "Bình thường",
-        sire_ear_tag: "",
-        dam_ear_tag: "",
-        notes: ""
-      });
-      fetchData();
-    } catch (err: any) {
-      alert("Lỗi thêm lợn: " + err.message);
-    } finally {
-      setIsAddingPig(false);
-    }
+    alert(`Đã lưu tên hiển thị: "${name}"`);
   };
 
   const isIndividualPiglet = (pig?: Pig) => {
@@ -439,49 +329,27 @@ export default function FarmApp() {
     return true;
   };
 
-  // LOGIC TRẠNG THÁI NÁI: ƯU TIÊN THEO DATABASE HOẶC ĐỢT PHỐI GIỐNG THỰC TẾ
+  // =========================================================================
+  // ĐỒNG BỘ TRẠNG THÁI NÁI: ƯU TIÊN TUYỆT ĐỐI THEO TRƯỜNG STAGE CỦA BẢNG PIGS
+  // =========================================================================
   const checkSowState = useCallback((pig?: Pig) => {
     if (!pig) return "HAUBI";
-    const tagUpper = (pig.ear_tag || "").trim().toUpperCase();
+    const st = (pig.stage || "").toLowerCase().trim();
 
-    // 1. Nếu có đợt phối giống gần nhất và chưa đẻ lứa mới
-    const sowInsems = (Array.isArray(inseminations) ? inseminations : [])
-      .filter(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
-      .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime());
-    const latestInsem = sowInsems[0];
-
-    const sowLitters = (Array.isArray(litters) ? litters : [])
-      .filter(l => (l.sow_ear_tag || "").trim().toUpperCase() === tagUpper)
-      .sort((a, b) => new Date(b.farrow_date).getTime() - new Date(a.farrow_date).getTime());
-    const latestLitter = sowLitters[0];
-
-    if (latestInsem && latestInsem.mating_date) {
-      const insemTime = new Date(latestInsem.mating_date).getTime();
-      const litterTime = latestLitter?.farrow_date ? new Date(latestLitter.farrow_date).getTime() : 0;
-      const st = (latestInsem.status || "").toLowerCase();
-
-      // Nếu phối sau khi đẻ và không bị lốc/trượt -> CHỬA
-      if (insemTime >= litterTime && !st.includes("lốc") && !st.includes("trượt")) {
-        return "CHUA";
-      }
-    }
-
-    // 2. Đọc trực tiếp trường stage trong bảng pigs
-    const rawStage = (pig.stage || "").toLowerCase();
-    if (rawStage.includes("chửa") || rawStage.includes("chua")) return "CHUA";
-    if (rawStage.includes("nuôi con") || rawStage.includes("nuoi con")) return "NUOICON";
-    if (rawStage.includes("chờ phối") || rawStage.includes("cho phoi") || rawStage.includes("cai sữa") || rawStage.includes("cai sua")) return "CHOPHOI";
-    if (rawStage.includes("hậu bị") || rawStage.includes("hau bi")) return "HAUBI";
+    if (st.includes("chửa") || st.includes("chua")) return "CHUA";
+    if (st.includes("nuôi con") || st.includes("nuoi con")) return "NUOICON";
+    if (st.includes("chờ phối") || st.includes("cho phoi")) return "CHOPHOI";
+    if (st.includes("hậu bị") || st.includes("hau bi")) return "HAUBI";
 
     return "HAUBI";
-  }, [inseminations, litters]);
+  }, []);
 
   const safePigs = Array.isArray(pigs) ? pigs : [];
   const sowList = safePigs.filter(isSow);
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
-  // ĐÀN CON: BỎ QUA HOÀN TOÀN LỨA LỊCH SỬ / ĐÃ BÁN
+  // LỌC ĐÀN CON: LOẠI BỎ TRIỆT ĐỂ LỨA LỊCH SỬ / ĐÃ BÁN
   const suckingLitters = useMemo(() => {
     return (Array.isArray(litters) ? litters : []).filter(l => {
       if (!l?.sow_ear_tag) return false;
@@ -529,14 +397,13 @@ export default function FarmApp() {
   // ĐỒNG HỒ 114 NGÀY
   const getGestationProgress = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
-    const latestInsem = inseminations.find(ins => ins.sow_ear_tag.trim().toUpperCase() === sTag);
+    const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === sTag);
     if (!latestInsem?.mating_date) return null;
 
     const daysPassed = safeDateDiff(latestInsem.mating_date);
     if (daysPassed < 0 || daysPassed > 120) return null;
 
     const pct = Math.min(100, Math.max(0, (daysPassed / 114) * 100));
-
     let stageTitle = "Ổn định phôi";
     let badgeColor = "#3b82f6";
     if (daysPassed <= 21) {
@@ -564,29 +431,7 @@ export default function FarmApp() {
     };
   }, [inseminations]);
 
-  // KIỂM TRA QUAN HỆ CẬN HUYẾT
-  const checkInbreedingRisk = useCallback((sowTag: string, boarTag: string): { risk: boolean; reason: string } => {
-    const sTag = sowTag.trim().toUpperCase();
-    const bTag = boarTag.trim().toUpperCase();
-
-    const sow = safePigs.find(p => p.ear_tag.trim().toUpperCase() === sTag);
-    const boar = safePigs.find(p => p.ear_tag.trim().toUpperCase() === bTag);
-
-    if (!sow || !boar) return { risk: false, reason: "An toàn" };
-
-    const sowSire = (sow.sire_ear_tag || "").trim().toUpperCase();
-    const sowDam = (sow.dam_ear_tag || "").trim().toUpperCase();
-    const boarSire = (boar.sire_ear_tag || "").trim().toUpperCase();
-    const boarDam = (boar.dam_ear_tag || "").trim().toUpperCase();
-
-    if (sowSire && sowSire === bTag) return { risk: true, reason: `CẬN HUYẾT NẶNG: Đực ${bTag} là BỐ của nái ${sTag}!` };
-    if (sowSire && boarSire && sowSire === boarSire) return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng BỐ (${sowSire})!` };
-    if (sowDam && boarDam && sowDam === boarDam) return { risk: true, reason: `CẬN HUYẾT NẶNG: Cùng MẸ (${sowDam})!` };
-
-    return { risk: false, reason: "Phối giống an toàn (Khác dòng máu)" };
-  }, [safePigs]);
-
-  // PHÂN TÍCH NĂNG SUẤT SINH SẢN NÁI
+  // NĂNG SUẤT SINH SẢN
   const getSowReproAnalysis = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
     const sowLitters = (Array.isArray(litters) ? litters : [])
@@ -604,15 +449,16 @@ export default function FarmApp() {
     return { totalLitters, totalBorn, avgBorn, sowLitters, sowInsems };
   }, [litters, inseminations]);
 
-  // LƯU CẬP NHẬT THÔNG TIN NÁI (TẠI TAB EDIT CỦA PROFILE)
+  // LƯU CẬP NHẬT TRỰC TIẾP TỪ TAB "SỬA NÁI"
   const handleSaveProfileEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProfilePig || !user) return;
     setIsSavingEdit(true);
 
     try {
-      const payload = {
-        ear_tag: activeProfilePig.ear_tag.trim().toUpperCase(),
+      const cleanTag = activeProfilePig.ear_tag.trim().toUpperCase();
+      const updatedPayload = {
+        ear_tag: cleanTag,
         breed_id: activeProfilePig.breed_id,
         sex: formatVietnameseSex(activeProfilePig.sex),
         stage: formatVietnameseStage(activeProfilePig.stage),
@@ -623,23 +469,29 @@ export default function FarmApp() {
         notes: activeProfilePig.notes || null
       };
 
-      const { error } = await supabase.from("pigs").update(payload).eq("id", activeProfilePig.id);
+      const { error } = await supabase
+        .from("pigs")
+        .update(updatedPayload)
+        .eq("id", activeProfilePig.id);
+
       if (error) throw error;
 
-      // Cập nhật state trực tiếp
-      setPigs(prev => prev.map(p => p.id === activeProfilePig.id ? { ...p, ...payload } : p));
-      await logAction("UPDATE_PIG", payload.ear_tag, `Cập nhật thông tin nái ${payload.ear_tag} (Trạng thái: ${payload.stage}, Ô: ${payload.current_pen_code})`);
+      // CẬP NHẬT TRỰC TIẾP STATE REACT NGAY LẬP TỨC
+      setPigs(prev => prev.map(p => p.id === activeProfilePig.id ? { ...p, ...updatedPayload } : p));
+      setActiveProfilePig(prev => prev ? { ...prev, ...updatedPayload } : null);
+
+      await logAction("UPDATE_PIG", cleanTag, `Đổi trạng thái nái ${cleanTag} sang "${updatedPayload.stage}", ô "${updatedPayload.current_pen_code}"`);
+      alert(`✅ Đã lưu thành công! Nái ${cleanTag} hiện là "${updatedPayload.stage}".`);
       
-      alert(`✅ Đã lưu thành công thông tin nái ${payload.ear_tag}!`);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
-      alert("Lỗi lưu nái: " + err.message);
+      alert("Lỗi lưu nái: " + (err?.message || JSON.stringify(err)));
     } finally {
       setIsSavingEdit(false);
     }
   };
 
-  // THÊM HOẶC SỬA LỨA ĐẺ TRONG TAB SINH SẢN
+  // THÊM/SỬA LỨA ĐẺ
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProfilePig || !user) return;
@@ -659,7 +511,7 @@ export default function FarmApp() {
         };
         const { error } = await supabase.from("farrowings").update(payload).eq("id", editingLitterId);
         if (error) throw error;
-        alert("Đã cập nhật thông tin lứa đẻ!");
+        alert("Đã cập nhật lứa đẻ!");
       } else {
         const payload = {
           litter_code: litterFormData.litter_code.trim().toUpperCase() || `L-${sowTag}-${Date.now().toString().slice(-4)}`,
@@ -677,9 +529,9 @@ export default function FarmApp() {
 
       setShowLitterForm(false);
       setEditingLitterId(null);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
-      alert("Lỗi lưu lứa đẻ: " + err.message);
+      alert("Lỗi lưu lứa: " + err.message);
     }
   };
 
@@ -691,22 +543,17 @@ export default function FarmApp() {
       const { error } = await supabase.from("farrowings").delete().eq("id", litterId);
       if (error) throw error;
       alert(`Đã xóa thành công lứa đẻ ${litterCode}!`);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       alert("Lỗi: " + err.message);
     }
   };
 
-  // PHỐI GIỐNG TRÁNH CẬN HUYẾT
+  // PHỐI GIỐNG
   const handleSaveInsemination = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return alert("Vui lòng đăng nhập để phối giống!");
     if (!matingSowTag || !selectedBoarTag) return alert("Vui lòng chọn nái và đực!");
-
-    const check = checkInbreedingRisk(matingSowTag, selectedBoarTag);
-    if (check.risk) {
-      if (!confirm(`⚠️ CẢNH BÁO: ${check.reason}\nBạn có chắc chắn muốn bỏ qua để phối?`)) return;
-    }
 
     const expFarrow = safeAddDays(matingDate, 114);
     const payload = {
@@ -720,120 +567,19 @@ export default function FarmApp() {
     try {
       await supabase.from("inseminations").insert([payload]);
       await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
+      
+      setPigs(prev => prev.map(p => p.ear_tag === matingSowTag ? { ...p, stage: "Đang chửa" } : p));
       await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag}`);
-      alert(`Đã ghi nhận phối giống nái ${matingSowTag} thành công!\n- Ngày dự kiến đẻ: ${formatDateVN(expFarrow)}`);
+      
+      alert(`Đã phối thành công nái ${matingSowTag}!\n- Trạng thái nái đã chuyển sang: "Đang chửa".\n- Dự kiến đẻ: ${formatDateVN(expFarrow)}`);
       setShowMatingModal(false);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       alert("Lỗi lưu phối giống: " + err.message);
     }
   };
 
-  // XUẤT BÁN HÀNG LOẠT LỢN CON
-  const handleBulkAction = async (targetStage: "Xuất bán" | "Vỗ béo thịt" | "Hậu bị") => {
-    if (!user) return alert("Vui lòng đăng nhập để thao tác!");
-    if (!viewingLitter || selectedPigletTags.length === 0) return alert("Vui lòng chọn ít nhất 1 con!");
-
-    const count = selectedPigletTags.length;
-    const sowTag = viewingLitter.sow_ear_tag?.trim().toUpperCase();
-    const currentAlive = Number(viewingLitter.alive_born || 0);
-    const remainingAlive = Math.max(0, currentAlive - count);
-
-    if (targetStage === "Xuất bán") {
-      if (!confirm(`Xác nhận XUẤT BÁN ${count} con lợn con nái ${sowTag}? Còn lại: ${remainingAlive} con.`)) return;
-
-      try {
-        const updatePayload: any = { alive_born: remainingAlive };
-        if (remainingAlive === 0) {
-          updatePayload.status = "DA_XUAT_BAN";
-          updatePayload.notes = "Đã xuất bán hết";
-        }
-
-        let q = supabase.from("farrowings").update(updatePayload);
-        if (viewingLitter.id) q = q.eq("id", viewingLitter.id);
-        else q = q.eq("sow_ear_tag", sowTag);
-
-        const { error } = await q;
-        if (error) throw error;
-
-        await logAction("BULK_SELL", sowTag, `Xuất bán ${count} con từ lô nái ${sowTag}`);
-        alert(`✅ Đã xuất bán thành công ${count} con!`);
-        setSelectedPigletTags([]);
-        if (remainingAlive === 0) setViewingLitter(null);
-        else setViewingLitter(prev => prev ? { ...prev, alive_born: remainingAlive } : null);
-        fetchData();
-      } catch (err: any) {
-        alert("Lỗi xuất bán: " + err.message);
-      }
-    }
-  };
-
-  // NHIỆM VỤ & KHỬ TRÙNG LẶP
-  const fullTasks = useMemo(() => {
-    const taskMap = new Map<string, FarmTask>();
-
-    (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
-      if (!ins?.mating_date || !ins?.sow_ear_tag) return;
-      const tagUpper = ins.sow_ear_tag.trim().toUpperCase();
-      const d = safeDateDiff(ins.mating_date);
-      if (d === -999) return;
-
-      if (d >= 16 && d <= 25) {
-        const key = `repro-l1-${tagUpper}`;
-        taskMap.set(key, {
-          id: key,
-          title: `[SINH SẢN] Kiểm tra lốc chu kỳ 1 (21 ngày) nái ${ins.sow_ear_tag}`,
-          due_date: safeAddDays(ins.mating_date, 21),
-          related_tag: ins.sow_ear_tag,
-          category: "REPRO",
-          is_completed: completedTaskKeys.includes(key),
-          is_auto: true
-        });
-      }
-      if (d >= 104 && d <= 116) {
-        const key = `repro-cd-${tagUpper}`;
-        taskMap.set(key, {
-          id: key,
-          title: `[CHUẨN BỊ ĐẺ] Chuyển nái ${ins.sow_ear_tag} lên chuồng đẻ & sát trùng vú`,
-          due_date: safeAddDays(ins.mating_date, 107),
-          related_tag: ins.sow_ear_tag,
-          category: "REPRO",
-          is_completed: completedTaskKeys.includes(key),
-          is_auto: true
-        });
-      }
-    });
-
-    (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
-      if (!t?.title) return;
-      const cleanTitle = t.title.trim();
-      const tag = (t.related_tag || "").trim().toUpperCase();
-      const uniqueKey = `${cleanTitle}-${tag}`;
-
-      let cat = t.category;
-      const normTitle = cleanTitle.toLowerCase();
-      if (normTitle.includes("vaccine") || normTitle.includes("tiêm") || normTitle.includes("phòng") || normTitle.includes("e.coli")) {
-        cat = "VET";
-      }
-
-      if (taskMap.has(uniqueKey)) {
-        const existing = taskMap.get(uniqueKey)!;
-        if (!existing.is_completed && t.is_completed) {
-          taskMap.set(uniqueKey, { ...t, category: cat });
-        }
-      } else {
-        taskMap.set(uniqueKey, { ...t, category: cat });
-      }
-    });
-
-    return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
-  }, [inseminations, dbTasks, completedTaskKeys]);
-
-  const filteredTasks = fullTasks.filter(t => taskCategoryFilter === "ALL" || t?.category === taskCategoryFilter);
-  const pendingTasks = filteredTasks.filter(t => !t.is_completed);
-  const completedTasks = filteredTasks.filter(t => t.is_completed);
-
-  // RENDER THẺ CÁ THỂ: GỌN GÀNG, CHỈ 1 NÚT CHI TIẾT & SỬA
+  // RENDER THẺ CÁ THỂ: CHỈ 1 NÚT DUY NHẤT GỌN GÀNG
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
@@ -864,7 +610,7 @@ export default function FarmApp() {
               setShowLitterForm(false);
             }}
             style={{
-              fontSize: "11px", fontWeight: "800", padding: "5px 10px", borderRadius: "8px",
+              fontSize: "11px", fontWeight: "800", padding: "5px 12px", borderRadius: "8px",
               background: "#ede9fe", color: "#6d28d9", border: "1px solid #ddd6fe", cursor: "pointer"
             }}
           >
@@ -881,7 +627,7 @@ export default function FarmApp() {
             Ô: {pig.current_pen_code || "Chưa xếp"}
           </span>
           <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "12px", background: "#ecfdf5", color: "#047857", fontWeight: "700" }}>
-            {formatVietnameseStage(currentState === "CHUA" ? "Đang chửa" : currentState === "NUOICON" ? "Nuôi con" : currentState === "CHOPHOI" ? "Chờ phối" : currentState === "HAUBI" ? "Hậu bị" : pig.stage)}
+            {formatVietnameseStage(pig.stage)}
           </span>
           {isThisSow && (
             <span style={{ padding: "3px 8px", borderRadius: "6px", fontSize: "11px", background: "#eff6ff", color: "#1d4ed8", fontWeight: "700" }}>
@@ -945,7 +691,7 @@ export default function FarmApp() {
           </div>
         </header>
 
-        {/* NÚT THÊM & PHỐI GIỐNG */}
+        {/* NÚT THAO TÁC SOW */}
         {currentMenu === "SOW" && (
           <div style={{ padding: "12px 16px 0 16px", display: "flex", gap: "8px" }}>
             <button onClick={() => setShowAddPigModal(true)} style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}>
@@ -957,7 +703,7 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* TỔNG QUAN */}
+        {/* MÀN HÌNH TỔNG QUAN */}
         {currentMenu === "OVERVIEW" && (
           <div style={{ padding: "16px" }}>
             <div style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)", borderRadius: "16px", padding: "16px 18px", marginBottom: "14px", color: "#fff" }}>
@@ -1026,11 +772,11 @@ export default function FarmApp() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 🎯 MODAL HỒ SƠ NÁI DUY NHẤT: CHỈNH SỬA + SINH SẢN + GIA PHẢ TRONG 1 NƠI    */}
+      {/* 🎯 MODAL HỒ SƠ TỔNG HỢP DUY NHẤT: EDIT + REPRO + PEDIGREE                    */}
       {/* ========================================================================= */}
       {activeProfilePig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "460px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "460px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
             
             {/* Header Modal */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
@@ -1043,7 +789,7 @@ export default function FarmApp() {
               <button onClick={() => setActiveProfilePig(null)} style={{ border: "none", background: "#f1f5f9", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer", fontWeight: "900" }}>✕</button>
             </div>
 
-            {/* 3 Tab Lựa Chọn Gọn Gàng */}
+            {/* Thanh chuyển 3 Tab con */}
             <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "10px", padding: "3px", marginBottom: "14px" }}>
               {[
                 { k: "EDIT", label: "📝 Thông Tin & Trạng Thái" },
@@ -1067,7 +813,7 @@ export default function FarmApp() {
 
             <div style={{ overflowY: "auto", flex: 1, paddingRight: "4px" }}>
 
-              {/* TAB 1: FORM CHỈNH SỬA THÔNG TIN & TRẠNG THÁI */}
+              {/* TAB 1: FORM SỬA THÔNG TIN & TRẠNG THÁI */}
               {profileTab === "EDIT" && (
                 <form onSubmit={handleSaveProfileEdit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -1092,9 +838,9 @@ export default function FarmApp() {
                     </div>
                   </div>
 
-                  {/* CHỌN TRẠNG THÁI TRỰC TIẾP TẠI ĐÂY - KHÔNG LO BỊ KẸT */}
+                  {/* CHỌN TRẠNG THÁI TRỰC TIẾP */}
                   <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px", border: "1px solid #fce7f3" }}>
-                    <label style={{ fontSize: "11px", fontWeight: "800", color: "#db2777" }}>Trạng thái sinh sản hiện tại (*):</label>
+                    <label style={{ fontSize: "11px", fontWeight: "800", color: "#db2777" }}>Trạng thái sinh sản (*):</label>
                     <select
                       value={activeProfilePig.stage}
                       onChange={(e) => setActiveProfilePig({ ...activeProfilePig, stage: e.target.value })}
@@ -1105,9 +851,6 @@ export default function FarmApp() {
                       <option value="Chờ phối">⏳ Chờ phối</option>
                       <option value="Hậu bị">🐖 Hậu bị</option>
                     </select>
-                    <div style={{ fontSize: "10px", color: "#64748b", marginTop: "4px" }}>
-                      * Chọn chính xác trạng thái để nái nhảy đúng tab Chửa / Chờ phối / Nuôi con.
-                    </div>
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -1135,7 +878,7 @@ export default function FarmApp() {
                     <div>
                       <label style={{ fontSize: "11px", fontWeight: "700", color: "#1e40af" }}>Số tai Bố:</label>
                       <input
-                        placeholder="Trống nếu chưa rõ"
+                        placeholder="Chưa rõ"
                         value={activeProfilePig.sire_ear_tag || ""}
                         onChange={(e) => setActiveProfilePig({ ...activeProfilePig, sire_ear_tag: e.target.value })}
                         style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
@@ -1144,7 +887,7 @@ export default function FarmApp() {
                     <div>
                       <label style={{ fontSize: "11px", fontWeight: "700", color: "#b91c1c" }}>Số tai Mẹ:</label>
                       <input
-                        placeholder="Trống nếu chưa rõ"
+                        placeholder="Chưa rõ"
                         value={activeProfilePig.dam_ear_tag || ""}
                         onChange={(e) => setActiveProfilePig({ ...activeProfilePig, dam_ear_tag: e.target.value })}
                         style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
@@ -1164,7 +907,7 @@ export default function FarmApp() {
                 </form>
               )}
 
-              {/* TAB 2: SINH SẢN & DANH SÁCH LỨA ĐẺ */}
+              {/* TAB 2: SINH SẢN & LỨA ĐẺ */}
               {profileTab === "REPRO" && (() => {
                 const analysis = getSowReproAnalysis(activeProfilePig.ear_tag);
                 return (
@@ -1185,7 +928,7 @@ export default function FarmApp() {
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0" }}>
-                      <h4 style={{ margin: 0, fontSize: "12px", fontWeight: "800" }}>Chi tiết lứa đẻ ({analysis.sowLitters.length}):</h4>
+                      <h4 style={{ margin: 0, fontSize: "12px", fontWeight: "800" }}>Lứa đẻ ({analysis.sowLitters.length}):</h4>
                       {user && (
                         <button
                           onClick={() => {
@@ -1206,7 +949,6 @@ export default function FarmApp() {
                       )}
                     </div>
 
-                    {/* Form Nhập/Sửa Lứa */}
                     {showLitterForm && user && (
                       <form onSubmit={handleSaveLitter} style={{ background: "#f8fafc", padding: "10px", borderRadius: "10px", border: "1px solid #cbd5e1", display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ fontSize: "12px", fontWeight: "800", color: "#059669" }}>{editingLitterId ? "✎ Sửa lứa đẻ" : "+ Thêm lứa đẻ cũ"}</div>
@@ -1225,7 +967,6 @@ export default function FarmApp() {
                       </form>
                     )}
 
-                    {/* Danh sách lứa */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       {analysis.sowLitters.map((l, idx) => (
                         <div key={l.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 10px" }}>
@@ -1269,8 +1010,8 @@ export default function FarmApp() {
 
               {/* TAB 3: GIA PHẢ 3 ĐỜI */}
               {profileTab === "PEDIGREE" && (() => {
-                const sire = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (activeProfilePig.sire_ear_tag || "").trim().toUpperCase());
-                const dam = safePigs.find(p => p.ear_tag.trim().toUpperCase() === (activeProfilePig.dam_ear_tag || "").trim().toUpperCase());
+                const sire = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (activeProfilePig.sire_ear_tag || "").trim().toUpperCase());
+                const dam = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (activeProfilePig.dam_ear_tag || "").trim().toUpperCase());
 
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
@@ -1325,14 +1066,9 @@ export default function FarmApp() {
                 <label style={{ fontSize: "11px", fontWeight: "700" }}>Chọn Đực giống:</label>
                 <select required value={selectedBoarTag} onChange={e => setSelectedBoarTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
                   <option value="">-- Chọn Đực giống --</option>
-                  {boarList.map(b => {
-                    const check = matingSowTag ? checkInbreedingRisk(matingSowTag, b.ear_tag) : { risk: false, reason: "" };
-                    return (
-                      <option key={b.id} value={b.ear_tag} style={{ color: check.risk ? "#ef4444" : "#0f172a" }}>
-                        {b.ear_tag} ({b.breed_id}) {check.risk ? "⚠️ [CẬN HUYẾT!]" : "✓ [An toàn]"}
-                      </option>
-                    );
-                  })}
+                  {boarList.map(b => (
+                    <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>
+                  ))}
                 </select>
               </div>
 
@@ -1355,10 +1091,33 @@ export default function FarmApp() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "18px" }}>
             <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "800", color: "#059669" }}>+ Thêm Cá Thể Lợn Mới</h3>
-            <form onSubmit={handleCreatePig} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newPig.ear_tag?.trim()) return;
+              setIsAddingPig(true);
+              try {
+                const payload = {
+                  ear_tag: newPig.ear_tag.trim().toUpperCase(),
+                  breed_id: newPig.breed_id || config.breeds[0] || "Hạ Lang",
+                  sex: "Cái",
+                  stage: formatVietnameseStage(newPig.stage || "Hậu bị"),
+                  current_pen_code: newPig.current_pen_code || "CA1",
+                  status: "Bình thường"
+                };
+                await supabase.from("pigs").insert([payload]);
+                setShowAddPigModal(false);
+                setNewPig({ ear_tag: "", stage: "Hậu bị" });
+                await fetchData();
+              } finally {
+                setIsAddingPig(false);
+              }
+            }} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <input required placeholder="Số tai (VD: HL-01...)" value={newPig.ear_tag} onChange={e => setNewPig({ ...newPig, ear_tag: e.target.value })} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
-              <select value={newPig.stage || config.stages[0]} onChange={e => setNewPig({ ...newPig, stage: e.target.value })} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                {config.stages.map(st => <option key={st} value={st}>{formatVietnameseStage(st)}</option>)}
+              <select value={newPig.stage || "Hậu bị"} onChange={e => setNewPig({ ...newPig, stage: e.target.value })} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                <option value="Hậu bị">Hậu bị</option>
+                <option value="Chờ phối">Chờ phối</option>
+                <option value="Đang chửa">Đang chửa</option>
+                <option value="Nuôi con">Nuôi con</option>
               </select>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowAddPigModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
