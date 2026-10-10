@@ -630,10 +630,7 @@ export default function FarmApp() {
     document.body.removeChild(link);
   };
 
-  // =========================================================================
-  // XỬ LÝ NHIỆM VỤ THÔNG MINH:
-  // NẾU NÁI ĐÃ Ở Ô CHUỒNG ĐẺ (CD1, CD2,...) -> TỰ ĐỘNG XEM NHƯ ĐÃ XONG VÀ ẨN ĐI
-  // =========================================================================
+  // NHIỆM VỤ: NẾU ĐÃ Ở Ô CHUỒNG ĐẺ (CD1, CD2,...) -> TỰ ĐỘNG XEM NHƯ ĐÃ XONG
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -658,8 +655,6 @@ export default function FarmApp() {
 
       if (d >= 104 && d <= 116) {
         const key = `repro-cd-${tagUpper}`;
-        
-        // KIỂM TRA: NẾU NÁI NÀY ĐÃ Ở Ô CHUỒNG ĐẺ (CD1, CD2 HOẶC CHỨA CHỮ ĐẺ)
         const currentSow = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === tagUpper);
         const currentPen = (currentSow?.current_pen_code || "").toUpperCase();
         const alreadyInFarrowingPen = currentPen.includes("CD") || currentPen.includes("DE");
@@ -670,7 +665,6 @@ export default function FarmApp() {
           due_date: safeAddDays(ins.mating_date, 107),
           related_tag: ins.sow_ear_tag,
           category: "REPRO",
-          // Đã ở ô đẻ hoặc đã tích xong -> xem như xong
           is_completed: completedTaskKeys.includes(key) || alreadyInFarrowingPen,
           is_auto: true
         });
@@ -706,26 +700,23 @@ export default function FarmApp() {
   const pendingTasks = filteredTasks.filter(t => !t.is_completed);
   const completedTasks = filteredTasks.filter(t => t.is_completed);
 
-  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ (BẤM LÀ ĂN NGAY)
+  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
     const taskKey = selectedTask.id;
     const sowTag = selectedTask.related_tag?.trim().toUpperCase();
 
-    // 1. Lưu key hoàn thành vào máy
     const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
     setCompletedTaskKeys(newDone);
     if (typeof window !== "undefined") {
       try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
     }
 
-    // 2. Nếu là việc chuyển lên chuồng đẻ -> tự động đổi chuồng nái sang CD1
     if (selectedTask.id.startsWith("repro-cd-") && sowTag) {
       await supabase.from("pigs").update({ current_pen_code: "CD1" }).eq("ear_tag", sowTag);
       setPigs(prev => prev.map(p => (p.ear_tag || "").trim().toUpperCase() === sowTag ? { ...p, current_pen_code: "CD1" } : p));
     }
 
-    // 3. Ghi vào database
     try {
       await supabase.from("farm_tasks").insert([{
         title: selectedTask.title,
@@ -806,11 +797,11 @@ export default function FarmApp() {
         {gestation && (
           <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginTop: "4px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: "800", marginBottom: "6px" }}>
-              <span style={{ color: gestation.badgeColor }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
+              <span style={{ color: "#3b82f6" }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
               <span style={{ color: "#475569" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
             </div>
             <div style={{ height: "8px", width: "100%", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${gestation.pct}%`, background: gestation.badgeColor }} />
+              <div style={{ height: "100%", width: `${gestation.pct}%`, background: "#3b82f6" }} />
             </div>
           </div>
         )}
@@ -1260,9 +1251,7 @@ export default function FarmApp() {
         ))}
       </nav>
 
-      {/* ========================================================================= */}
-      {/* 🎯 MODAL XÁC NHẬN CÔNG VIỆC: BẤM LÀ HOÀN TẤT ĂN NGAY                      */}
-      {/* ========================================================================= */}
+      {/* MODAL XÁC NHẬN CÔNG VIỆC */}
       {showTaskModal && selectedTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
@@ -1294,9 +1283,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 🎯 MODAL HỒ SƠ TỔNG HỢP: SỬA + SINH SẢN + GIA PHẢ 2 CHIỀU                   */}
-      {/* ========================================================================= */}
+      {/* MODAL HỒ SƠ TỔNG HỢP: SỬA + SINH SẢN + GIA PHẢ 2 CHIỀU */}
       {activeProfilePig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "450px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
@@ -1697,4 +1684,31 @@ export default function FarmApp() {
               </select>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowAddPigModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
-                <button type="submit" disabled={isAddingPig} style={{ padding: "6px 14px", borderRadius: "6px", background: "#05966
+                <button type="submit" disabled={isAddingPig} style={{ padding: "6px 14px", borderRadius: "6px", background: "#059669", color: "#fff", border: "none", fontWeight: "800" }}>Lưu</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ĐĂNG NHẬP */}
+      {showAuthModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "320px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900" }}>Đăng nhập</h3>
+            {authError && <div style={{ fontSize: "12px", color: "#ef4444", marginBottom: "6px" }}>{authError}</div>}
+            <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input required placeholder="Tên đăng nhập..." value={authAccount} onChange={e => setAuthAccount(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
+              <input type="password" required placeholder="Mật khẩu..." value={authPassword} onChange={e => setAuthPassword(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1" }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px" }}>
+                <button type="button" onClick={() => setShowAuthModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
+                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#5b21b6", color: "#fff", border: "none", fontWeight: "800" }}>Vào</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
