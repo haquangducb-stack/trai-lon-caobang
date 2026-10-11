@@ -167,7 +167,7 @@ export default function FarmApp() {
   const [pendingTaskDays, setPendingTaskDays] = useState<7 | 15 | 30>(7);
   const [completedTaskDays, setCompletedTaskDays] = useState<7 | 15 | 30>(7);
 
-  // Modal chụp/chọn ảnh
+  // Modal chụp/chọn ảnh gắn với hoạt động
   const [activityPhotoModal, setActivityPhotoModal] = useState<{
     isOpen: boolean;
     activityTitle: string;
@@ -175,7 +175,7 @@ export default function FarmApp() {
     targetId: string;
     details: string;
     taskId?: string;
-    existingLogId?: string; // Dùng khi bổ sung ảnh vào log có sẵn
+    existingLogId?: string;
     previewImg: string;
   } | null>(null);
 
@@ -691,15 +691,18 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
 
-      await logAction("WEAN_LITTER", cleanTag, `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái mẹ chuyển Chờ phối.`);
+      const logId = "log-" + Date.now();
+      const logDetails = `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái mẹ chuyển Chờ phối.`;
+      await logAction("WEAN_LITTER", cleanTag, logDetails);
 
-      // MỞ HỘP THOẠI HỎI CHỤP ẢNH ĐÚNG HOẠT ĐỘNG CAI SỮA NÀY
+      // Mở modal hỏi chụp ảnh
       setActivityPhotoModal({
         isOpen: true,
         activityTitle: `Cai sữa đàn nái ${cleanTag} (${litterCount || ""} con)`,
         actionType: "WEAN_LITTER",
         targetId: cleanTag,
-        details: `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái chuyển Chờ phối.`,
+        details: logDetails,
+        existingLogId: logId,
         previewImg: ""
       });
 
@@ -759,17 +762,20 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
 
-      await logAction("FARROW_SOW", sowTag, `Nái ${sowTag} đẻ lứa ${litterCode}: ${aliveCount} con sống, ${deadCount} con chết -> Nuôi con`);
+      const logId = "log-" + Date.now();
+      const logDetails = `Nái ${sowTag} đẻ lứa ${litterCode}: ${aliveCount} con sống, ${deadCount} con chết -> Nuôi con`;
+      await logAction("FARROW_SOW", sowTag, logDetails);
 
       setFarrowingSow(null);
 
-      // MỞ HỘP THOẠI HỎI CHỤP ẢNH ĐÚNG CA ĐẺ NÀY
+      // Mở modal hỏi chụp ảnh
       setActivityPhotoModal({
         isOpen: true,
         activityTitle: `Nái ${sowTag} đẻ lứa ${litterCode}`,
         actionType: "FARROW_SOW",
         targetId: sowTag,
-        details: `Nái ${sowTag} đẻ lứa ${litterCode} (${aliveCount} con sống, ${deadCount} con chết).`,
+        details: logDetails,
+        existingLogId: logId,
         previewImg: ""
       });
 
@@ -1105,7 +1111,7 @@ export default function FarmApp() {
     return Array.from(taskMap.values());
   }, [inseminations, suckingLitters, sowList, checkSowState, dbTasks, completedTaskKeys, dismissedTaskKeys, safePigs]);
 
-  // Bộ lọc thời gian nhiệm vụ: 7, 15, 30 ngày (loại bỏ những việc đã bị Bỏ qua)
+  // Bộ lọc thời gian nhiệm vụ: 7, 15, 30 ngày (loại bỏ việc đã Bỏ qua)
   const filteredPendingTasks = useMemo(() => {
     return fullTasks.filter(t => {
       if (t.is_completed || t.is_dismissed) return false;
@@ -1128,11 +1134,12 @@ export default function FarmApp() {
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
 
-  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ
+  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ (LƯU NHẬT KÝ TỨC THÌ)
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
     const taskKey = selectedTask.id;
     const sowTag = selectedTask.related_tag?.trim().toUpperCase();
+    const taskTitle = selectedTask.title;
 
     const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
     setCompletedTaskKeys(newDone);
@@ -1147,7 +1154,7 @@ export default function FarmApp() {
 
     try {
       await supabase.from("farm_tasks").insert([{
-        title: selectedTask.title,
+        title: taskTitle,
         due_date: selectedTask.due_date,
         related_tag: selectedTask.related_tag,
         category: selectedTask.category,
@@ -1156,16 +1163,19 @@ export default function FarmApp() {
       }]);
     } catch (e) {}
 
-    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`, undefined, taskKey);
+    const logId = "log-" + Date.now();
+    const logDetails = `Đã hoàn thành công việc: ${taskTitle}`;
+    await logAction("COMPLETE_TASK", sowTag || "TASK", logDetails, undefined, taskKey);
 
-    // MỞ HỘP THOẠI HỎI CHỤP ẢNH GẮN VÀO ĐÚNG HOẠT ĐỘNG VỪA XONG
+    // Mở hộp thoại hỏi ảnh (có gắn sẵn ID để cập nhật ảnh vào log này)
     setActivityPhotoModal({
       isOpen: true,
-      activityTitle: selectedTask.title,
+      activityTitle: taskTitle,
       actionType: "COMPLETE_TASK",
-      targetId: selectedTask.related_tag || "TASK",
-      details: `Đã hoàn thành công việc: ${selectedTask.title}`,
+      targetId: sowTag || "TASK",
+      details: logDetails,
       taskId: taskKey,
+      existingLogId: logId,
       previewImg: ""
     });
 
@@ -1992,12 +2002,10 @@ export default function FarmApp() {
                 disabled={!activityPhotoModal.previewImg}
                 onClick={async () => {
                   if (activityPhotoModal.previewImg) {
-                    // Nếu là bổ sung ảnh cho log có sẵn
                     if (activityPhotoModal.existingLogId) {
                       await updateLogPhoto(activityPhotoModal.existingLogId, activityPhotoModal.previewImg);
                       alert("✅ Đã bổ sung ảnh thành công vào dòng nhật ký!");
                     } else {
-                      // Nếu là tạo log mới kèm ảnh
                       await logAction(
                         activityPhotoModal.actionType,
                         activityPhotoModal.targetId,
@@ -2035,7 +2043,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL XÁC NHẬN CÔNG VIỆC: CÓ CẢ NÚT BỎ QUA */}
+      {/* MODAL XÁC NHẬN CÔNG VIỆC */}
       {showTaskModal && selectedTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
