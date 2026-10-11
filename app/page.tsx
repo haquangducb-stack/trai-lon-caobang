@@ -807,6 +807,7 @@ export default function FarmApp() {
   };
 
   // THÊM / SỬA LỨA ĐẺ
+  // THÊM / SỬA LỨA ĐẺ (ĐÃ BỔ SUNG GHI NHẬT KÝ THAO TÁC)
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProfilePig) return;
@@ -814,35 +815,57 @@ export default function FarmApp() {
     const sowTag = activeProfilePig.ear_tag.trim().toUpperCase();
     const boarNote = litterFormData.boar_used.trim() ? `[Đực: ${litterFormData.boar_used.trim().toUpperCase()}]` : "";
     const cleanNotes = `${boarNote} ${litterFormData.notes.trim()}`.trim();
+    const newAliveCount = Number(litterFormData.alive_born || 0);
 
     try {
       if (editingLitterId) {
+        // Tìm số con cũ để ghi nhật ký so sánh (ví dụ: từ 12 -> 11 con)
+        const oldLitter = litters.find(l => l.id === editingLitterId);
+        const oldAlive = oldLitter ? oldLitter.alive_born : "?";
+
         const payload = {
           litter_code: litterFormData.litter_code.trim().toUpperCase(),
           farrow_date: litterFormData.farrow_date,
           weaning_date: litterFormData.weaning_date,
-          alive_born: Number(litterFormData.alive_born || 0),
+          alive_born: newAliveCount,
           status: litterFormData.status,
           notes: cleanNotes || "Lịch sử nái"
         };
         const { error } = await supabase.from("farrowings").update(payload).eq("id", editingLitterId);
         if (error) throw error;
 
+        // Cập nhật state trực tiếp trên giao diện ngay lập tức
         setLitters(prev => prev.map(l => l.id === editingLitterId ? { ...l, ...payload } : l));
-        alert("✅ Đã cập nhật thành công ngày đẻ, ngày cai sữa và số con!");
+
+        // GHI VÀO NHẬT KÝ THAO TÁC (AUDIT_LOGS)
+        await logAction(
+          "UPDATE_LITTER",
+          sowTag,
+          `Điều chỉnh lứa ${payload.litter_code} nái ${sowTag}: sửa số con từ ${oldAlive} con xuống ${newAliveCount} con (Ngày đẻ: ${formatDateVN(payload.farrow_date)})`
+        );
+
+        alert(`✅ Đã cập nhật lứa ${payload.litter_code} và ghi nhận vào Nhật ký thao tác!`);
       } else {
         const payload = {
           litter_code: litterFormData.litter_code.trim().toUpperCase() || `L-${sowTag}-${Date.now().toString().slice(-4)}`,
           sow_ear_tag: sowTag,
           farrow_date: litterFormData.farrow_date,
           weaning_date: litterFormData.weaning_date,
-          alive_born: Number(litterFormData.alive_born || 0),
+          alive_born: newAliveCount,
           status: litterFormData.status,
           notes: cleanNotes || "Lịch sử nái"
         };
         const { error } = await supabase.from("farrowings").insert([payload]);
         if (error) throw error;
-        alert(`✅ Đã lưu lứa ${payload.litter_code} cho nái ${sowTag}!`);
+
+        // GHI VÀO NHẬT KÝ THAO TÁC
+        await logAction(
+          "CREATE_LITTER",
+          sowTag,
+          `Thêm lứa ${payload.litter_code} cho nái ${sowTag}: ${newAliveCount} con (Ngày đẻ: ${formatDateVN(payload.farrow_date)})`
+        );
+
+        alert(`✅ Đã lưu lứa ${payload.litter_code} cho nái ${sowTag} vào Nhật ký!`);
       }
 
       setShowLitterForm(false);
