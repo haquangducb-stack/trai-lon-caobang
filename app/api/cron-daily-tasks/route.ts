@@ -1,29 +1,18 @@
-// 1. Quét song song cả 3 bảng: inseminations, pigs và farrowings
-    const [{ data: inseminations }, { data: pigs }, { data: farrowings }] = await Promise.all([
+// 1. Quét song song bảng inseminations VÀ bảng pigs
+    const [{ data: inseminations }, { data: pigs }] = await Promise.all([
       supabase.from("inseminations").select("*"),
-      supabase.from("pigs").select("ear_tag, stage, current_pen_code"),
-      supabase.from("farrowings").select("sow_ear_tag, status, notes")
+      supabase.from("pigs").select("ear_tag, stage, current_pen_code")
     ]);
 
-    // Hàm chuẩn hóa chuỗi số tai (bỏ gạch nối, dấu cách, đưa về chữ thường)
+    // Chuẩn hóa số tai (bỏ dấu cách, gạch nối, đưa về chữ thường)
     const normalizeTag = (tag: any) => String(tag || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    // Tập hợp các số tai nái ĐÃ ĐẺ (dựa vào bảng farrowings)
-    const farrowedTags = new Set<string>();
-    if (Array.isArray(farrowings)) {
-      farrowings.forEach((f: any) => {
-        if (f?.sow_ear_tag) {
-          farrowedTags.add(normalizeTag(f.sow_ear_tag));
-        }
-      });
-    }
-
-    // Bản đồ nái từ bảng pigs
-    const pigMap = new Map<string, any>();
+    // Lưu trạng thái hiện tại của từng cá thể nái
+    const pigStageMap = new Map<string, string>();
     if (Array.isArray(pigs)) {
       pigs.forEach((p: any) => {
         if (p?.ear_tag) {
-          pigMap.set(normalizeTag(p.ear_tag), p);
+          pigStageMap.set(normalizeTag(p.ear_tag), String(p.stage || "").toLowerCase());
         }
       });
     }
@@ -36,24 +25,12 @@
         if (!ins?.mating_date || !ins?.sow_ear_tag) return;
         
         const normSowTag = normalizeTag(ins.sow_ear_tag);
-        const pigInfo = pigMap.get(normSowTag);
+        const stage = pigStageMap.get(normSowTag) || "";
 
-        // Kiểm tra xem nái đã đẻ chưa qua 3 yếu tố:
-        // 1. Đã có trong bảng farrowings
-        const hasFarrowed = farrowedTags.has(normSowTag);
-        
-        // 2. Stage trong bảng pigs không còn là chửa (đang nuôi con, chờ phối...)
-        const rawStage = String(pigInfo?.stage || "").toLowerCase();
-        const isNotPregnant = rawStage.includes("nuôi") || rawStage.includes("nuoi") || 
-                              rawStage.includes("chờ") || rawStage.includes("cho") || 
-                              rawStage.includes("cai");
-
-        // 3. Status đợt phối ghi nhận đã đẻ
-        const insStatus = String(ins?.status || "").toLowerCase();
-        const isMatingDone = insStatus.includes("đẻ") || insStatus.includes("de");
-
-        // NẾU NÁI ĐÃ ĐẺ HOẶC ĐANG NUÔI CON -> BỎ QUA NGAY LẬP TỨC
-        if (hasFarrowed || isNotPregnant || isMatingDone) {
+        // CHỈ LẤY NÁI HIỆN TẠI ĐANG CHỬA
+        // Nếu nái đã chuyển sang Nuôi con (đã đẻ) hoặc Chờ phối -> Loại bỏ ngay
+        const isCurrentlyPregnant = stage.includes("chửa") || stage.includes("chua");
+        if (!isCurrentlyPregnant) {
           return;
         }
 
@@ -64,6 +41,7 @@
           recheckList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 (Đực: ${ins.boar_ear_tag || "—"}) - Kiểm tra phản xạ đứng im!`);
         }
 
+        // Đang chửa và từ 105 đến 114 ngày -> Báo trực đẻ
         if (diffDays >= 105 && diffDays <= 114) {
           farrowSoonList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 - Chuẩn bị chuồng đẻ & trực đẻ!`);
         }
