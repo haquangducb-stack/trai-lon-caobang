@@ -14,7 +14,7 @@ const TELEGRAM_CHAT_IDS = ["-5523221456"];
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const isForce = url.searchParams.get("force") === "true"; // Chỉ gửi ép buộc nếu có ?force=true để test
+    const isForce = url.searchParams.get("force") === "true"; // Gửi cưỡng bức test bằng ?force=true
 
     // Lấy ngày hiện tại theo giờ Việt Nam (UTC+7)
     const nowVN = new Date(new Date().getTime() + 7 * 3600 * 1000);
@@ -44,17 +44,42 @@ export async function GET(request: Request) {
       }
     }
 
-    // 1. Quét dữ liệu nái ngày 18 - 21 và sắp đẻ (105 - 114)
-    const { data: inseminations } = await supabase
-      .from("inseminations")
-      .select("*");
+    // 1. Quét song song cả bảng inseminations VÀ bảng pigs để lọc chuẩn trạng thái
+    const [{ data: inseminations }, { data: pigs }] = await Promise.all([
+      supabase.from("inseminations").select("*"),
+      supabase.from("pigs").select("ear_tag, stage, current_pen_code")
+    ]);
+
+    // Tạo bản đồ tra cứu nhanh trạng thái của từng con nái
+    const pigMap = new Map<string, any>();
+    if (Array.isArray(pigs)) {
+      pigs.forEach((p: any) => {
+        if (p?.ear_tag) {
+          pigMap.set(p.ear_tag.trim().toUpperCase(), p);
+        }
+      });
+    }
 
     const recheckList: string[] = [];
     const farrowSoonList: string[] = [];
 
     if (Array.isArray(inseminations)) {
       inseminations.forEach((ins: any) => {
-        if (!ins?.mating_date) return;
+        if (!ins?.mating_date || !ins?.sow_ear_tag) return;
+        const sowTag = ins.sow_ear_tag.trim().toUpperCase();
+        const pigInfo = pigMap.get(sowTag);
+
+        // Kiểm tra trạng thái nái hiện tại
+        const rawStage = (pigInfo?.stage || "").toLowerCase();
+        const isNuoiCon = rawStage.includes("nuôi con") || rawStage.includes("nuoicon");
+        const isChoPhoi = rawStage.includes("chờ phối") || rawStage.includes("chophoi");
+        const isDaDe = (ins?.status || "").toLowerCase().includes("đã đẻ") || ins?.status === "DA_DE";
+
+        // NẾU NÁI ĐÃ ĐẺ, ĐANG NUÔI CON HOẶC ĐÃ VỀ CHỜ PHỐI -> BỎ QUA NGAY
+        if (isNuoiCon || isChoPhoi || isDaDe) {
+          return;
+        }
+
         const mDate = new Date(ins.mating_date).getTime();
         const diffDays = Math.floor((nowVN.getTime() - mDate) / (1000 * 3600 * 24));
 
@@ -62,6 +87,7 @@ export async function GET(request: Request) {
           recheckList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 (Đực: ${ins.boar_ear_tag || "—"}) - Kiểm tra phản xạ đứng im!`);
         }
 
+        // Chỉ đưa vào danh sách sắp đẻ nếu nái ĐANG CHỬA
         if (diffDays >= 105 && diffDays <= 114) {
           farrowSoonList.push(`• Nái *${ins.sow_ear_tag}*: Ngày ${diffDays}/114 - Chuẩn bị chuồng đẻ & trực đẻ!`);
         }
