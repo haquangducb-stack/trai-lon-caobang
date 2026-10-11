@@ -57,6 +57,7 @@ interface AuditLog {
   performed_by: string;
   details: string;
   image_url?: string;
+  task_id?: string;
   created_at: string;
 }
 
@@ -96,7 +97,7 @@ const formatVietnameseStage = (rawStage?: string) => {
   return rawStage;
 };
 
-// HÀM NÉN ẢNH BASE64
+// NÉN ẢNH BASE64 NHẸ GẮN VÀO TỪNG HOẠT ĐỘNG
 const compressImage = (file: File, maxDim = 800, quality = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -152,6 +153,7 @@ export default function FarmApp() {
   const [dbTasks, setDbTasks] = useState<FarmTask[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [completedTaskKeys, setCompletedTaskKeys] = useState<string[]>([]);
+  const [dismissedTaskKeys, setDismissedTaskKeys] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Tabs điều hướng
@@ -161,19 +163,21 @@ export default function FarmApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Tùy chọn lọc thời gian nhiệm vụ: 7, 15, 30 ngày
+  // Bộ lọc thời gian: 7, 15, 30 ngày
   const [pendingTaskDays, setPendingTaskDays] = useState<7 | 15 | 30>(7);
   const [completedTaskDays, setCompletedTaskDays] = useState<7 | 15 | 30>(7);
 
-  // Modal Chụp ảnh & phóng to
-  const [photoModalData, setPhotoModalData] = useState<{
+  // Modal chụp ảnh gắn riêng cho từng hoạt động
+  const [activityPhotoModal, setActivityPhotoModal] = useState<{
     isOpen: boolean;
-    title: string;
+    activityTitle: string;
     actionType: string;
     targetId: string;
     details: string;
+    taskId?: string;
     previewImg: string;
   } | null>(null);
+
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -198,7 +202,7 @@ export default function FarmApp() {
   });
   const [isAddingPig, setIsAddingPig] = useState(false);
 
-  // Modal Hồ Sơ Nái: Sửa + Sinh sản + Gia phả 2 chiều
+  // Modal Hồ Sơ Nái
   const [activeProfilePig, setActiveProfilePig] = useState<Pig | null>(null);
   const [profileTab, setProfileTab] = useState<"EDIT" | "REPRO" | "PEDIGREE">("EDIT");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -216,7 +220,7 @@ export default function FarmApp() {
     notes: ""
   });
 
-  // Modal Báo Đẻ Cho Nái Chửa
+  // Modal Báo Đẻ
   const [farrowingSow, setFarrowingSow] = useState<Pig | null>(null);
   const [farrowInput, setFarrowInput] = useState({
     farrow_date: new Date().toISOString().split("T")[0],
@@ -225,7 +229,7 @@ export default function FarmApp() {
     notes: ""
   });
 
-  // Task Modal
+  // Modal Việc cần làm
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
@@ -254,6 +258,11 @@ export default function FarmApp() {
           const parsedDone = JSON.parse(savedDone);
           if (Array.isArray(parsedDone)) setCompletedTaskKeys(parsedDone);
         }
+        const savedDismissed = localStorage.getItem("farm_dismissed_task_keys");
+        if (savedDismissed) {
+          const parsedDismissed = JSON.parse(savedDismissed);
+          if (Array.isArray(parsedDismissed)) setDismissedTaskKeys(parsedDismissed);
+        }
       } catch (e) {}
     }
   }, []);
@@ -272,7 +281,8 @@ export default function FarmApp() {
     return "Hà Quang Dự";
   }, [customDisplayName]);
 
-  const logAction = useCallback(async (actionType: string, targetId: string, details: string, imageUrl?: string) => {
+  // HÀM LƯU NHẬT KÝ THAO TÁC CÓ KÈM ẢNH ĐÚNG HOẠT ĐỘNG ĐÓ
+  const logAction = useCallback(async (actionType: string, targetId: string, details: string, imageUrl?: string, taskId?: string) => {
     const newEntry: AuditLog = {
       id: "log-" + Date.now(),
       action_type: actionType,
@@ -280,6 +290,7 @@ export default function FarmApp() {
       performed_by: activeOperator,
       details,
       image_url: imageUrl,
+      task_id: taskId,
       created_at: new Date().toISOString()
     };
 
@@ -344,7 +355,7 @@ export default function FarmApp() {
     } else {
       setShowAuthModal(false);
       setAuthPassword("");
-      await logAction("LOGIN", loginAccount, "Đăng nhập");
+      await logAction("LOGIN", loginAccount, "Đăng nhập hệ thống");
       fetchData();
     }
   };
@@ -422,9 +433,7 @@ export default function FarmApp() {
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
-  // =========================================================================
-  // PHÂN LOẠI DÒNG GIỐNG & MA TRẬN LAI TỰ ĐỘNG
-  // =========================================================================
+  // PHÂN LOẠI GIỐNG & DÒNG MÁU
   const getBreedCategoryInfo = useCallback((breedName?: string, sireTag?: string, damTag?: string) => {
     const bName = (breedName || "").trim();
     const sire = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (sireTag || "").trim().toUpperCase());
@@ -433,7 +442,6 @@ export default function FarmApp() {
     const sireBreed = sire?.breed_id || "";
     const damBreed = dam?.breed_id || "";
 
-    // Nhận diện tổ hợp Yorkshire x (Landrace x Hạ Lang)
     const isYorkshireSire = sireBreed.toLowerCase().includes("york");
     const isLanDam = damBreed.toLowerCase().includes("lan") && (damBreed.toLowerCase().includes("hạ") || damBreed.toLowerCase().includes("hl"));
 
@@ -441,9 +449,7 @@ export default function FarmApp() {
       return {
         label: "Lai 3 máu [Y × (L × HL)]",
         badgeColor: "#8b5cf6",
-        group: "LAI_3_MAU",
-        blood: "75% Ngoại (Yorkshire, Landrace) + 25% Nội (Hạ Lang)",
-        feature: "Tăng trọng nhanh, dày nạc, thịt ngọt thơm, sức đề kháng cao."
+        blood: "75% Ngoại (Yorkshire, Landrace) + 25% Nội (Hạ Lang)"
       };
     }
 
@@ -451,9 +457,7 @@ export default function FarmApp() {
       return {
         label: "Thuần Nội (Bản địa)",
         badgeColor: "#059669",
-        group: "THUAN_NOI",
-        blood: "100% Giống nội bản địa",
-        feature: "Thành thục sớm (4.5-5 tháng), đẻ khéo, thịt thơm ngon, bảo tồn nguồn gen."
+        blood: "100% Giống nội bản địa"
       };
     }
 
@@ -461,29 +465,22 @@ export default function FarmApp() {
       return {
         label: "Thuần Ngoại",
         badgeColor: "#2563eb",
-        group: "THUAN_NGOAI",
-        blood: "100% Giống ngoại siêu nạc",
-        feature: "Tăng trọng nhanh, dài thân, tỷ lệ nạc cao, thành thục lúc 7-8 tháng."
+        blood: "100% Giống ngoại siêu nạc"
       };
     }
 
     return {
       label: "Lợn Lai F1/F2",
       badgeColor: "#d97706",
-      group: "LAI",
-      blood: "Tổ hợp lai kinh tế",
-      feature: "Ưu thế lai sinh trưởng & nuôi con tốt."
+      blood: "Tổ hợp lai kinh tế"
     };
   }, [safePigs]);
 
-  // =========================================================================
-  // CẢNH BÁO DINH DƯỠNG THEO TỪNG GIAI ĐOẠN SINH LÝ
-  // =========================================================================
+  // CẢNH BÁO DINH DƯỠNG
   const getNutritionAdvice = useCallback((pig: Pig) => {
     const currentState = checkSowState(pig);
     const tagUpper = pig.ear_tag.trim().toUpperCase();
 
-    // 1. Nái đang chửa
     if (currentState === "CHUA") {
       const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
       if (latestInsem?.mating_date) {
@@ -520,7 +517,6 @@ export default function FarmApp() {
       }
     }
 
-    // 2. Nái nuôi con
     if (currentState === "NUOICON") {
       return {
         stage: "Nuôi con & Tiết sữa đỉnh cao",
@@ -530,7 +526,6 @@ export default function FarmApp() {
       };
     }
 
-    // 3. Nái sau cai sữa / Chờ phối
     if (currentState === "CHOPHOI") {
       return {
         stage: "Cai sữa & Chờ phối giống",
@@ -540,7 +535,6 @@ export default function FarmApp() {
       };
     }
 
-    // 4. Nái hậu bị
     if (currentState === "HAUBI") {
       return {
         stage: "Hậu bị nuôi dưỡng chuẩn bị phối giống",
@@ -670,7 +664,6 @@ export default function FarmApp() {
       else q = q.eq("sow_ear_tag", cleanTag);
       await q;
 
-      // Ghi vào farm_tasks để mục "Việc đã làm" có dữ liệu
       await supabase.from("farm_tasks").insert([{
         title: `Cai sữa đàn con nái ${cleanTag} (${litterCount || 0} con)`,
         due_date: todayStr,
@@ -680,12 +673,12 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
 
-      await logAction("WEAN_LITTER", cleanTag, `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con)`);
+      await logAction("WEAN_LITTER", cleanTag, `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái mẹ chuyển Chờ phối.`);
 
-      // Mở modal hỏi chụp ảnh (không bắt buộc)
-      setPhotoModalData({
+      // MỞ HỘP THOẠI HỎI CHỤP ẢNH ĐÚNG HOẠT ĐỘNG CAI SỮA NÀY
+      setActivityPhotoModal({
         isOpen: true,
-        title: `Cai sữa đàn nái ${cleanTag}`,
+        activityTitle: `Cai sữa đàn nái ${cleanTag} (${litterCount || ""} con)`,
         actionType: "WEAN_LITTER",
         targetId: cleanTag,
         details: `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái chuyển Chờ phối.`,
@@ -730,7 +723,6 @@ export default function FarmApp() {
         await supabase.from("inseminations").update({ status: "Đã đẻ" }).eq("id", sowInsems[0].id);
       }
 
-      // Ghi nhận trực tiếp vào farm_tasks
       await supabase.from("farm_tasks").insert([{
         title: `Ghi nhận nái ${sowTag} đẻ lứa ${litterCode} (${aliveCount} con sống)`,
         due_date: farrowInput.farrow_date,
@@ -749,14 +741,14 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
 
-      await logAction("FARROW_SOW", sowTag, `Nái ${sowTag} đẻ lứa ${litterCode}: ${aliveCount} con sống -> Nuôi con`);
+      await logAction("FARROW_SOW", sowTag, `Nái ${sowTag} đẻ lứa ${litterCode}: ${aliveCount} con sống, ${deadCount} con chết -> Nuôi con`);
 
       setFarrowingSow(null);
 
-      // Hỏi chụp ảnh minh chứng
-      setPhotoModalData({
+      // MỞ HỘP THOẠI HỎI CHỤP ẢNH ĐÚNG CA ĐẺ NÀY
+      setActivityPhotoModal({
         isOpen: true,
-        title: `Nái ${sowTag} đẻ lứa ${litterCode}`,
+        activityTitle: `Nái ${sowTag} đẻ lứa ${litterCode}`,
         actionType: "FARROW_SOW",
         targetId: sowTag,
         details: `Nái ${sowTag} đẻ lứa ${litterCode} (${aliveCount} con sống, ${deadCount} con chết).`,
@@ -807,7 +799,6 @@ export default function FarmApp() {
   };
 
   // THÊM / SỬA LỨA ĐẺ
-  // THÊM / SỬA LỨA ĐẺ (ĐÃ BỔ SUNG GHI NHẬT KÝ THAO TÁC)
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProfilePig) return;
@@ -819,7 +810,6 @@ export default function FarmApp() {
 
     try {
       if (editingLitterId) {
-        // Tìm số con cũ để ghi nhật ký so sánh (ví dụ: từ 12 -> 11 con)
         const oldLitter = litters.find(l => l.id === editingLitterId);
         const oldAlive = oldLitter ? oldLitter.alive_born : "?";
 
@@ -834,17 +824,15 @@ export default function FarmApp() {
         const { error } = await supabase.from("farrowings").update(payload).eq("id", editingLitterId);
         if (error) throw error;
 
-        // Cập nhật state trực tiếp trên giao diện ngay lập tức
         setLitters(prev => prev.map(l => l.id === editingLitterId ? { ...l, ...payload } : l));
 
-        // GHI VÀO NHẬT KÝ THAO TÁC (AUDIT_LOGS)
         await logAction(
           "UPDATE_LITTER",
           sowTag,
-          `Điều chỉnh lứa ${payload.litter_code} nái ${sowTag}: sửa số con từ ${oldAlive} con xuống ${newAliveCount} con (Ngày đẻ: ${formatDateVN(payload.farrow_date)})`
+          `Điều chỉnh lứa ${payload.litter_code} nái ${sowTag}: sửa số con từ ${oldAlive} xuống ${newAliveCount} con (Ngày đẻ: ${formatDateVN(payload.farrow_date)})`
         );
 
-        alert(`✅ Đã cập nhật lứa ${payload.litter_code} và ghi nhận vào Nhật ký thao tác!`);
+        alert(`✅ Đã cập nhật lứa ${payload.litter_code} và ghi nhận vào Nhật ký!`);
       } else {
         const payload = {
           litter_code: litterFormData.litter_code.trim().toUpperCase() || `L-${sowTag}-${Date.now().toString().slice(-4)}`,
@@ -858,14 +846,13 @@ export default function FarmApp() {
         const { error } = await supabase.from("farrowings").insert([payload]);
         if (error) throw error;
 
-        // GHI VÀO NHẬT KÝ THAO TÁC
         await logAction(
           "CREATE_LITTER",
           sowTag,
           `Thêm lứa ${payload.litter_code} cho nái ${sowTag}: ${newAliveCount} con (Ngày đẻ: ${formatDateVN(payload.farrow_date)})`
         );
 
-        alert(`✅ Đã lưu lứa ${payload.litter_code} cho nái ${sowTag} vào Nhật ký!`);
+        alert(`✅ Đã lưu lứa ${payload.litter_code} vào Nhật ký!`);
       }
 
       setShowLitterForm(false);
@@ -971,7 +958,6 @@ export default function FarmApp() {
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
-    // 1. Quét theo đợt phối giống (Lốc 21 ngày & Chuồng đẻ 107 ngày)
     (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
       const tagUpper = ins.sow_ear_tag.trim().toUpperCase();
@@ -987,6 +973,7 @@ export default function FarmApp() {
           related_tag: ins.sow_ear_tag,
           category: "REPRO",
           is_completed: completedTaskKeys.includes(key),
+          is_dismissed: dismissedTaskKeys.includes(key),
           is_auto: true
         });
       }
@@ -1004,12 +991,12 @@ export default function FarmApp() {
           related_tag: ins.sow_ear_tag,
           category: "REPRO",
           is_completed: completedTaskKeys.includes(key) || alreadyInFarrowingPen,
+          is_dismissed: dismissedTaskKeys.includes(key),
           is_auto: true
         });
       }
     });
 
-    // 2. Tự động quét các đàn con đang theo mẹ để sinh lịch tiêm sắt, suyễn, phù đầu
     suckingLitters.forEach(lit => {
       if (!lit?.farrow_date || !lit?.sow_ear_tag) return;
       const tagUpper = lit.sow_ear_tag.trim().toUpperCase();
@@ -1024,6 +1011,7 @@ export default function FarmApp() {
         related_tag: lit.sow_ear_tag,
         category: "VET",
         is_completed: completedTaskKeys.includes(ironKey) || ageDays > 6,
+        is_dismissed: dismissedTaskKeys.includes(ironKey),
         is_auto: true
       });
 
@@ -1035,11 +1023,11 @@ export default function FarmApp() {
         related_tag: lit.sow_ear_tag,
         category: "VET",
         is_completed: completedTaskKeys.includes(mycoKey) || ageDays > 12,
+        is_dismissed: dismissedTaskKeys.includes(mycoKey),
         is_auto: true
       });
     });
 
-    // 3. Tự động quét nái hậu bị (theo dõi động dục và tiêm Parvo phòng sảy thai)
     sowList.filter(p => checkSowState(p) === "HAUBI" && p.birth_date).forEach(hb => {
       const tagUpper = hb.ear_tag.trim().toUpperCase();
       const ageDays = safeDateDiff(hb.birth_date);
@@ -1054,6 +1042,7 @@ export default function FarmApp() {
           related_tag: hb.ear_tag,
           category: "VET",
           is_completed: completedTaskKeys.includes(parvoKey),
+          is_dismissed: dismissedTaskKeys.includes(parvoKey),
           is_auto: true
         });
 
@@ -1065,12 +1054,12 @@ export default function FarmApp() {
           related_tag: hb.ear_tag,
           category: "REPRO",
           is_completed: completedTaskKeys.includes(heatKey),
+          is_dismissed: dismissedTaskKeys.includes(heatKey),
           is_auto: true
         });
       }
     });
 
-    // 4. Ghép các task lưu trong database
     (Array.isArray(dbTasks) ? dbTasks : []).forEach(t => {
       if (!t?.title) return;
       const cleanTitle = t.title.trim();
@@ -1083,23 +1072,25 @@ export default function FarmApp() {
         cat = "VET";
       }
 
+      const isDismissed = t.is_dismissed || dismissedTaskKeys.includes(uniqueKey);
+
       if (taskMap.has(uniqueKey)) {
         const existing = taskMap.get(uniqueKey)!;
         if (!existing.is_completed && t.is_completed) {
-          taskMap.set(uniqueKey, { ...t, category: cat });
+          taskMap.set(uniqueKey, { ...t, category: cat, is_dismissed: isDismissed });
         }
       } else {
-        taskMap.set(uniqueKey, { ...t, category: cat });
+        taskMap.set(uniqueKey, { ...t, category: cat, is_dismissed: isDismissed });
       }
     });
 
-    return Array.from(taskMap.values()).filter(t => !t.is_dismissed);
-  }, [inseminations, suckingLitters, sowList, checkSowState, dbTasks, completedTaskKeys, safePigs]);
+    return Array.from(taskMap.values());
+  }, [inseminations, suckingLitters, sowList, checkSowState, dbTasks, completedTaskKeys, dismissedTaskKeys, safePigs]);
 
-  // Bộ lọc thời gian nhiệm vụ: 7, 15, 30 ngày
+  // Bộ lọc thời gian nhiệm vụ: 7, 15, 30 ngày (loại bỏ những việc đã bị Bỏ qua)
   const filteredPendingTasks = useMemo(() => {
     return fullTasks.filter(t => {
-      if (t.is_completed) return false;
+      if (t.is_completed || t.is_dismissed) return false;
       if (taskCategoryFilter !== "ALL" && t.category !== taskCategoryFilter) return false;
 
       const dDiff = safeDateDiff(t.due_date);
@@ -1110,7 +1101,7 @@ export default function FarmApp() {
 
   const filteredCompletedTasks = useMemo(() => {
     return fullTasks.filter(t => {
-      if (!t.is_completed) return false;
+      if (!t.is_completed || t.is_dismissed) return false;
       if (taskCategoryFilter !== "ALL" && t.category !== taskCategoryFilter) return false;
 
       const dDiff = safeDateDiff(t.due_date);
@@ -1119,7 +1110,9 @@ export default function FarmApp() {
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
 
-  // Xác nhận hoàn thành nhiệm vụ
+  // =========================================================================
+  // XỬ LÝ: XÁC NHẬN HOÀN THÀNH HOẶC BỎ QUA NHIỆM VỤ
+  // =========================================================================
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
     const taskKey = selectedTask.id;
@@ -1147,15 +1140,16 @@ export default function FarmApp() {
       }]);
     } catch (e) {}
 
-    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`);
-    
-    // Hỏi chụp ảnh minh chứng
-    setPhotoModalData({
+    await logAction("COMPLETE_TASK", selectedTask.related_tag || "TASK", `Xong việc: ${selectedTask.title}`, undefined, taskKey);
+
+    // MỞ HỘP THOẠI HỎI CHỤP ẢNH GẮN VÀO ĐÚNG HOẠT ĐỘNG VỪA XONG
+    setActivityPhotoModal({
       isOpen: true,
-      title: selectedTask.title,
+      activityTitle: selectedTask.title,
       actionType: "COMPLETE_TASK",
       targetId: selectedTask.related_tag || "TASK",
       details: `Đã hoàn thành công việc: ${selectedTask.title}`,
+      taskId: taskKey,
       previewImg: ""
     });
 
@@ -1164,7 +1158,43 @@ export default function FarmApp() {
     await fetchData();
   };
 
-  // RENDER THẺ CÁ THỂ: CỠ CHỮ TO RÕ + CẢNH BÁO DINH DƯỠNG + NÚT BÁO ĐẺ
+  // HÀM BỎ QUA CÔNG VIỆC
+  const handleDismissTask = async (task: FarmTask) => {
+    if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Nhật ký).`)) {
+      return;
+    }
+
+    const taskKey = task.id;
+    const newDismissed = Array.from(new Set([...dismissedTaskKeys, taskKey]));
+    setDismissedTaskKeys(newDismissed);
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
+    }
+
+    // Ghi vào nhật ký có kèm nút khôi phục
+    await logAction("DISMISS_TASK", task.related_tag || "TASK", `[ĐÃ BỎ QUA] Công việc: ${task.title}`, undefined, taskKey);
+    alert(`Đã bỏ qua công việc "${task.title}".`);
+    setShowTaskModal(false);
+    setSelectedTask(null);
+  };
+
+  // HÀM KHÔI PHỤC LẠI CÔNG VIỆC ĐÃ BỎ QUA
+  const handleRestoreTask = async (taskId?: string, taskTitle?: string) => {
+    if (!taskId) return;
+    if (!confirm(`Khôi phục lại công việc này về danh sách Việc Cần Làm?\n"${taskTitle || ""}"`)) return;
+
+    const newDismissed = dismissedTaskKeys.filter(k => k !== taskId);
+    setDismissedTaskKeys(newDismissed);
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
+    }
+
+    await logAction("RESTORE_TASK", "TASK", `[KHÔI PHỤC] Đã khôi phục lại công việc: ${taskTitle || ""}`);
+    alert(`✅ Đã khôi phục thành công! Công việc đã xuất hiện trở lại trong Việc Cần Làm.`);
+    await fetchData();
+  };
+
+  // RENDER THẺ CÁ THỂ
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
@@ -1472,7 +1502,7 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC CẦN LÀM: CÓ LỌC 7, 15, 30 NGÀY */}
+          {/* DANH SÁCH VIỆC CẦN LÀM: CÓ NÚT BỎ QUA VÀ LỌC THỜI GIAN */}
           <div style={{ marginBottom: "22px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
@@ -1521,16 +1551,33 @@ export default function FarmApp() {
                 filteredPendingTasks.map(t => (
                   <div
                     key={t.id}
-                    onClick={() => { setSelectedTask(t); setShowTaskModal(true); }}
-                    style={{ background: "#fff", padding: "12px 16px", borderRadius: "12px", border: "1.5px solid #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}
+                    style={{ background: "#fff", padding: "12px 16px", borderRadius: "12px", border: "1.5px solid #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}
                   >
-                    <div>
+                    <div
+                      onClick={() => { setSelectedTask(t); setShowTaskModal(true); }}
+                      style={{ flex: 1, cursor: "pointer" }}
+                    >
                       <div style={{ fontSize: "14px", fontWeight: "800", color: "#1e1b4b" }}>{t.title}</div>
                       <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
                         Hạn: <b>{formatDateVN(t.due_date)}</b> {t.related_tag && `(Tai: ${t.related_tag})`}
                       </div>
                     </div>
-                    <span style={{ fontSize: "18px", color: "#2563eb" }}>👉 ⚪</span>
+                    
+                    {/* CẶP NÚT: XONG VÀ BỎ QUA TRỰC TIẾP */}
+                    <div style={{ display: "flex", gap: "6px", marginLeft: "10px" }}>
+                      <button
+                        onClick={() => { setSelectedTask(t); setShowTaskModal(true); }}
+                        style={{ padding: "6px 10px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                      >
+                        ✓ Xong
+                      </button>
+                      <button
+                        onClick={() => handleDismissTask(t)}
+                        style={{ padding: "6px 10px", borderRadius: "8px", background: "#f1f5f9", color: "#64748b", border: "1px solid #cbd5e1", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                      >
+                        Bỏ qua
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1741,57 +1788,59 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH */}
+      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH TỪNG HOẠT ĐỘNG & NÚT KHÔI PHỤC */}
       {currentMenu === "SETTINGS" && (
         <div style={{ padding: "16px" }}>
-          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0", marginBottom: "16px", fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div><b>Người vận hành:</b> {activeOperator}</div>
-            
-            <button
-              onClick={() => {
-                setPhotoModalData({
-                  isOpen: true,
-                  title: "Chụp ảnh lưu trữ nhật ký tự do",
-                  actionType: "GENERAL_PHOTO",
-                  targetId: "TRAI",
-                  details: "Ảnh ghi chép hiện trạng chuồng trại / lợn",
-                  previewImg: ""
-                });
-              }}
-              style={{ padding: "6px 12px", borderRadius: "8px", background: "#7c3aed", color: "#fff", border: "none", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
-            >
-              📷 Tải ảnh nhật ký
-            </button>
+          <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0", marginBottom: "16px", fontSize: "14px" }}>
+            <b>Người vận hành:</b> {activeOperator}
           </div>
 
           <h4 style={{ margin: "0 0 10px 0", fontSize: "15px", fontWeight: "900", color: "#1e1b4b" }}>
-            📜 Nhật ký thao tác & Hình ảnh ({auditLogs.length})
+            📜 Nhật ký hoạt động & Hình ảnh ({auditLogs.length})
           </h4>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {auditLogs.slice(0, 30).map(l => (
-              <div key={l.id} style={{ background: "#fff", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "13px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                  <b style={{ color: "#5b21b6" }}>{l.performed_by}</b>
-                  <span style={{ fontSize: "11px", color: "#64748b" }}>{formatDateVN(l.created_at)}</span>
-                </div>
-                <div style={{ color: "#334155" }}>{l.details}</div>
+            {auditLogs.slice(0, 40).map(l => {
+              const isDismissedLog = l.action_type === "DISMISS_TASK" || l.details.includes("[ĐÃ BỎ QUA]");
 
-                {l.image_url && (
-                  <div style={{ marginTop: "8px" }}>
-                    <img
-                      src={l.image_url}
-                      alt="Ảnh nhật ký"
-                      onClick={() => setEnlargedImage(l.image_url || null)}
-                      style={{ width: "90px", height: "90px", objectFit: "cover", borderRadius: "8px", border: "1.5px solid #cbd5e1", cursor: "pointer" }}
-                    />
-                    <div style={{ fontSize: "11px", color: "#2563eb", marginTop: "2px", cursor: "pointer" }} onClick={() => setEnlargedImage(l.image_url || null)}>
-                      (Chạm để phóng to ảnh 🔍)
-                    </div>
+              return (
+                <div key={l.id} style={{ background: isDismissedLog ? "#fff7ed" : "#fff", padding: "12px 14px", borderRadius: "10px", border: isDismissedLog ? "1.5px solid #ffedd5" : "1px solid #e2e8f0", fontSize: "13px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <b style={{ color: isDismissedLog ? "#c2410c" : "#5b21b6" }}>{l.performed_by}</b>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>{formatDateVN(l.created_at)}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  
+                  <div style={{ color: "#334155", lineHeight: "1.4" }}>{l.details}</div>
+
+                  {/* NÚT KHÔI PHỤC NẾU LÀ VIỆC ĐÃ BỊ BỎ QUA */}
+                  {isDismissedLog && l.task_id && (
+                    <div style={{ marginTop: "8px" }}>
+                      <button
+                        onClick={() => handleRestoreTask(l.task_id, l.details.replace("[ĐÃ BỎ QUA] Công việc: ", ""))}
+                        style={{ padding: "5px 12px", borderRadius: "6px", background: "#ea580c", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+                      >
+                        ↺ Khôi phục lại việc này
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ẢNH GẮN ĐÚNG VỚI HOẠT ĐỘNG ĐÓ */}
+                  {l.image_url && (
+                    <div style={{ marginTop: "8px" }}>
+                      <img
+                        src={l.image_url}
+                        alt="Ảnh hoạt động"
+                        onClick={() => setEnlargedImage(l.image_url || null)}
+                        style={{ width: "95px", height: "95px", objectFit: "cover", borderRadius: "8px", border: "1.5px solid #cbd5e1", cursor: "pointer" }}
+                      />
+                      <div style={{ fontSize: "11px", color: "#2563eb", marginTop: "2px", cursor: "pointer" }} onClick={() => setEnlargedImage(l.image_url || null)}>
+                        (Chạm để phóng to ảnh 🔍)
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1821,16 +1870,19 @@ export default function FarmApp() {
       </nav>
 
       {/* ========================================================================= */}
-      {/* MODAL HỎI CHỤP / TẢI ẢNH LÊN CHO NHẬT KÝ (KHÔNG BẮT BUỘC)                 */}
+      {/* 🎯 MODAL CHỤP ẢNH GẮN LIỀN VỚI TỪNG HOẠT ĐỘNG CỤ THỂ                      */}
       {/* ========================================================================= */}
-      {photoModalData && photoModalData.isOpen && (
+      {activityPhotoModal && activityPhotoModal.isOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-              📷 Chụp / Tải Ảnh Nhật Ký
+              📷 Chụp Ảnh Cho Hoạt Động
             </h3>
-            <div style={{ fontSize: "13px", color: "#334155", marginBottom: "14px", lineHeight: "1.5" }}>
-              Thao tác đã ghi nhận thành công! Bạn có muốn chụp ảnh hoặc tải ảnh lên để lưu vào nhật ký trại không?
+            <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "4px" }}>
+              {activityPhotoModal.activityTitle}
+            </div>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
+              Bạn có muốn chụp ảnh hoặc tải ảnh lên để lưu minh chứng vào đúng hoạt động này không?
             </div>
 
             <input
@@ -1844,7 +1896,7 @@ export default function FarmApp() {
                 if (file) {
                   try {
                     const compressed = await compressImage(file);
-                    setPhotoModalData(prev => prev ? { ...prev, previewImg: compressed } : null);
+                    setActivityPhotoModal(prev => prev ? { ...prev, previewImg: compressed } : null);
                   } catch (err) {
                     alert("Không thể đọc ảnh: " + err);
                   }
@@ -1852,9 +1904,9 @@ export default function FarmApp() {
               }}
             />
 
-            {photoModalData.previewImg ? (
+            {activityPhotoModal.previewImg ? (
               <div style={{ textAlign: "center", marginBottom: "12px" }}>
-                <img src={photoModalData.previewImg} alt="Preview" style={{ width: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "10px", border: "1px solid #cbd5e1" }} />
+                <img src={activityPhotoModal.previewImg} alt="Preview" style={{ width: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "10px", border: "1px solid #cbd5e1" }} />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -1870,14 +1922,14 @@ export default function FarmApp() {
               >
                 <div style={{ fontSize: "28px", marginBottom: "4px" }}>📸</div>
                 <div style={{ fontSize: "13px", fontWeight: "800", color: "#1e40af" }}>Chạm để Chụp ảnh hoặc Chọn từ Thư viện</div>
-                <div style={{ fontSize: "11px", color: "#64748b" }}>(Tự động nén nhẹ không lo tốn dung lượng)</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>(Ảnh tự nén nhẹ gắn liền vào hoạt động này)</div>
               </div>
             )}
 
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
-                onClick={() => setPhotoModalData(null)}
+                onClick={() => setActivityPhotoModal(null)}
                 style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}
               >
                 Bỏ qua
@@ -1885,23 +1937,29 @@ export default function FarmApp() {
 
               <button
                 type="button"
-                disabled={!photoModalData.previewImg}
+                disabled={!activityPhotoModal.previewImg}
                 onClick={async () => {
-                  if (photoModalData.previewImg) {
-                    await logAction(photoModalData.actionType, photoModalData.targetId, photoModalData.details, photoModalData.previewImg);
-                    alert("✅ Đã lưu ảnh thành công vào Nhật ký!");
-                    setPhotoModalData(null);
+                  if (activityPhotoModal.previewImg) {
+                    await logAction(
+                      activityPhotoModal.actionType,
+                      activityPhotoModal.targetId,
+                      activityPhotoModal.details,
+                      activityPhotoModal.previewImg,
+                      activityPhotoModal.taskId
+                    );
+                    alert("✅ Đã lưu ảnh thành công vào Nhật ký hoạt động!");
+                    setActivityPhotoModal(null);
                     await fetchData();
                   }
                 }}
                 style={{
                   flex: 1.2, padding: "10px", borderRadius: "8px", border: "none",
-                  background: photoModalData.previewImg ? "#059669" : "#cbd5e1",
+                  background: activityPhotoModal.previewImg ? "#059669" : "#cbd5e1",
                   color: "#fff", fontSize: "13px", fontWeight: "900",
-                  cursor: photoModalData.previewImg ? "pointer" : "not-allowed"
+                  cursor: activityPhotoModal.previewImg ? "pointer" : "not-allowed"
                 }}
               >
-                Lưu Ảnh Nhật Ký
+                Lưu Ảnh Hoạt Động
               </button>
             </div>
           </div>
@@ -1918,7 +1976,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL XÁC NHẬN CÔNG VIỆC */}
+      {/* MODAL XÁC NHẬN CÔNG VIỆC: CÓ CẢ NÚT BỎ QUA */}
       {showTaskModal && selectedTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
@@ -1939,11 +1997,19 @@ export default function FarmApp() {
               >
                 ✓ Xác Nhận Đã Làm Xong
               </button>
+              
+              <button
+                onClick={() => handleDismissTask(selectedTask)}
+                style={{ padding: "10px", borderRadius: "10px", background: "#fff7ed", color: "#c2410c", border: "1px solid #ffedd5", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
+              >
+                Bỏ Qua Công Việc Này
+              </button>
+
               <button
                 onClick={() => { setShowTaskModal(false); setSelectedTask(null); }}
                 style={{ padding: "10px", borderRadius: "10px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", fontSize: "13px", cursor: "pointer" }}
               >
-                Chưa Làm / Đóng Lại
+                Đóng Lại
               </button>
             </div>
           </div>
@@ -2159,7 +2225,7 @@ export default function FarmApp() {
                 </form>
               )}
 
-              {/* TAB 2: SINH SẢN (SỬA ĐẦY ĐỦ NGÀY ĐẺ & NGÀY CAI SỮA) */}
+              {/* TAB 2: SINH SẢN */}
               {profileTab === "REPRO" && (() => {
                 const analysis = getSowReproAnalysis(activeProfilePig.ear_tag);
                 return (
@@ -2309,7 +2375,7 @@ export default function FarmApp() {
                 );
               })()}
 
-              {/* TAB 3: GIA PHẢ 2 CHIỀU (TỔ TIÊN + HẬU DUỆ / ĐÀN CON) */}
+              {/* TAB 3: GIA PHẢ 2 CHIỀU */}
               {profileTab === "PEDIGREE" && (() => {
                 const tagUpper = activeProfilePig.ear_tag.trim().toUpperCase();
                 const sire = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (activeProfilePig.sire_ear_tag || "").trim().toUpperCase());
@@ -2477,7 +2543,8 @@ export default function FarmApp() {
                   sex: "Cái",
                   stage: formatVietnameseStage(newPig.stage || "Hậu bị"),
                   current_pen_code: newPig.current_pen_code || "CA1",
-                  status: "Bình thường"
+                  status: "Bình thường",
+                  birth_date: newPig.birth_date || null
                 };
                 await supabase.from("pigs").insert([payload]);
                 setShowAddPigModal(false);
