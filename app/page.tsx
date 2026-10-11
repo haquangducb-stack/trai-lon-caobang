@@ -240,6 +240,16 @@ export default function FarmApp() {
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
   const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
 
+  // KIỂM TRA QUYỀN KHÁCH HÀNG (GUEST CHECK)
+  const requireAuth = useCallback((actionName = "thao tác này"): boolean => {
+    if (!user) {
+      alert(`⚠️ Bạn đang ở chế độ KHÁCH (Chỉ xem).\nVui lòng ĐĂNG NHẬP để thực hiện ${actionName}!`);
+      setShowAuthModal(true);
+      return false;
+    }
+    return true;
+  }, [user]);
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -312,6 +322,8 @@ export default function FarmApp() {
 
   // HÀM CẬP NHẬT ẢNH CHO MỘT BẢN GHI NHẬT KÝ CÓ SẴN
   const updateLogPhoto = useCallback(async (logId: string, imageUrl: string) => {
+    if (!requireAuth("cập nhật ảnh minh chứng")) return;
+
     setAuditLogs(prev => {
       const updated = prev.map(l => l.id === logId ? { ...l, image_url: imageUrl } : l);
       if (typeof window !== "undefined") {
@@ -325,7 +337,7 @@ export default function FarmApp() {
         await supabase.from("audit_logs").update({ image_url: imageUrl }).eq("id", logId);
       }
     } catch (e) {}
-  }, [supabase]);
+  }, [supabase, requireAuth]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -385,6 +397,8 @@ export default function FarmApp() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireAuth("đổi mật khẩu")) return;
+
     setChangePwdMsg("");
     if (newPassword.length < 6) {
       setChangePwdMsg("Mật khẩu mới phải từ 6 ký tự trở lên!");
@@ -402,6 +416,7 @@ export default function FarmApp() {
 
   const handleSaveDisplayName = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireAuth("thay đổi tên người thao tác")) return;
     if (!inputDisplayName.trim()) return;
     const name = inputDisplayName.trim();
     setCustomDisplayName(name);
@@ -410,6 +425,19 @@ export default function FarmApp() {
     }
     logAction("UPDATE_NAME", name, `Đổi tên thành ${name}`);
     alert(`Đã lưu tên người thực hiện: "${name}"`);
+  };
+
+  // HÀM ĐẶT LẠI DỮ LIỆU TẠM TRÊN TRÌNH DUYỆT (RESET LOCAL GUEST DATA)
+  const handleResetLocalData = () => {
+    if (confirm("Xác nhận ĐẶT LẠI toàn bộ các việc đã lỡ bấm xong hoặc bỏ qua trên máy này?\n(Trạng thái trên trang chủ sẽ quay về như ban đầu trên hệ thống).")) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("farm_done_task_keys");
+        localStorage.removeItem("farm_dismissed_task_keys");
+      }
+      setCompletedTaskKeys([]);
+      setDismissedTaskKeys([]);
+      alert("✅ Đã đặt lại dữ liệu tạm trên máy thành công!");
+    }
   };
 
   const isIndividualPiglet = (pig?: Pig) => {
@@ -662,6 +690,8 @@ export default function FarmApp() {
 
   // HÀM CAI SỮA
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
+    if (!requireAuth("cai sữa lợn")) return;
+
     const cleanTag = sowTag.trim().toUpperCase();
     if (!confirm(`Xác nhận cai sữa cho đàn con nái ${cleanTag} (${litterCount || ""} con)?\n- Nái mẹ sẽ chuyển sang "Chờ phối".\n- Đàn con chuyển sang nhóm "Đã cai sữa".`)) {
       return;
@@ -715,6 +745,7 @@ export default function FarmApp() {
   // HÀM BÁO ĐẺ CHO NÁI
   const handleConfirmFarrowing = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireAuth("ghi nhận nái đẻ")) return;
     if (!farrowingSow) return;
 
     const sowTag = farrowingSow.ear_tag.trim().toUpperCase();
@@ -788,6 +819,7 @@ export default function FarmApp() {
   // LƯU FORM SỬA THÔNG TIN NÁI
   const handleSaveProfileEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireAuth("chỉnh sửa hồ sơ cá thể")) return;
     if (!activeProfilePig) return;
     setIsSavingEdit(true);
 
@@ -825,6 +857,7 @@ export default function FarmApp() {
   // THÊM / SỬA LỨA ĐẺ
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireAuth("thêm hoặc sửa lứa đẻ")) return;
     if (!activeProfilePig) return;
 
     const sowTag = activeProfilePig.ear_tag.trim().toUpperCase();
@@ -888,6 +921,7 @@ export default function FarmApp() {
   };
 
   const handleDeleteLitter = async (litterId: string, litterCode: string) => {
+    if (!requireAuth("xóa lứa đẻ")) return;
     if (!confirm(`Xác nhận xóa bỏ lứa đẻ "${litterCode}"?`)) return;
     try {
       await supabase.from("farrowings").delete().eq("id", litterId);
@@ -1134,8 +1168,9 @@ export default function FarmApp() {
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
 
-  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ (LƯU NHẬT KÝ TỨC THÌ)
+  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ (CHẶN KHÁCH & LƯU TỨC THÌ)
   const confirmCompleteTask = async () => {
+    if (!requireAuth("xác nhận hoàn thành công việc")) return;
     if (!selectedTask) return;
     const taskKey = selectedTask.id;
     const sowTag = selectedTask.related_tag?.trim().toUpperCase();
@@ -1167,7 +1202,6 @@ export default function FarmApp() {
     const logDetails = `Đã hoàn thành công việc: ${taskTitle}`;
     await logAction("COMPLETE_TASK", sowTag || "TASK", logDetails, undefined, taskKey);
 
-    // Mở hộp thoại hỏi ảnh (có gắn sẵn ID để cập nhật ảnh vào log này)
     setActivityPhotoModal({
       isOpen: true,
       activityTitle: taskTitle,
@@ -1186,6 +1220,7 @@ export default function FarmApp() {
 
   // HÀM BỎ QUA CÔNG VIỆC
   const handleDismissTask = async (task: FarmTask) => {
+    if (!requireAuth("bỏ qua công việc")) return;
     if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Nhật ký).`)) {
       return;
     }
@@ -1205,6 +1240,7 @@ export default function FarmApp() {
 
   // HÀM KHÔI PHỤC LẠI CÔNG VIỆC ĐÃ BỎ QUA
   const handleRestoreTask = async (taskId?: string, taskTitle?: string) => {
+    if (!requireAuth("khôi phục công việc")) return;
     if (!taskId) return;
     if (!confirm(`Khôi phục lại công việc này về danh sách Việc Cần Làm?\n"${taskTitle || ""}"`)) return;
 
@@ -1256,6 +1292,7 @@ export default function FarmApp() {
             {isThisSow && currentState === "CHUA" && (
               <button
                 onClick={() => {
+                  if (!requireAuth("báo đẻ")) return;
                   setFarrowInput({
                     farrow_date: new Date().toISOString().split("T")[0],
                     alive_born: 10,
@@ -1357,24 +1394,29 @@ export default function FarmApp() {
       <header style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: 0, zIndex: 30 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button onClick={() => setIsSidebarOpen(true)} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer" }}>☰</button>
-          <h1 style={{ fontSize: "19px", fontWeight: "900", margin: 0, color: "#1e1b4b" }}>
-            {currentMenu === "OVERVIEW" && "TỔNG QUAN"}
-            {currentMenu === "SOW" && "QUẢN LÝ NÁI"}
-            {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
-            {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
-            {currentMenu === "MEAT" && "LỢN THỊT"}
-            {currentMenu === "PEDIGREE" && "GIA PHẢ ĐÀN"}
-            {currentMenu === "GUIDE" && "QUY TRÌNH THÚ Y"}
-            {currentMenu === "SEARCH" && "TRA CỨU"}
-            {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
-          </h1>
+          <div>
+            <h1 style={{ fontSize: "18px", fontWeight: "900", margin: 0, color: "#1e1b4b", display: "flex", alignItems: "center", gap: "6px" }}>
+              {currentMenu === "OVERVIEW" && "TỔNG QUAN"}
+              {currentMenu === "SOW" && "QUẢN LÝ NÁI"}
+              {currentMenu === "BOAR" && "QUẢN LÝ ĐỰC"}
+              {currentMenu === "PIGLET" && "LỢN CON THEO LÔ"}
+              {currentMenu === "MEAT" && "LỢN THỊT"}
+              {currentMenu === "PEDIGREE" && "GIA PHẢ ĐÀN"}
+              {currentMenu === "GUIDE" && "QUY TRÌNH THÚ Y"}
+              {currentMenu === "SEARCH" && "TRA CỨU"}
+              {currentMenu === "SETTINGS" && "CÀI ĐẶT"}
+              {!user && <span style={{ fontSize: "10px", background: "#fef3c7", color: "#d97706", padding: "2px 6px", borderRadius: "4px", fontWeight: "800" }}>Khách</span>}
+            </h1>
+          </div>
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button onClick={() => setShowChangePwdModal(true)} style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>Đổi MK</button>
           {user ? (
-            <button onClick={handleLogout} style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #fecaca", background: "#fef2f2", fontSize: "12px", fontWeight: "800", color: "#ef4444", cursor: "pointer" }}>Thoát</button>
+            <>
+              <button onClick={() => setShowChangePwdModal(true)} style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>Đổi MK</button>
+              <button onClick={handleLogout} style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #fecaca", background: "#fef2f2", fontSize: "12px", fontWeight: "800", color: "#ef4444", cursor: "pointer" }}>Thoát</button>
+            </>
           ) : (
-            <button onClick={() => setShowAuthModal(true)} style={{ padding: "6px 12px", borderRadius: "8px", border: "none", background: "#5b21b6", color: "#fff", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>Đăng nhập</button>
+            <button onClick={() => setShowAuthModal(true)} style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: "#5b21b6", color: "#fff", fontSize: "12px", fontWeight: "900", cursor: "pointer" }}>🔑 Đăng nhập</button>
           )}
         </div>
       </header>
@@ -1418,10 +1460,10 @@ export default function FarmApp() {
       {/* NÚT THAO TÁC TAB SOW */}
       {currentMenu === "SOW" && (
         <div style={{ padding: "12px 16px 0 16px", display: "flex", gap: "8px" }}>
-          <button onClick={() => setShowAddPigModal(true)} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
+          <button onClick={() => { if (requireAuth("thêm nái mới")) setShowAddPigModal(true); }} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
             + Thêm nái mới
           </button>
-          <button onClick={() => setShowMatingModal(true)} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
+          <button onClick={() => { if (requireAuth("lập kế hoạch phối giống")) setShowMatingModal(true); }} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
             🔬 Phối giống (Tránh cận huyết)
           </button>
         </div>
@@ -1527,12 +1569,22 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC CẦN LÀM: CÓ NÚT BỎ QUA VÀ LỌC THỜI GIAN */}
+          {/* DANH SÁCH VIỆC CẦN LÀM: CÓ NÚT BỎ QUA VÀ ĐẶT LẠI */}
           <div style={{ marginBottom: "22px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
-                🔔 VIỆC CẦN LÀM ({filteredPendingTasks.length})
-              </h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
+                  🔔 VIỆC CẦN LÀM ({filteredPendingTasks.length})
+                </h3>
+                {/* NÚT ĐẶT LẠI VIỆC TẠM TRÊN MÁY */}
+                <button
+                  onClick={handleResetLocalData}
+                  title="Đặt lại các việc đã bấm tạm trên máy này"
+                  style={{ padding: "3px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", color: "#475569", fontWeight: "700", cursor: "pointer" }}
+                >
+                  ↺ Đặt lại việc tạm
+                </button>
+              </div>
 
               <div style={{ display: "flex", gap: "4px" }}>
                 {[7, 15, 30].map(d => (
@@ -1863,6 +1915,7 @@ export default function FarmApp() {
                         </div>
                         <button
                           onClick={() => {
+                            if (!requireAuth("đổi ảnh hoạt động")) return;
                             setActivityPhotoModal({
                               isOpen: true,
                               activityTitle: `Đổi ảnh cho: ${l.details}`,
@@ -1884,6 +1937,7 @@ export default function FarmApp() {
                     <div style={{ marginTop: "8px" }}>
                       <button
                         onClick={() => {
+                          if (!requireAuth("bổ sung ảnh vào nhật ký")) return;
                           setActivityPhotoModal({
                             isOpen: true,
                             activityTitle: `Bổ sung ảnh cho: ${l.details}`,
@@ -1932,7 +1986,7 @@ export default function FarmApp() {
       </nav>
 
       {/* ========================================================================= */}
-      {/* 🎯 MODAL CHỤP / TẢI ẢNH GẮN VÀO TỪNG HOẠT ĐỘNG (LÚC LÀM HOẶC BỔ SUNG SAU) */}
+      {/* 🎯 MODAL CHỤP / TẢI ẢNH GẮN VÀO TỪNG HOẠT ĐỘNG (CHẶN KHÁCH)               */}
       {/* ========================================================================= */}
       {activityPhotoModal && activityPhotoModal.isOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
@@ -2001,6 +2055,7 @@ export default function FarmApp() {
                 type="button"
                 disabled={!activityPhotoModal.previewImg}
                 onClick={async () => {
+                  if (!requireAuth("lưu ảnh hoạt động")) return;
                   if (activityPhotoModal.previewImg) {
                     if (activityPhotoModal.existingLogId) {
                       await updateLogPhoto(activityPhotoModal.existingLogId, activityPhotoModal.previewImg);
@@ -2043,7 +2098,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL XÁC NHẬN CÔNG VIỆC */}
+      {/* MODAL XÁC NHẬN CÔNG VIỆC: CÓ CẢ NÚT BỎ QUA */}
       {showTaskModal && selectedTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
@@ -2316,6 +2371,7 @@ export default function FarmApp() {
                       <b style={{ fontSize: "14px" }}>Danh sách lứa đẻ:</b>
                       <button
                         onClick={() => {
+                          if (!requireAuth("thêm lứa đẻ")) return;
                           setEditingLitterId(null);
                           setLitterFormData({
                             litter_code: `L${analysis.totalLitters + 1}`,
@@ -2408,6 +2464,7 @@ export default function FarmApp() {
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
                             <button
                               onClick={() => {
+                                if (!requireAuth("chỉnh sửa lứa")) return;
                                 setEditingLitterId(l.id);
                                 let b = "";
                                 const m = (l.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
@@ -2562,6 +2619,7 @@ export default function FarmApp() {
             <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Lập Kế Hoạch Phối Giống</h3>
             <form onSubmit={async (e) => {
               e.preventDefault();
+              if (!requireAuth("ghi nhận phối giống")) return;
               if (!matingSowTag || !selectedBoarTag) return;
               const expFarrow = safeAddDays(matingDate, 114);
               await supabase.from("inseminations").insert([{
@@ -2601,6 +2659,7 @@ export default function FarmApp() {
             <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "800", color: "#059669" }}>+ Thêm Cá Thể Mới</h3>
             <form onSubmit={async (e) => {
               e.preventDefault();
+              if (!requireAuth("thêm cá thể mới")) return;
               if (!newPig.ear_tag?.trim()) return;
               setIsAddingPig(true);
               try {
