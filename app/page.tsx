@@ -167,7 +167,7 @@ export default function FarmApp() {
   const [pendingTaskDays, setPendingTaskDays] = useState<7 | 15 | 30>(7);
   const [completedTaskDays, setCompletedTaskDays] = useState<7 | 15 | 30>(7);
 
-  // Modal chụp ảnh gắn riêng cho từng hoạt động
+  // Modal chụp/chọn ảnh
   const [activityPhotoModal, setActivityPhotoModal] = useState<{
     isOpen: boolean;
     activityTitle: string;
@@ -175,6 +175,7 @@ export default function FarmApp() {
     targetId: string;
     details: string;
     taskId?: string;
+    existingLogId?: string; // Dùng khi bổ sung ảnh vào log có sẵn
     previewImg: string;
   } | null>(null);
 
@@ -281,7 +282,7 @@ export default function FarmApp() {
     return "Hà Quang Dự";
   }, [customDisplayName]);
 
-  // HÀM LƯU NHẬT KÝ THAO TÁC CÓ KÈM ẢNH ĐÚNG HOẠT ĐỘNG ĐÓ
+  // HÀM LƯU NHẬT KÝ THAO TÁC CÓ KÈM ẢNH
   const logAction = useCallback(async (actionType: string, targetId: string, details: string, imageUrl?: string, taskId?: string) => {
     const newEntry: AuditLog = {
       id: "log-" + Date.now(),
@@ -308,6 +309,23 @@ export default function FarmApp() {
       ]);
     } catch (e) {}
   }, [supabase, activeOperator]);
+
+  // HÀM CẬP NHẬT ẢNH CHO MỘT BẢN GHI NHẬT KÝ CÓ SẴN
+  const updateLogPhoto = useCallback(async (logId: string, imageUrl: string) => {
+    setAuditLogs(prev => {
+      const updated = prev.map(l => l.id === logId ? { ...l, image_url: imageUrl } : l);
+      if (typeof window !== "undefined") {
+        try { localStorage.setItem("farm_local_audit_logs", JSON.stringify(updated)); } catch (e) {}
+      }
+      return updated;
+    });
+
+    try {
+      if (!logId.startsWith("log-")) {
+        await supabase.from("audit_logs").update({ image_url: imageUrl }).eq("id", logId);
+      }
+    } catch (e) {}
+  }, [supabase]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -1110,9 +1128,7 @@ export default function FarmApp() {
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
 
-  // =========================================================================
-  // XỬ LÝ: XÁC NHẬN HOÀN THÀNH HOẶC BỎ QUA NHIỆM VỤ
-  // =========================================================================
+  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ
   const confirmCompleteTask = async () => {
     if (!selectedTask) return;
     const taskKey = selectedTask.id;
@@ -1171,7 +1187,6 @@ export default function FarmApp() {
       try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
     }
 
-    // Ghi vào nhật ký có kèm nút khôi phục
     await logAction("DISMISS_TASK", task.related_tag || "TASK", `[ĐÃ BỎ QUA] Công việc: ${task.title}`, undefined, taskKey);
     alert(`Đã bỏ qua công việc "${task.title}".`);
     setShowTaskModal(false);
@@ -1563,7 +1578,6 @@ export default function FarmApp() {
                       </div>
                     </div>
                     
-                    {/* CẶP NÚT: XONG VÀ BỎ QUA TRỰC TIẾP */}
                     <div style={{ display: "flex", gap: "6px", marginLeft: "10px" }}>
                       <button
                         onClick={() => { setSelectedTask(t); setShowTaskModal(true); }}
@@ -1788,7 +1802,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH TỪNG HOẠT ĐỘNG & NÚT KHÔI PHỤC */}
+      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH TỪNG HOẠT ĐỘNG & NÚT THÊM ẢNH BỔ SUNG */}
       {currentMenu === "SETTINGS" && (
         <div style={{ padding: "16px" }}>
           <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0", marginBottom: "16px", fontSize: "14px" }}>
@@ -1812,7 +1826,7 @@ export default function FarmApp() {
                   
                   <div style={{ color: "#334155", lineHeight: "1.4" }}>{l.details}</div>
 
-                  {/* NÚT KHÔI PHỤC NẾU LÀ VIỆC ĐÃ BỊ BỎ QUA */}
+                  {/* NÚT KHÔI PHỤC NẾU LÀ VIỆC ĐÃ BỎ QUA */}
                   {isDismissedLog && l.task_id && (
                     <div style={{ marginTop: "8px" }}>
                       <button
@@ -1824,18 +1838,56 @@ export default function FarmApp() {
                     </div>
                   )}
 
-                  {/* ẢNH GẮN ĐÚNG VỚI HOẠT ĐỘNG ĐÓ */}
-                  {l.image_url && (
-                    <div style={{ marginTop: "8px" }}>
+                  {/* ẢNH GẮN VÀO DÒNG NHẬT KÝ ĐÓ */}
+                  {l.image_url ? (
+                    <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
                       <img
                         src={l.image_url}
                         alt="Ảnh hoạt động"
                         onClick={() => setEnlargedImage(l.image_url || null)}
                         style={{ width: "95px", height: "95px", objectFit: "cover", borderRadius: "8px", border: "1.5px solid #cbd5e1", cursor: "pointer" }}
                       />
-                      <div style={{ fontSize: "11px", color: "#2563eb", marginTop: "2px", cursor: "pointer" }} onClick={() => setEnlargedImage(l.image_url || null)}>
-                        (Chạm để phóng to ảnh 🔍)
+                      <div>
+                        <div style={{ fontSize: "11px", color: "#2563eb", cursor: "pointer", fontWeight: "700" }} onClick={() => setEnlargedImage(l.image_url || null)}>
+                          Chạm để phóng to 🔍
+                        </div>
+                        <button
+                          onClick={() => {
+                            setActivityPhotoModal({
+                              isOpen: true,
+                              activityTitle: `Đổi ảnh cho: ${l.details}`,
+                              actionType: l.action_type,
+                              targetId: l.target_id,
+                              details: l.details,
+                              existingLogId: l.id,
+                              previewImg: l.image_url || ""
+                            });
+                          }}
+                          style={{ marginTop: "6px", padding: "4px 8px", borderRadius: "6px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}
+                        >
+                          📷 Đổi ảnh khác
+                        </button>
                       </div>
+                    </div>
+                  ) : (
+                    /* NẾU CHƯA CÓ ẢNH -> CÓ NÚT BỔ SUNG ẢNH VÀO SAU */
+                    <div style={{ marginTop: "8px" }}>
+                      <button
+                        onClick={() => {
+                          setActivityPhotoModal({
+                            isOpen: true,
+                            activityTitle: `Bổ sung ảnh cho: ${l.details}`,
+                            actionType: l.action_type,
+                            targetId: l.target_id,
+                            details: l.details,
+                            existingLogId: l.id,
+                            previewImg: ""
+                          });
+                        }}
+                        style={{ padding: "5px 10px", borderRadius: "6px", background: "#f5f3ff", color: "#6d28d9", border: "1px solid #ddd6fe", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+                      >
+                        📷 + Bổ sung ảnh vào hoạt động này
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1870,19 +1922,19 @@ export default function FarmApp() {
       </nav>
 
       {/* ========================================================================= */}
-      {/* 🎯 MODAL CHỤP ẢNH GẮN LIỀN VỚI TỪNG HOẠT ĐỘNG CỤ THỂ                      */}
+      {/* 🎯 MODAL CHỤP / TẢI ẢNH GẮN VÀO TỪNG HOẠT ĐỘNG (LÚC LÀM HOẶC BỔ SUNG SAU) */}
       {/* ========================================================================= */}
       {activityPhotoModal && activityPhotoModal.isOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-              📷 Chụp Ảnh Cho Hoạt Động
+              📷 Chụp / Bổ Sung Ảnh
             </h3>
             <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "4px" }}>
               {activityPhotoModal.activityTitle}
             </div>
             <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
-              Bạn có muốn chụp ảnh hoặc tải ảnh lên để lưu minh chứng vào đúng hoạt động này không?
+              Chọn hoặc chụp ảnh minh chứng để lưu vào đúng hoạt động này.
             </div>
 
             <input
@@ -1912,7 +1964,7 @@ export default function FarmApp() {
                   onClick={() => fileInputRef.current?.click()}
                   style={{ marginTop: "6px", fontSize: "12px", color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}
                 >
-                  (Chụp lại ảnh khác)
+                  (Chụp lại / Chọn ảnh khác)
                 </button>
               </div>
             ) : (
@@ -1932,7 +1984,7 @@ export default function FarmApp() {
                 onClick={() => setActivityPhotoModal(null)}
                 style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}
               >
-                Bỏ qua
+                Hủy / Bỏ qua
               </button>
 
               <button
@@ -1940,14 +1992,21 @@ export default function FarmApp() {
                 disabled={!activityPhotoModal.previewImg}
                 onClick={async () => {
                   if (activityPhotoModal.previewImg) {
-                    await logAction(
-                      activityPhotoModal.actionType,
-                      activityPhotoModal.targetId,
-                      activityPhotoModal.details,
-                      activityPhotoModal.previewImg,
-                      activityPhotoModal.taskId
-                    );
-                    alert("✅ Đã lưu ảnh thành công vào Nhật ký hoạt động!");
+                    // Nếu là bổ sung ảnh cho log có sẵn
+                    if (activityPhotoModal.existingLogId) {
+                      await updateLogPhoto(activityPhotoModal.existingLogId, activityPhotoModal.previewImg);
+                      alert("✅ Đã bổ sung ảnh thành công vào dòng nhật ký!");
+                    } else {
+                      // Nếu là tạo log mới kèm ảnh
+                      await logAction(
+                        activityPhotoModal.actionType,
+                        activityPhotoModal.targetId,
+                        activityPhotoModal.details,
+                        activityPhotoModal.previewImg,
+                        activityPhotoModal.taskId
+                      );
+                      alert("✅ Đã lưu ảnh thành công vào Nhật ký hoạt động!");
+                    }
                     setActivityPhotoModal(null);
                     await fetchData();
                   }
