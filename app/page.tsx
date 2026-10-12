@@ -294,12 +294,11 @@ export default function FarmApp() {
   }, []);
 
   const supabase = useMemo(() => {
-    let rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co";
-    rawUrl = rawUrl.trim().replace(/\/rest(\/v1)?\/?$/, "").replace(/\/+$/, "");
+    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co";
     const rawKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig";
-    return createClient(rawUrl, rawKey.trim());
+    return createClient(rawUrl.trim(), rawKey.trim());
   }, []);
 
   const activeOperator = useMemo(() => {
@@ -1198,7 +1197,6 @@ export default function FarmApp() {
     document.body.removeChild(link);
   };
 
-  // NHIỆM VỤ TỰ ĐỘNG (CHUẨN HÓA TIÊU ĐỀ TĨNH & KIỂM TRA ĐỐI CHIẾU DATABASE ĐỂ CHỐNG LẶP)
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -1272,7 +1270,6 @@ export default function FarmApp() {
       });
     });
 
-    // 3. Quét nái hậu bị: CHUẨN HÓA TIÊU ĐỀ TĨNH & KIỂM TRA ĐỐI CHIẾU DATABASE
     sowList.filter(p => checkSowState(p) === "HAUBI" && p.birth_date).forEach(hb => {
       const tagUpper = hb.ear_tag.trim().toUpperCase();
       const ageDays = safeDateDiff(hb.birth_date);
@@ -1365,6 +1362,230 @@ export default function FarmApp() {
       return dDiff >= 0 && dDiff <= completedTaskDays;
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
+
+  const confirmCompleteTask = async () => {
+    if (!requireAuth("xác nhận hoàn thành công việc")) return;
+    if (!selectedTask) return;
+    const taskKey = selectedTask.id;
+    const sowTag = selectedTask.related_tag?.trim().toUpperCase();
+    const taskTitle = selectedTask.title;
+
+    const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
+    setCompletedTaskKeys(newDone);
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
+    }
+
+    if (selectedTask.id.startsWith("repro-cd-") && sowTag) {
+      await supabase.from("pigs").update({ current_pen_code: "CD1" }).eq("ear_tag", sowTag);
+      setPigs(prev => prev.map(p => (p.ear_tag || "").trim().toUpperCase() === sowTag ? { ...p, current_pen_code: "CD1" } : p));
+    }
+
+    try {
+      await supabase.from("farm_tasks").insert([{
+        title: taskTitle,
+        due_date: selectedTask.due_date,
+        related_tag: selectedTask.related_tag,
+        category: selectedTask.category,
+        is_completed: true,
+        is_dismissed: false
+      }]);
+    } catch (e) {}
+
+    const logId = "log-" + Date.now();
+    const logDetails = `Đã hoàn thành công việc: ${taskTitle}`;
+    await logAction("COMPLETE_TASK", sowTag || "TASK", logDetails, undefined, taskKey);
+
+    setActivityPhotoModal({
+      isOpen: true,
+      activityTitle: taskTitle,
+      actionType: "COMPLETE_TASK",
+      targetId: sowTag || "TASK",
+      details: logDetails,
+      taskId: taskKey,
+      existingLogId: logId,
+      previewImg: ""
+    });
+
+    setShowTaskModal(false);
+    setSelectedTask(null);
+    await fetchData();
+  };
+
+  const handleDismissTask = async (task: FarmTask) => {
+    if (!requireAuth("bỏ qua công việc")) return;
+    if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Cài đặt & Nhật ký).`)) {
+      return;
+    }
+
+    const taskKey = task.id;
+    const newDismissed = Array.from(new Set([...dismissedTaskKeys, taskKey]));
+    setDismissedTaskKeys(newDismissed);
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
+    }
+
+    await logAction("DISMISS_TASK", task.related_tag || "TASK", `[ĐÃ BỎ QUA] Công việc: ${task.title}`, undefined, taskKey);
+    alert(`Đã bỏ qua công việc "${task.title}".`);
+    setShowTaskModal(false);
+    setSelectedTask(null);
+  };
+
+  const handleRestoreTask = async (taskId?: string, taskTitle?: string) => {
+    if (!requireAuth("khôi phục công việc")) return;
+    if (!taskId) return;
+    if (!confirm(`Khôi phục lại công việc này về danh sách Việc Cần Làm?\n"${taskTitle || ""}"`)) return;
+
+    const newDismissed = dismissedTaskKeys.filter(k => k !== taskId);
+    setDismissedTaskKeys(newDismissed);
+    if (typeof window !== "undefined") {
+      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
+    }
+
+    await logAction("RESTORE_TASK", "TASK", `[KHÔI PHỤC] Đã khôi phục lại công việc: ${taskTitle || ""}`);
+    alert(`✅ Đã khôi phục thành công! Công việc đã xuất hiện trở lại trong Việc Cần Làm.`);
+    await fetchData();
+  };
+
+  const renderPigCard = (pig: Pig) => {
+    const isThisSow = isSow(pig);
+    const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
+    const currentState = checkSowState(pig);
+    const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
+    const nutri = getNutritionAdvice(pig);
+    const breedCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
+
+    return (
+      <div
+        key={pig.id}
+        style={{
+          backgroundColor: "#ffffff",
+          borderRadius: "14px",
+          padding: "16px 18px",
+          border: "1.5px solid #e2e8f0",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.04)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "21px", fontWeight: "900", color: "#1e1b4b", letterSpacing: "0.5px" }}>
+              {pig.ear_tag}
+            </span>
+            <span style={{ fontSize: "11px", fontWeight: "800", padding: "3px 8px", borderRadius: "6px", background: "#f5f3ff", color: breedCat.badgeColor, border: `1px solid ${breedCat.badgeColor}33` }}>
+              {breedCat.label}
+            </span>
+          </div>
+          
+          <div style={{ display: "flex", gap: "6px" }}>
+            {isThisSow && currentState === "CHUA" && (
+              <button
+                onClick={() => {
+                  if (!requireAuth("báo đẻ")) return;
+                  setFarrowInput({
+                    farrow_date: new Date().toISOString().split("T")[0],
+                    alive_born: 10,
+                    dead_born: 0,
+                    notes: ""
+                  });
+                  setFarrowingSow(pig);
+                }}
+                style={{
+                  fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                  background: "#10b981", color: "#fff", border: "none", cursor: "pointer"
+                }}
+              >
+                🐷 Báo đẻ
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setActiveProfilePig({ ...pig });
+                setProfileTab("EDIT");
+                setShowLitterForm(false);
+              }}
+              style={{
+                fontSize: "13px", fontWeight: "800", padding: "7px 14px", borderRadius: "10px",
+                background: "#ede9fe", color: "#6d28d9", border: "1.5px solid #ddd6fe", cursor: "pointer"
+              }}
+            >
+              ⚙️ Hồ Sơ & Chi Tiết
+            </button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: "14px", color: "#334155" }}>
+          Giống: <strong style={{ color: "#0f172a" }}>{pig.breed_id || "—"}</strong> | Giới tính: <strong>{formatVietnameseSex(pig.sex)}</strong>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "2px" }}>
+          <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#f1f5f9", fontWeight: "700", color: "#1e293b" }}>
+            Ô: {pig.current_pen_code || "Chưa xếp"}
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#ecfdf5", color: "#047857", fontWeight: "800" }}>
+            {formatVietnameseStage(pig.stage)}
+          </span>
+          {isThisSow && (
+            <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#eff6ff", color: "#1d4ed8", fontWeight: "800" }}>
+              Đã đẻ: {reproData?.totalLitters || 0} lứa
+            </span>
+          )}
+        </div>
+
+        {gestation && (
+          <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginTop: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: "800", marginBottom: "6px" }}>
+              <span style={{ color: "#3b82f6" }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
+              <span style={{ color: "#475569" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
+            </div>
+            <div style={{ height: "8px", width: "100%", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${gestation.pct}%`, background: "#3b82f6" }} />
+            </div>
+          </div>
+        )}
+
+        {nutri && (
+          <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "10px", padding: "10px 12px", marginTop: "4px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "900", color: "#854d0e", marginBottom: "4px", display: "flex", justifyContent: "space-between" }}>
+              <span>🌾 DINH DƯỠNG: {nutri.stage}</span>
+              <span style={{ color: "#b45309", fontWeight: "800" }}>{nutri.feed}</span>
+            </div>
+            <div style={{ fontSize: "12px", color: "#451a03", fontWeight: "700" }}>
+              • Tiêu chuẩn: {nutri.specs}
+            </div>
+            <div style={{ fontSize: "11px", color: "#92400e", marginTop: "3px", fontStyle: "italic" }}>
+              {nutri.warning}
+            </div>
+          </div>
+        )}
+
+        <div style={{ borderTop: "1px dashed #cbd5e1", paddingTop: "8px", marginTop: "4px", fontSize: "13px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
+          <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
+          <span>Mẹ: <strong style={{ color: "#b91c1c" }}>{pig.dam_ear_tag || "—"}</strong></span>
+        </div>
+      </div>
+    );
+  };
+
+  // NẾU CHƯA MOUNT XONG Ở BROWSER THÌ TRẢ VỀ SHELL LOADING AN TOÀN TRÁNH LỖI SSR TRÊN VERCEL
+  if (!mounted) {
+    return (
+      <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "28px", marginBottom: "8px" }}>🐖</div>
+          <div style={{ fontSize: "15px", fontWeight: "800", color: "#5b21b6" }}>Đang tải Trại Lợn Nà Roác...</div>
+        </div>
+      </div>
+    );
+  }
+
+  const sowPct = grandTotal > 0 ? ((sowList.length / grandTotal) * 100).toFixed(0) : "0";
+  const boarPct = grandTotal > 0 ? ((boarList.length / grandTotal) * 100).toFixed(0) : "0";
+  const pigletPct = grandTotal > 0 ? ((totalPigletsCount / grandTotal) * 100).toFixed(0) : "0";
+  const meatPct = grandTotal > 0 ? ((meatList.length / grandTotal) * 100).toFixed(0) : "0";
 
   return (
     <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", position: "relative", paddingBottom: "75px" }}>
@@ -1977,9 +2198,7 @@ export default function FarmApp() {
         ))}
       </nav>
 
-      {/* ========================================================================= */}
-      {/* 🎯 MODAL THAO TÁC LÔ CON (TUYỂN HẬU BỊ / CHUYỂN THỊT / XUẤT BÁN)             */}
-      {/* ========================================================================= */}
+      {/* MODAL THAO TÁC LÔ CON */}
       {showLitterActionModal && selectedLitter && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
