@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       const { data: sentLog } = await supabase
         .from("audit_logs")
         .select("id")
-        .eq("action_type", "TELEGRAM_DAILY_SENT")
+        .eq("action_type", "SYSTEM_CRON_LOCK")
         .eq("target_id", todayStr)
         .limit(1);
 
