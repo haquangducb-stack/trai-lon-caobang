@@ -240,7 +240,7 @@ export default function FarmApp() {
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
   const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
 
-  // KIỂM TRA QUYỀN KHÁCH HÀNG (GUEST CHECK)
+  // HÀM KIỂM TRA QUYỀN KHÁCH (GUEST GUARD)
   const requireAuth = useCallback((actionName = "thao tác này"): boolean => {
     if (!user) {
       alert(`⚠️ Bạn đang ở chế độ KHÁCH (Chỉ xem).\nVui lòng ĐĂNG NHẬP để thực hiện ${actionName}!`);
@@ -320,7 +320,7 @@ export default function FarmApp() {
     } catch (e) {}
   }, [supabase, activeOperator]);
 
-  // HÀM CẬP NHẬT ẢNH CHO MỘT BẢN GHI NHẬT KÝ CÓ SẴN
+  // HÀM CẬP NHẬT ẢNH CHO BẢN GHI NHẬT KÝ
   const updateLogPhoto = useCallback(async (logId: string, imageUrl: string) => {
     if (!requireAuth("cập nhật ảnh minh chứng")) return;
 
@@ -346,7 +346,13 @@ export default function FarmApp() {
         supabase.from("farm_tasks").select("*").order("due_date", { ascending: true }),
         supabase.from("farrowings").select("*").order("farrow_date", { ascending: false }),
         supabase.from("inseminations").select("*").order("mating_date", { ascending: false }),
-        supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(80)
+        supabase
+          .from("audit_logs")
+          .select("*")
+          .neq("action_type", "TELEGRAM_DAILY_SENT")
+          .neq("action_type", "SYSTEM_CRON_LOCK")
+          .order("created_at", { ascending: false })
+          .limit(80)
       ]);
       if (pRes?.data) setPigs(pRes.data);
       if (tRes?.data) setDbTasks(tRes.data);
@@ -425,19 +431,6 @@ export default function FarmApp() {
     }
     logAction("UPDATE_NAME", name, `Đổi tên thành ${name}`);
     alert(`Đã lưu tên người thực hiện: "${name}"`);
-  };
-
-  // HÀM ĐẶT LẠI DỮ LIỆU TẠM TRÊN TRÌNH DUYỆT (RESET LOCAL GUEST DATA)
-  const handleResetLocalData = () => {
-    if (confirm("Xác nhận ĐẶT LẠI toàn bộ các việc đã lỡ bấm xong hoặc bỏ qua trên máy này?\n(Trạng thái trên trang chủ sẽ quay về như ban đầu trên hệ thống).")) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("farm_done_task_keys");
-        localStorage.removeItem("farm_dismissed_task_keys");
-      }
-      setCompletedTaskKeys([]);
-      setDismissedTaskKeys([]);
-      alert("✅ Đã đặt lại dữ liệu tạm trên máy thành công!");
-    }
   };
 
   const isIndividualPiglet = (pig?: Pig) => {
@@ -725,7 +718,6 @@ export default function FarmApp() {
       const logDetails = `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái mẹ chuyển Chờ phối.`;
       await logAction("WEAN_LITTER", cleanTag, logDetails);
 
-      // Mở modal hỏi chụp ảnh
       setActivityPhotoModal({
         isOpen: true,
         activityTitle: `Cai sữa đàn nái ${cleanTag} (${litterCount || ""} con)`,
@@ -799,7 +791,6 @@ export default function FarmApp() {
 
       setFarrowingSow(null);
 
-      // Mở modal hỏi chụp ảnh
       setActivityPhotoModal({
         isOpen: true,
         activityTitle: `Nái ${sowTag} đẻ lứa ${litterCode}`,
@@ -1221,7 +1212,7 @@ export default function FarmApp() {
   // HÀM BỎ QUA CÔNG VIỆC
   const handleDismissTask = async (task: FarmTask) => {
     if (!requireAuth("bỏ qua công việc")) return;
-    if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Nhật ký).`)) {
+    if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Cài đặt & Nhật ký).`)) {
       return;
     }
 
@@ -1356,7 +1347,6 @@ export default function FarmApp() {
           </div>
         )}
 
-        {/* HỘP CẢNH BÁO DINH DƯỠNG */}
         {nutri && (
           <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "10px", padding: "10px 12px", marginTop: "4px" }}>
             <div style={{ fontSize: "12px", fontWeight: "900", color: "#854d0e", marginBottom: "4px", display: "flex", justifyContent: "space-between" }}>
@@ -1569,22 +1559,12 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC CẦN LÀM: CÓ NÚT BỎ QUA VÀ ĐẶT LẠI */}
+          {/* DANH SÁCH VIỆC CẦN LÀM (GIAO DIỆN TINH GỌN, BỎ NÚT RESET) */}
           <div style={{ marginBottom: "22px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
-                  🔔 VIỆC CẦN LÀM ({filteredPendingTasks.length})
-                </h3>
-                {/* NÚT ĐẶT LẠI VIỆC TẠM TRÊN MÁY */}
-                <button
-                  onClick={handleResetLocalData}
-                  title="Đặt lại các việc đã bấm tạm trên máy này"
-                  style={{ padding: "3px 8px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", color: "#475569", fontWeight: "700", cursor: "pointer" }}
-                >
-                  ↺ Đặt lại việc tạm
-                </button>
-              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
+                🔔 VIỆC CẦN LÀM ({filteredPendingTasks.length})
+              </h3>
 
               <div style={{ display: "flex", gap: "4px" }}>
                 {[7, 15, 30].map(d => (
@@ -1660,7 +1640,7 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC ĐÃ HOÀN THÀNH: CÓ LỌC 7, 15, 30 NGÀY */}
+          {/* DANH SÁCH VIỆC ĐÃ HOÀN THÀNH */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h4 style={{ fontSize: "15px", fontWeight: "900", color: "#047857", margin: 0 }}>
@@ -1864,7 +1844,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH TỪNG HOẠT ĐỘNG & NÚT THÊM ẢNH BỔ SUNG */}
+      {/* 9. CÀI ĐẶT & NHẬT KÝ THAO TÁC CÓ ẢNH */}
       {currentMenu === "SETTINGS" && (
         <div style={{ padding: "16px" }}>
           <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #f1e5f0", marginBottom: "16px", fontSize: "14px" }}>
@@ -1933,7 +1913,6 @@ export default function FarmApp() {
                       </div>
                     </div>
                   ) : (
-                    /* NẾU CHƯA CÓ ẢNH -> CÓ NÚT BỔ SUNG ẢNH VÀO SAU */
                     <div style={{ marginTop: "8px" }}>
                       <button
                         onClick={() => {
@@ -1961,7 +1940,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* THANH ĐIỀU HƯỚNG DƯỚI CÙNG (BOTTOM NAVIGATION) */}
+      {/* THANH ĐIỀU HƯỚNG DƯỚI CÙNG */}
       <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: "58px", backgroundColor: "#fff", borderTop: "1.5px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", zIndex: 40, maxWidth: "480px", margin: "0 auto" }}>
         {[
           { k: "OVERVIEW", l: "Tổng quan", icon: "📊" },
@@ -1986,7 +1965,7 @@ export default function FarmApp() {
       </nav>
 
       {/* ========================================================================= */}
-      {/* 🎯 MODAL CHỤP / TẢI ẢNH GẮN VÀO TỪNG HOẠT ĐỘNG (CHẶN KHÁCH)               */}
+      {/* 🎯 MODAL CHỌN ẢNH TỪ THƯ VIỆN HOẶC CHỤP MÁY ẢNH (ĐÃ BỎ CAPTURE)          */}
       {/* ========================================================================= */}
       {activityPhotoModal && activityPhotoModal.isOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
@@ -2001,10 +1980,10 @@ export default function FarmApp() {
               Chọn hoặc chụp ảnh minh chứng để lưu vào đúng hoạt động này.
             </div>
 
+            {/* BỎ THUỘC TÍNH capture="environment" ĐỂ MỞ CẢ GALLERY LẪN CAMERA */}
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               ref={fileInputRef}
               style={{ display: "none" }}
               onChange={async (e) => {
