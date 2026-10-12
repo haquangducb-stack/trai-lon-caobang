@@ -186,12 +186,14 @@ export async function GET(request: Request) {
     }
 
     // Ghi nhận đã gửi hôm nay
+    // Thay đổi action_type từ TELEGRAM_DAILY_SENT sang SYSTEM_CRON_LOCK
+    // để không bị lẫn vào nhật ký thao tác chăn nuôi của người dùng
     await supabase.from("audit_logs").insert([
       {
-        action_type: "TELEGRAM_DAILY_SENT",
+        action_type: "SYSTEM_CRON_LOCK",
         target_id: todayStr,
-        performed_by: "Hệ thống tự động",
-        details: `Đã gửi báo cáo Telegram ngày ${formattedDate}`,
+        performed_by: "System",
+        details: `Cron locked for ${formattedDate}`,
       },
     ]);
 
