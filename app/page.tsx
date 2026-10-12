@@ -183,10 +183,11 @@ export default function FarmApp() {
   const [pendingTaskDays, setPendingTaskDays] = useState<7 | 15 | 30>(7);
   const [completedTaskDays, setCompletedTaskDays] = useState<7 | 15 | 30>(7);
 
+  // MODAL VÀ STATE TÍCH CHỌN TỪNG CON ĐỂ CHUYỂN HẬU BỊ / THỊT
   const [selectedLitter, setSelectedLitter] = useState<FarrowingLitter | null>(null);
   const [showLitterActionModal, setShowLitterActionModal] = useState(false);
-  const [transferGiltCount, setTransferGiltCount] = useState<number>(0);
-  const [transferMeatCount, setTransferMeatCount] = useState<number>(0);
+  // Mảng trạng thái lựa chọn cho từng cá thể: "NONE" | "GILT" (Hậu bị) | "MEAT" (Thịt)
+  const [pigletSelections, setPigletSelections] = useState<Record<number, "NONE" | "GILT" | "MEAT">>({});
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
   const [activityPhotoModal, setActivityPhotoModal] = useState<{
@@ -458,7 +459,7 @@ export default function FarmApp() {
   };
 
   const isBoar = (pig?: Pig) => {
-    if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
+    if (!pig || isIndividualPiglet(pig)) return false;
     const sx = (pig.sex || "").trim().toLowerCase();
     const st = (pig.stage || "").trim().toLowerCase();
     return (sx === "đực" || sx === "duc" || st.includes("đực") || st.includes("duc")) && !sx.includes("cái") && !sx.includes("cai");
@@ -765,21 +766,32 @@ export default function FarmApp() {
     }
   };
 
-  const handleTransferLitter = async () => {
+  // MỞ MODAL TÁCH LÔ VÀ KHỞI TẠO DANH SÁCH TÍCH CHỌN
+  const openTransferModal = (litter: FarrowingLitter) => {
+    setSelectedLitter(litter);
+    const count = litter.alive_born || 0;
+    const initialMap: Record<number, "NONE" | "GILT" | "MEAT"> = {};
+    for (let i = 1; i <= count; i++) {
+      initialMap[i] = "NONE";
+    }
+    setPigletSelections(initialMap);
+    setShowLitterActionModal(true);
+  };
+
+  // HÀM XỬ LÝ SINH MÃ DỰA TRÊN DANH SÁCH TÍCH CHỌN
+  const handleConfirmTransferSelections = async () => {
     if (!requireAuth("chuyển đàn lợn con")) return;
     if (!selectedLitter) return;
 
-    const totalInLitter = selectedLitter.alive_born || 0;
-    const giltNum = Number(transferGiltCount || 0);
-    const meatNum = Number(transferMeatCount || 0);
+    const selections = Object.entries(pigletSelections);
+    const giltList = selections.filter(([_, type]) => type === "GILT");
+    const meatList = selections.filter(([_, type]) => type === "MEAT");
 
-    if (giltNum + meatNum > totalInLitter) {
-      alert(`⚠️ Tổng số con chuyển (${giltNum + meatNum}) vượt quá số lượng hiện có (${totalInLitter} con)!`);
-      return;
-    }
+    const giltCount = giltList.length;
+    const meatCount = meatList.length;
 
-    if (giltNum === 0 && meatNum === 0) {
-      alert("Vui lòng nhập số con muốn tuyển làm Hậu bị hoặc chuyển Nuôi thịt!");
+    if (giltCount === 0 && meatCount === 0) {
+      alert("Bạn chưa tích chọn con nào để chuyển thành Hậu bị hoặc Nuôi thịt!");
       return;
     }
 
@@ -818,7 +830,8 @@ export default function FarmApp() {
       const newPigsToInsert: Partial<Pig>[] = [];
       const generatedTags: string[] = [];
 
-      for (let i = 0; i < giltNum; i++) {
+      // 1. Sinh mã cho các con được tích chọn làm HẬU BỊ
+      for (let i = 0; i < giltCount; i++) {
         const uniqueTag = generateUniqueTag(giltPrefix, allExistingTags);
         generatedTags.push(uniqueTag);
         newPigsToInsert.push({
@@ -835,8 +848,9 @@ export default function FarmApp() {
         });
       }
 
+      // 2. Sinh mã cho các con được tích chọn làm LỢN THỊT
       const meatPrefix = `${damTag}_T`;
-      for (let i = 0; i < meatNum; i++) {
+      for (let i = 0; i < meatCount; i++) {
         const uniqueTag = generateUniqueTag(meatPrefix, allExistingTags);
         generatedTags.push(uniqueTag);
         newPigsToInsert.push({
@@ -853,24 +867,27 @@ export default function FarmApp() {
         });
       }
 
+      // 3. Ghi vào database bảng pigs
       if (newPigsToInsert.length > 0) {
         const { error: insErr } = await supabase.from("pigs").insert(newPigsToInsert);
         if (insErr) throw insErr;
       }
 
-      const remainingCount = totalInLitter - (giltNum + meatNum);
-      const isCompletelyFinished = remainingCount <= 0;
+      // 4. Trừ số lượng con còn lại trong lô
+      const totalInLitter = selectedLitter.alive_born || 0;
+      const transferredTotal = giltCount + meatCount;
+      const remainingCount = Math.max(0, totalInLitter - transferredTotal);
 
       await supabase.from("farrowings").update({
-        alive_born: Math.max(0, remainingCount),
-        status: isCompletelyFinished ? "DA_XUAT_BAN" : selectedLitter.status,
-        notes: `${selectedLitter.notes || ""} [Đã chuyển: ${giltNum} Hậu bị, ${meatNum} Thịt]`.trim()
+        alive_born: remainingCount,
+        status: remainingCount === 0 ? "DA_XUAT_BAN" : selectedLitter.status,
+        notes: `${selectedLitter.notes || ""} [Đã chuyển: ${giltCount} Hậu bị, ${meatCount} Thịt]`.trim()
       }).eq("id", selectedLitter.id);
 
-      const logMsg = `Tách lô ${selectedLitter.litter_code} nái ${damTag}: tuyển ${giltNum} Hậu bị, ${meatNum} Thịt. Mã mới: ${generatedTags.join(", ")}`;
+      const logMsg = `Phân loại lô ${selectedLitter.litter_code} nái ${damTag}: tuyển ${giltCount} Hậu bị, ${meatCount} Thịt. Mã mới sinh: ${generatedTags.join(", ")}`;
       await logAction("TRANSFER_LITTER", damTag, logMsg);
 
-      alert(`✅ Đã chuyển thành công!\n- ${giltNum} Hậu bị\n- ${meatNum} Lợn thịt\nCác mã tai mới sinh: ${generatedTags.join(", ")}`);
+      alert(`✅ Đã chuyển thành công!\n- ${giltCount} Hậu bị\n- ${meatCount} Lợn thịt\nMã thẻ tai vừa cấp: ${generatedTags.join(", ")}`);
       setShowLitterActionModal(false);
       setSelectedLitter(null);
       await fetchData();
@@ -1570,7 +1587,6 @@ export default function FarmApp() {
     );
   };
 
-  // NẾU CHƯA MOUNT XONG Ở BROWSER THÌ TRẢ VỀ SHELL LOADING AN TOÀN TRÁNH LỖI SSR TRÊN VERCEL
   if (!mounted) {
     return (
       <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
@@ -1673,7 +1689,6 @@ export default function FarmApp() {
       {currentMenu === "OVERVIEW" && (
         <div style={{ padding: "16px" }}>
           
-          {/* QUY MÔ TRANG TRẠI */}
           <div style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)", borderRadius: "16px", padding: "18px 20px", marginBottom: "16px", color: "#fff" }}>
             <div style={{ fontSize: "12px", fontWeight: "800", textTransform: "uppercase", color: "#a5b4fc" }}>Quy mô trang trại</div>
             <div style={{ fontSize: "28px", fontWeight: "900", margin: "4px 0 8px 0" }}>{grandTotal} <span style={{ fontSize: "16px", color: "#c7d2fe" }}>cá thể</span></div>
@@ -1691,7 +1706,6 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* BÁO CÁO CƠ CẤU ĐÀN (.DOC) */}
           <div style={{ backgroundColor: "#eff6ff", borderRadius: "14px", padding: "16px", marginBottom: "18px", border: "1.5px solid #bfdbfe" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
               <span style={{ fontSize: "14px", fontWeight: "900", color: "#1e40af" }}>📄 BÁO CÁO CƠ CẤU ĐÀN (.DOC)</span>
@@ -1734,7 +1748,6 @@ export default function FarmApp() {
             </button>
           </div>
 
-          {/* 4 Ô CƠ CẤU */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "22px" }}>
             <div onClick={() => { setCurrentMenu("SOW"); setSubFilter("ALL"); }} style={{ backgroundColor: "#fdf2f4", borderRadius: "16px", padding: "16px", cursor: "pointer", border: "1.5px solid #fce7f3" }}>
               <div style={{ fontSize: "13px", fontWeight: "800", color: "#db2777" }}>NÁI</div>
@@ -1769,7 +1782,6 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC CẦN LÀM */}
           <div style={{ marginBottom: "22px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h3 style={{ fontSize: "16px", fontWeight: "900", color: "#1e1b4b", margin: 0 }}>
@@ -1850,7 +1862,6 @@ export default function FarmApp() {
             </div>
           </div>
 
-          {/* DANH SÁCH VIỆC ĐÃ HOÀN THÀNH */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h4 style={{ fontSize: "15px", fontWeight: "900", color: "#047857", margin: 0 }}>
@@ -1935,7 +1946,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. TAB LỢN CON THEO LÔ */}
+      {/* 4. TAB LỢN CON THEO LÔ (CÓ TÍCH CHỌN PHÂN LOẠI) */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "15px", fontWeight: "900", color: "#16a34a", marginBottom: "14px" }}>
@@ -1964,15 +1975,10 @@ export default function FarmApp() {
                       ✓ Cai sữa đàn này
                     </button>
                     <button
-                      onClick={() => {
-                        setSelectedLitter(lit);
-                        setTransferGiltCount(0);
-                        setTransferMeatCount(lit.alive_born || 0);
-                        setShowLitterActionModal(true);
-                      }}
+                      onClick={() => openTransferModal(lit)}
                       style={{ flex: 1, padding: "8px", borderRadius: "8px", background: "#ede9fe", color: "#6d28d9", border: "1px solid #ddd6fe", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
                     >
-                      ⚙️ Chuyển Hậu bị / Thịt
+                      ⚙️ Tuyển Hậu Bị / Thịt
                     </button>
                   </div>
                 </div>
@@ -1995,15 +2001,10 @@ export default function FarmApp() {
                     </div>
                     <div style={{ marginTop: "8px" }}>
                       <button
-                        onClick={() => {
-                          setSelectedLitter(lit);
-                          setTransferGiltCount(0);
-                          setTransferMeatCount(lit.alive_born || 0);
-                          setShowLitterActionModal(true);
-                        }}
+                        onClick={() => openTransferModal(lit)}
                         style={{ width: "100%", padding: "8px", borderRadius: "8px", background: "#7c3aed", color: "#fff", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer" }}
                       >
-                        ⚙️ Tuyển Hậu Bị / Chuyển Thịt / Xuất Bán
+                        ⚙️ Tích Chọn Tuyển Hậu Bị / Chuyển Thịt
                       </button>
                     </div>
                   </div>
@@ -2198,88 +2199,147 @@ export default function FarmApp() {
         ))}
       </nav>
 
-      {/* MODAL THAO TÁC LÔ CON */}
-      {showLitterActionModal && selectedLitter && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-              Phân Loại Lô Con: {selectedLitter.litter_code}
-            </h3>
-            <div style={{ fontSize: "13px", color: "#475569", marginBottom: "14px" }}>
-              Nái mẹ: <b>{selectedLitter.sow_ear_tag}</b> • Hiện có: <b style={{ color: "#047857" }}>{selectedLitter.alive_born} con</b>
-            </div>
+      {/* ========================================================================= */}
+      {/* 🎯 MODAL BẢNG TÍCH CHỌN TỪNG CON ĐỂ CHUYỂN HẬU BỊ / THỊT                    */}
+      {/* ========================================================================= */}
+      {showLitterActionModal && selectedLitter && (() => {
+        const total = selectedLitter.alive_born || 0;
+        const selections = Object.entries(pigletSelections);
+        const giltSelected = selections.filter(([_, v]) => v === "GILT").length;
+        const meatSelected = selections.filter(([_, v]) => v === "MEAT").length;
+        const unselected = total - (giltSelected + meatSelected);
 
-            <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800", color: "#7c3aed" }}>
-                  🐖 Tuyển làm NÁI HẬU BỊ (con):
-                </label>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>
-                  Tự động sinh mã: <code>[Bố]_[Mẹ]_[STT]</code> (hoặc <code>[Mẹ]_[STT]</code>)
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+            <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "420px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
+              <div style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: "10px", marginBottom: "12px" }}>
+                <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+                  Tích Chọn Chuyển Đàn: {selectedLitter.litter_code}
+                </h3>
+                <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+                  Mẹ: <b>{selectedLitter.sow_ear_tag}</b> • Tổng số con: <b style={{ color: "#047857" }}>{total} con</b>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedLitter.alive_born}
-                  value={transferGiltCount}
-                  onChange={e => setTransferGiltCount(Math.max(0, Number(e.target.value)))}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1.5px solid #c4b5fd", fontSize: "14px", fontWeight: "800", boxSizing: "border-box" }}
-                />
               </div>
 
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800", color: "#b45309" }}>
-                  🥩 Chuyển nuôi VỖ BÉO THỊT (con):
-                </label>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>
-                  Tự động sinh mã: <code>[Mẹ]_T_[STT]</code>
+              {/* BẢNG TỔNG HỢP NHANH */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px", marginBottom: "12px", textAlign: "center" }}>
+                <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", padding: "6px", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "11px", color: "#6d28d9", fontWeight: "800" }}>HẬU BỊ</div>
+                  <b style={{ fontSize: "15px", color: "#5b21b6" }}>{giltSelected} con</b>
                 </div>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedLitter.alive_born}
-                  value={transferMeatCount}
-                  onChange={e => setTransferMeatCount(Math.max(0, Number(e.target.value)))}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1.5px solid #fde68a", fontSize: "14px", fontWeight: "800", boxSizing: "border-box" }}
-                />
+                <div style={{ background: "#fefce8", border: "1px solid #fef08a", padding: "6px", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "11px", color: "#b45309", fontWeight: "800" }}>LỢN THỊT</div>
+                  <b style={{ fontSize: "15px", color: "#b45309" }}>{meatSelected} con</b>
+                </div>
+                <div style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", padding: "6px", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "11px", color: "#475569", fontWeight: "800" }}>GIỮ LẠI</div>
+                  <b style={{ fontSize: "15px", color: "#334155" }}>{unselected} con</b>
+                </div>
               </div>
 
-              <div style={{ fontSize: "12px", color: "#475569", fontWeight: "700" }}>
-                Còn lại trong lô: <span style={{ color: "#0284c7" }}>{Math.max(0, (selectedLitter.alive_born || 0) - transferGiltCount - transferMeatCount)} con</span>
+              {/* DANH SÁCH TỪNG CON ĐỂ TÍCH CHỌN */}
+              <div style={{ overflowY: "auto", flex: 1, paddingRight: "4px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                {Array.from({ length: total }).map((_, idx) => {
+                  const pigNum = idx + 1;
+                  const currentSel = pigletSelections[pigNum] || "NONE";
+
+                  return (
+                    <div
+                      key={pigNum}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "10px",
+                        border: currentSel === "GILT" ? "1.5px solid #8b5cf6" : currentSel === "MEAT" ? "1.5px solid #f59e0b" : "1px solid #e2e8f0",
+                        background: currentSel === "GILT" ? "#fbfbfe" : currentSel === "MEAT" ? "#fffdf5" : "#fff",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}
+                    >
+                      <span style={{ fontSize: "13px", fontWeight: "800", color: "#1e293b" }}>
+                        🐷 Con #{pigNum}
+                      </span>
+
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setPigletSelections(prev => ({ ...prev, [pigNum]: prev[pigNum] === "GILT" ? "NONE" : "GILT" }))}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: "6px",
+                            border: "none",
+                            fontSize: "11px",
+                            fontWeight: "800",
+                            cursor: "pointer",
+                            background: currentSel === "GILT" ? "#7c3aed" : "#ede9fe",
+                            color: currentSel === "GILT" ? "#fff" : "#6d28d9"
+                          }}
+                        >
+                          🟣 Hậu bị
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setPigletSelections(prev => ({ ...prev, [pigNum]: prev[pigNum] === "MEAT" ? "NONE" : "MEAT" }))}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: "6px",
+                            border: "none",
+                            fontSize: "11px",
+                            fontWeight: "800",
+                            cursor: "pointer",
+                            background: currentSel === "MEAT" ? "#d97706" : "#fef3c7",
+                            color: currentSel === "MEAT" ? "#fff" : "#b45309"
+                          }}
+                        >
+                          🟠 Nuôi thịt
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <button
-                disabled={isTransferring}
-                onClick={handleTransferLitter}
-                style={{ padding: "11px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: isTransferring ? "not-allowed" : "pointer" }}
-              >
-                {isTransferring ? "Đang xử lý sinh mã..." : "✓ Xác Nhận Sinh Mã & Chuyển Đàn"}
-              </button>
+              {/* NÚT XÁC NHẬN */}
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <button
+                  disabled={isTransferring}
+                  onClick={handleConfirmTransferSelections}
+                  style={{
+                    padding: "11px",
+                    borderRadius: "10px",
+                    background: "#059669",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: "900",
+                    fontSize: "13px",
+                    cursor: isTransferring ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {isTransferring ? "Đang sinh mã và chuyển..." : `✓ Xác Nhận Chuyển (${giltSelected} Hậu bị • ${meatSelected} Thịt)`}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleSellLitter(selectedLitter)}
-                style={{ padding: "10px", borderRadius: "8px", background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-              >
-                💰 Xuất Bán Toàn Bộ Lô Này
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowLitterActionModal(false);
-                  setSelectedLitter(null);
-                }}
-                style={{ padding: "9px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", fontSize: "12px", cursor: "pointer" }}
-              >
-                Đóng
-              </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => handleSellLitter(selectedLitter)}
+                    style={{ flex: 1, padding: "8px", borderRadius: "8px", background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", fontWeight: "800", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    💰 Xuất bán cả lô
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowLitterActionModal(false); setSelectedLitter(null); }}
+                    style={{ flex: 1, padding: "8px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "800", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL HỒ SƠ TỔNG HỢP: SỬA + HOÀN TÁC CÁ THỂ VỀ LÔ GỐC */}
       {activeProfilePig && (
@@ -2412,7 +2472,7 @@ export default function FarmApp() {
                     {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi"}
                   </button>
 
-                  {/* NÚT HOÀN TÁC / XÓA CÁ THỂ TRẢ VỀ ĐÀN CON NÁI MẸ */}
+                  {/* NÚT HOÀN TÁC CÁ THỂ VỀ LẠI LÔ CON GỐC */}
                   {activeProfilePig.dam_ear_tag && (
                     <button
                       type="button"
