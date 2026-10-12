@@ -228,6 +228,7 @@ export default function FarmApp() {
   const [profileTab, setProfileTab] = useState<"EDIT" | "REPRO" | "PEDIGREE">("EDIT");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  // LỨA ĐẺ
   const [showLitterForm, setShowLitterForm] = useState(false);
   const [editingLitterId, setEditingLitterId] = useState<string | null>(null);
   const [litterFormData, setLitterFormData] = useState({
@@ -238,6 +239,14 @@ export default function FarmApp() {
     boar_used: "",
     status: "DA_CAI_SUA",
     notes: ""
+  });
+
+  // FORM SỬA LỊCH SỬ PHỐI GIỐNG (INSEMINATION)
+  const [editingInsemId, setEditingInsemId] = useState<string | null>(null);
+  const [insemFormData, setInsemFormData] = useState({
+    sow_ear_tag: "",
+    boar_ear_tag: "",
+    mating_date: new Date().toISOString().split("T")[0]
   });
 
   const [farrowingSow, setFarrowingSow] = useState<Pig | null>(null);
@@ -251,6 +260,7 @@ export default function FarmApp() {
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
+  // MODAL PHỐI GIỐNG
   const [showMatingModal, setShowMatingModal] = useState(false);
   const [matingSowTag, setMatingSowTag] = useState("");
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
@@ -765,7 +775,6 @@ export default function FarmApp() {
     }
   };
 
-  // MỞ MODAL VÀ KHỞI TẠO BẢNG TÍCH CHỌN CHO TỪNG CON
   const openTransferModal = (litter: FarrowingLitter) => {
     setSelectedLitter(litter);
     const count = litter.alive_born || 0;
@@ -777,7 +786,6 @@ export default function FarmApp() {
     setShowLitterActionModal(true);
   };
 
-  // XỬ LÝ SINH MÃ VÀ CHUYỂN ĐÀN THEO TỪNG CON ĐÃ TÍCH
   const handleConfirmTransferSelections = async () => {
     if (!requireAuth("chuyển đàn lợn con")) return;
     if (!selectedLitter) return;
@@ -1131,6 +1139,39 @@ export default function FarmApp() {
     }
   };
 
+  // HÀM LƯU SỬA NGÀY PHỐI GIỐNG (INSEMINATION)
+  const handleSaveInsemEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requireAuth("sửa thông tin phối giống")) return;
+    if (!editingInsemId) return;
+
+    try {
+      const expFarrow = safeAddDays(insemFormData.mating_date, 114);
+      const payload = {
+        boar_ear_tag: insemFormData.boar_ear_tag.trim().toUpperCase(),
+        mating_date: insemFormData.mating_date,
+        expected_farrow_date: expFarrow
+      };
+
+      const { error } = await supabase.from("inseminations").update(payload).eq("id", editingInsemId);
+      if (error) throw error;
+
+      setInseminations(prev => prev.map(ins => ins.id === editingInsemId ? { ...ins, ...payload } : ins));
+
+      await logAction(
+        "UPDATE_INSEMINATION",
+        insemFormData.sow_ear_tag,
+        `Sửa ngày phối nái ${insemFormData.sow_ear_tag} thành ${formatDateVN(payload.mating_date)} (Đực: ${payload.boar_ear_tag}). Dự sinh mới: ${formatDateVN(expFarrow)}`
+      );
+
+      alert(`✅ Đã sửa ngày phối thành công! Ngày dự sinh mới là: ${formatDateVN(expFarrow)}.`);
+      setEditingInsemId(null);
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi sửa ngày phối: " + err.message);
+    }
+  };
+
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -1459,6 +1500,7 @@ export default function FarmApp() {
     await fetchData();
   };
 
+  // RENDER THẺ CÁ THỂ NÁI / ĐỰC / THỊT
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
@@ -1466,6 +1508,9 @@ export default function FarmApp() {
     const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
     const nutri = getNutritionAdvice(pig);
     const breedCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
+
+    // Có thể phối giống ngay nếu là nái Chờ phối hoặc Hậu bị
+    const canMate = isThisSow && (currentState === "CHOPHOI" || currentState === "HAUBI");
 
     return (
       <div
@@ -1492,6 +1537,25 @@ export default function FarmApp() {
           </div>
           
           <div style={{ display: "flex", gap: "6px" }}>
+            {/* NÚT PHỐI GIỐNG NHANH CHO NÁI CHỜ PHỐI & HẬU BỊ */}
+            {canMate && (
+              <button
+                onClick={() => {
+                  if (!requireAuth("phối giống")) return;
+                  setMatingSowTag(pig.ear_tag);
+                  setSelectedBoarTag(boarList[0]?.ear_tag || "");
+                  setMatingDate(new Date().toISOString().split("T")[0]);
+                  setShowMatingModal(true);
+                }}
+                style={{
+                  fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                  background: "#7c3aed", color: "#fff", border: "none", cursor: "pointer"
+                }}
+              >
+                🔬 Phối giống
+              </button>
+            )}
+
             {isThisSow && currentState === "CHUA" && (
               <button
                 onClick={() => {
@@ -1518,6 +1582,7 @@ export default function FarmApp() {
                 setActiveProfilePig({ ...pig });
                 setProfileTab("EDIT");
                 setShowLitterForm(false);
+                setEditingInsemId(null);
               }}
               style={{
                 fontSize: "13px", fontWeight: "800", padding: "7px 14px", borderRadius: "10px",
@@ -1550,7 +1615,7 @@ export default function FarmApp() {
         {gestation && (
           <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginTop: "4px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: "800", marginBottom: "6px" }}>
-              <span style={{ color: "#3b82f6" }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
+              <span style={{ color: "#3b82f6" }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ (Đực: {gestation.boarTag})</span>
               <span style={{ color: "#475569" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
             </div>
             <div style={{ height: "8px", width: "100%", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
@@ -1674,7 +1739,14 @@ export default function FarmApp() {
           <button onClick={() => { if (requireAuth("thêm nái mới")) setShowAddPigModal(true); }} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
             + Thêm nái mới
           </button>
-          <button onClick={() => { if (requireAuth("lập kế hoạch phối giống")) setShowMatingModal(true); }} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
+          <button onClick={() => {
+            if (requireAuth("lập kế hoạch phối giống")) {
+              setMatingSowTag(sowList[0]?.ear_tag || "");
+              setSelectedBoarTag(boarList[0]?.ear_tag || "");
+              setMatingDate(new Date().toISOString().split("T")[0]);
+              setShowMatingModal(true);
+            }
+          }} style={{ flex: 1, padding: "11px", borderRadius: "10px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "900", fontSize: "13px", cursor: "pointer" }}>
             🔬 Phối giống (Tránh cận huyết)
           </button>
         </div>
@@ -1683,7 +1755,6 @@ export default function FarmApp() {
       {/* 1. MÀN HÌNH TỔNG QUAN */}
       {currentMenu === "OVERVIEW" && (
         <div style={{ padding: "16px" }}>
-          
           <div style={{ background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)", borderRadius: "16px", padding: "18px 20px", marginBottom: "16px", color: "#fff" }}>
             <div style={{ fontSize: "12px", fontWeight: "800", textTransform: "uppercase", color: "#a5b4fc" }}>Quy mô trang trại</div>
             <div style={{ fontSize: "28px", fontWeight: "900", margin: "4px 0 8px 0" }}>{grandTotal} <span style={{ fontSize: "16px", color: "#c7d2fe" }}>cá thể</span></div>
@@ -1941,7 +2012,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. TAB LỢN CON THEO LÔ (CÓ BẢNG TÍCH CHỌN PHÂN LOẠI) */}
+      {/* 4. TAB LỢN CON THEO LÔ */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "15px", fontWeight: "900", color: "#16a34a", marginBottom: "14px" }}>
@@ -2194,9 +2265,7 @@ export default function FarmApp() {
         ))}
       </nav>
 
-      {/* ========================================================================= */}
-      {/* 🎯 MODAL BẢNG TÍCH CHỌN TỪNG CON ĐỂ CHUYỂN HẬU BỊ / THỊT                    */}
-      {/* ========================================================================= */}
+      {/* MODAL TÍCH CHỌN CHUYỂN ĐÀN */}
       {showLitterActionModal && selectedLitter && (() => {
         const total = selectedLitter.alive_born || 0;
         const selections = Object.entries(pigletSelections);
@@ -2216,7 +2285,6 @@ export default function FarmApp() {
                 </div>
               </div>
 
-              {/* BẢNG TỔNG HỢP TRỰC QUAN */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px", marginBottom: "12px", textAlign: "center" }}>
                 <div style={{ background: "#f5f3ff", border: "1.5px solid #c4b5fd", padding: "8px 4px", borderRadius: "8px" }}>
                   <div style={{ fontSize: "11px", color: "#6d28d9", fontWeight: "800" }}>HẬU BỊ</div>
@@ -2232,7 +2300,6 @@ export default function FarmApp() {
                 </div>
               </div>
 
-              {/* DANH SÁCH LIỆT KÊ TỪNG CON TỪ 1 ĐẾN HẾT ĐỂ BẤM TÍCH */}
               <div style={{ overflowY: "auto", flex: 1, paddingRight: "4px", display: "flex", flexDirection: "column", gap: "8px" }}>
                 {Array.from({ length: total }).map((_, idx) => {
                   const pigNum = idx + 1;
@@ -2295,7 +2362,6 @@ export default function FarmApp() {
                 })}
               </div>
 
-              {/* NÚT THAO TÁC XÁC NHẬN */}
               <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
                 <button
                   disabled={isTransferring || (giltSelected === 0 && meatSelected === 0)}
@@ -2336,7 +2402,7 @@ export default function FarmApp() {
         );
       })()}
 
-      {/* MODAL HỒ SƠ TỔNG HỢP: SỬA + HOÀN TÁC CÁ THỂ VỀ LÔ GỐC */}
+      {/* MODAL HỒ SƠ TỔNG HỢP: SỬA THÔNG TIN + SINH SẢN + SỬA NGÀY PHỐI GIỐNG */}
       {activeProfilePig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "450px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
@@ -2467,7 +2533,7 @@ export default function FarmApp() {
                     {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi"}
                   </button>
 
-                  {/* NÚT HOÀN TÁC CÁ THỂ VỀ LẠI LÔ CON NÁI MẸ */}
+                  {/* NÚT HOÀN TÁC CÁ THỂ VỀ LẠI LÔ CON GỐC */}
                   {activeProfilePig.dam_ear_tag && (
                     <button
                       type="button"
@@ -2480,11 +2546,11 @@ export default function FarmApp() {
                 </form>
               )}
 
-              {/* TAB 2: SINH SẢN */}
+              {/* TAB 2: SINH SẢN (CÓ THÊM SỬA NGÀY PHỐI GIỐNG) */}
               {profileTab === "REPRO" && (() => {
                 const analysis = getSowReproAnalysis(activeProfilePig.ear_tag);
                 return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", textAlign: "center" }}>
                       <div style={{ background: "#fdf2f4", padding: "10px", borderRadius: "8px" }}>
                         <div style={{ fontSize: "11px", color: "#db2777", fontWeight: "800" }}>TỔNG LỨA</div>
@@ -2500,8 +2566,84 @@ export default function FarmApp() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
-                      <b style={{ fontSize: "14px" }}>Danh sách lứa đẻ:</b>
+                    {/* MỤC 1: LỊCH SỬ PHỐI GIỐNG (CÓ NÚT SỬA NGÀY PHỐI) */}
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
+                      <b style={{ fontSize: "14px", color: "#1e1b4b" }}>🔬 Lịch sử các lần phối giống:</b>
+                      
+                      {editingInsemId && (
+                        <form onSubmit={handleSaveInsemEdit} style={{ background: "#ede9fe", padding: "10px", borderRadius: "8px", border: "1.5px solid #c4b5fd", marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <div style={{ fontSize: "12px", fontWeight: "900", color: "#5b21b6" }}>
+                            ✎ Chỉnh sửa ngày phối nái {insemFormData.sow_ear_tag}
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "11px", fontWeight: "800" }}>Ngày phối thực tế (*):</label>
+                            <input
+                              type="date"
+                              required
+                              value={insemFormData.mating_date}
+                              onChange={e => setInsemFormData({ ...insemFormData, mating_date: e.target.value })}
+                              style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "11px", fontWeight: "800" }}>Đực phối giống:</label>
+                            <select
+                              value={insemFormData.boar_ear_tag}
+                              onChange={e => setInsemFormData({ ...insemFormData, boar_ear_tag: e.target.value })}
+                              style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                            >
+                              {boarList.map(b => (
+                                <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "4px" }}>
+                            <button type="button" onClick={() => setEditingInsemId(null)} style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "11px", cursor: "pointer" }}>Hủy</button>
+                            <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}>Lưu ngày phối</button>
+                          </div>
+                        </form>
+                      )}
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
+                        {analysis.sowInsems.length === 0 ? (
+                          <div style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic" }}>Chưa có bản ghi phối giống nào.</div>
+                        ) : (
+                          analysis.sowInsems.map(ins => {
+                            const daysDiff = safeDateDiff(ins.mating_date);
+                            return (
+                              <div key={ins.id} style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div>
+                                  <div style={{ fontWeight: "800", color: "#1e1b4b" }}>
+                                    Ngày phối: {formatDateVN(ins.mating_date)} • Đực: <span style={{ color: "#2563eb" }}>{ins.boar_ear_tag || "—"}</span>
+                                  </div>
+                                  <div style={{ fontSize: "11px", color: "#475569", marginTop: "2px" }}>
+                                    Dự sinh: <b>{formatDateVN(ins.expected_farrow_date)}</b> (Hiện tại: Ngày {daysDiff}/114) • <i>{ins.status || "Đã phối"}</i>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (!requireAuth("sửa ngày phối giống")) return;
+                                    setEditingInsemId(ins.id);
+                                    setInsemFormData({
+                                      sow_ear_tag: ins.sow_ear_tag,
+                                      boar_ear_tag: ins.boar_ear_tag || "",
+                                      mating_date: ins.mating_date || new Date().toISOString().split("T")[0]
+                                    });
+                                  }}
+                                  style={{ padding: "5px 10px", borderRadius: "6px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+                                >
+                                  ✎ Sửa ngày phối
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* MỤC 2: DANH SÁCH LỨA ĐẺ */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                      <b style={{ fontSize: "14px" }}>Danh sách các lứa đẻ:</b>
                       <button
                         onClick={() => {
                           if (!requireAuth("thêm lứa đẻ")) return;
@@ -2689,7 +2831,7 @@ export default function FarmApp() {
                                   <b style={{ fontSize: "14px" }}>{cp.ear_tag}</b> ({formatVietnameseSex(cp.sex)}) - <span style={{ color: "#047857", fontWeight: "800" }}>{cp.stage}</span>
                                   <div style={{ fontSize: "11px", color: childCat.badgeColor, fontWeight: "700" }}>{childCat.label}</div>
                                 </div>
-                                <span style={{ fontSize: "12px", color: "#64748b", Ô: cp.current_pen_code || "—" }}></span>
+                                <span style={{ fontSize: "12px", color: "#64748b" }}>Ô: {cp.current_pen_code || "—"}</span>
                               </div>
                             );
                           })}
@@ -2739,11 +2881,11 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL PHỐI GIỐNG */}
+      {/* MODAL PHỐI GIỐNG (TỰ ĐIỀN NÁI ĐÃ CHỌN HOẶC CHỌN TỪ DANH SÁCH) */}
       {showMatingModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Lập Kế Hoạch Phối Giống</h3>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Xác Nhận Phối Giống</h3>
             <form onSubmit={async (e) => {
               e.preventDefault();
               if (!requireAuth("ghi nhận phối giống")) return;
@@ -2757,22 +2899,39 @@ export default function FarmApp() {
                 status: "Đã phối"
               }]);
               await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
-              alert("Đã ghi nhận phối giống!");
+              await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} ngày ${formatDateVN(matingDate)}. Dự sinh: ${formatDateVN(expFarrow)}`);
+              alert(`✅ Đã ghi nhận phối giống cho nái ${matingSowTag}! Nái chuyển sang "Đang chửa".`);
               setShowMatingModal(false);
               await fetchData();
-            }} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <select required value={matingSowTag} onChange={e => setMatingSowTag(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}>
-                <option value="">-- Chọn Nái --</option>
-                {sowList.map(s => <option key={s.id} value={s.ear_tag}>{s.ear_tag} ({s.breed_id})</option>)}
-              </select>
-              <select required value={selectedBoarTag} onChange={e => setSelectedBoarTag(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}>
-                <option value="">-- Chọn Đực --</option>
-                {boarList.map(b => <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>)}
-              </select>
-              <input type="date" required value={matingDate} onChange={e => setMatingDate(e.target.value)} style={{ padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }} />
+            }} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Nái phối (*):</label>
+                <select required value={matingSowTag} onChange={e => setMatingSowTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}>
+                  <option value="">-- Chọn Nái --</option>
+                  {sowList.map(s => <option key={s.id} value={s.ear_tag}>{s.ear_tag} ({formatVietnameseStage(s.stage)} - {s.breed_id})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Đực khai thác tinh (*):</label>
+                <select required value={selectedBoarTag} onChange={e => setSelectedBoarTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}>
+                  <option value="">-- Chọn Đực --</option>
+                  {boarList.map(b => <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Ngày phối thực tế (*):</label>
+                <input type="date" required value={matingDate} onChange={e => setMatingDate(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px", boxSizing: "border-box" }} />
+              </div>
+
+              <div style={{ fontSize: "12px", color: "#64748b" }}>
+                Ngày dự sinh (114 ngày): <b style={{ color: "#059669" }}>{formatDateVN(safeAddDays(matingDate, 114))}</b>
+              </div>
+
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px" }}>
-                <button type="button" onClick={() => setShowMatingModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
-                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800" }}>Xác nhận Phối</button>
+                <button type="button" onClick={() => setShowMatingModal(false)} style={{ padding: "7px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" style={{ padding: "7px 16px", borderRadius: "6px", background: "#7c3aed", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>Xác nhận Phối</button>
               </div>
             </form>
           </div>
