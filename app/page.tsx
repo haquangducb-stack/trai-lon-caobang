@@ -97,7 +97,6 @@ const formatVietnameseStage = (rawStage?: string) => {
   return rawStage;
 };
 
-// HÀM LẤY CHỮ CÁI VIẾT TẮT GIỐNG CHUẨN
 const getBreedAbbr = (breedName?: string): string => {
   if (!breedName) return "L";
   const b = breedName.trim().toLowerCase();
@@ -110,7 +109,6 @@ const getBreedAbbr = (breedName?: string): string => {
   if (b.includes("yorkshire")) return "Y";
   if (b.includes("pietrain")) return "P";
   
-  // Tự động lấy chữ cái in hoa đầu
   const words = breedName.trim().split(/\s+/);
   if (words.length > 1) {
     return words.map(w => w[0].toUpperCase()).join("");
@@ -118,7 +116,6 @@ const getBreedAbbr = (breedName?: string): string => {
   return breedName.slice(0, 2).toUpperCase();
 };
 
-// NÉN ẢNH BASE64 NHẸ GẮN VÀO TỪNG HOẠT ĐỘNG
 const compressImage = (file: File, maxDim = 800, quality = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -177,25 +174,21 @@ export default function FarmApp() {
   const [dismissedTaskKeys, setDismissedTaskKeys] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Tabs điều hướng
   const [currentMenu, setCurrentMenu] = useState<"OVERVIEW" | "SOW" | "BOAR" | "PIGLET" | "MEAT" | "PEDIGREE" | "GUIDE" | "SEARCH" | "SETTINGS">("OVERVIEW");
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [taskCategoryFilter, setTaskCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [reportDays, setReportDays] = useState<7 | 10 | 30>(7);
 
-  // Bộ lọc thời gian: 7, 15, 30 ngày
   const [pendingTaskDays, setPendingTaskDays] = useState<7 | 15 | 30>(7);
   const [completedTaskDays, setCompletedTaskDays] = useState<7 | 15 | 30>(7);
 
-  // Modal thao tác chuyển đàn Lợn con (Hậu bị / Nuôi thịt / Xuất bán)
   const [selectedLitter, setSelectedLitter] = useState<FarrowingLitter | null>(null);
   const [showLitterActionModal, setShowLitterActionModal] = useState(false);
   const [transferGiltCount, setTransferGiltCount] = useState<number>(0);
   const [transferMeatCount, setTransferMeatCount] = useState<number>(0);
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
 
-  // Modal chụp/chọn ảnh gắn với hoạt động
   const [activityPhotoModal, setActivityPhotoModal] = useState<{
     isOpen: boolean;
     activityTitle: string;
@@ -231,12 +224,10 @@ export default function FarmApp() {
   });
   const [isAddingPig, setIsAddingPig] = useState(false);
 
-  // Modal Hồ Sơ Nái
   const [activeProfilePig, setActiveProfilePig] = useState<Pig | null>(null);
   const [profileTab, setProfileTab] = useState<"EDIT" | "REPRO" | "PEDIGREE">("EDIT");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Form lứa đẻ
   const [showLitterForm, setShowLitterForm] = useState(false);
   const [editingLitterId, setEditingLitterId] = useState<string | null>(null);
   const [litterFormData, setLitterFormData] = useState({
@@ -249,7 +240,6 @@ export default function FarmApp() {
     notes: ""
   });
 
-  // Modal Báo Đẻ
   const [farrowingSow, setFarrowingSow] = useState<Pig | null>(null);
   const [farrowInput, setFarrowInput] = useState({
     farrow_date: new Date().toISOString().split("T")[0],
@@ -258,17 +248,14 @@ export default function FarmApp() {
     notes: ""
   });
 
-  // Modal Việc cần làm
   const [selectedTask, setSelectedTask] = useState<FarmTask | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Modal Phối giống
   const [showMatingModal, setShowMatingModal] = useState(false);
   const [matingSowTag, setMatingSowTag] = useState("");
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
   const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
 
-  // HÀM KIỂM TRA QUYỀN KHÁCH (GUEST GUARD)
   const requireAuth = useCallback((actionName = "thao tác này"): boolean => {
     if (!user) {
       alert(`⚠️ Bạn đang ở chế độ KHÁCH (Chỉ xem).\nVui lòng ĐĂNG NHẬP để thực hiện ${actionName}!`);
@@ -320,7 +307,6 @@ export default function FarmApp() {
     return "Hà Quang Dự";
   }, [customDisplayName]);
 
-  // HÀM LƯU NHẬT KÝ THAO TÁC CÓ KÈM ẢNH
   const logAction = useCallback(async (actionType: string, targetId: string, details: string, imageUrl?: string, taskId?: string) => {
     const newEntry: AuditLog = {
       id: "log-" + Date.now(),
@@ -348,7 +334,6 @@ export default function FarmApp() {
     } catch (e) {}
   }, [supabase, activeOperator]);
 
-  // HÀM CẬP NHẬT ẢNH CHO BẢN GHI NHẬT KÝ
   const updateLogPhoto = useCallback(async (logId: string, imageUrl: string) => {
     if (!requireAuth("cập nhật ảnh minh chứng")) return;
 
@@ -488,6 +473,8 @@ export default function FarmApp() {
   const checkSowState = useCallback((pig?: Pig) => {
     if (!pig) return "HAUBI";
     const st = (pig.stage || "").toLowerCase().trim();
+    if (st.includes("thịt") || st.includes("thit") || st.includes("vỗ béo") || st.includes("vo beo")) return "THIT";
+    if (st.includes("đực") || st.includes("duc")) return "DUC";
     if (st.includes("chửa") || st.includes("chua")) return "CHUA";
     if (st.includes("nuôi con") || st.includes("nuoi con")) return "NUOICON";
     if (st.includes("chờ phối") || st.includes("cho phoi")) return "CHOPHOI";
@@ -500,7 +487,6 @@ export default function FarmApp() {
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
-  // PHÂN LOẠI GIỐNG & DÒNG MÁU
   const getBreedCategoryInfo = useCallback((breedName?: string, sireTag?: string, damTag?: string) => {
     const bName = (breedName || "").trim();
     const sire = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (sireTag || "").trim().toUpperCase());
@@ -543,10 +529,18 @@ export default function FarmApp() {
     };
   }, [safePigs]);
 
-  // CẢNH BÁO DINH DƯỠNG
   const getNutritionAdvice = useCallback((pig: Pig) => {
     const currentState = checkSowState(pig);
     const tagUpper = pig.ear_tag.trim().toUpperCase();
+
+    if (currentState === "THIT") {
+      return {
+        stage: "Vỗ béo lợn thịt thương phẩm",
+        feed: "Ăn tự do (2.2 - 2.8 kg/ngày)",
+        specs: "Đạm: 14-16% • Năng lượng: 3.100 - 3.200 kcal/kg ME",
+        warning: "Cung cấp đủ nước sạch, chia bữa hoặc cho ăn máng tự động để đạt tăng trọng tối ưu."
+      };
+    }
 
     if (currentState === "CHUA") {
       const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
@@ -602,7 +596,7 @@ export default function FarmApp() {
       };
     }
 
-    if (currentState === "HAUBI") {
+    if (currentState === "HAUBI" && isSow(pig)) {
       return {
         stage: "Hậu bị nuôi dưỡng chuẩn bị phối giống",
         feed: "Ăn khống chế 2.0 - 2.2 kg/ngày",
@@ -614,7 +608,6 @@ export default function FarmApp() {
     return null;
   }, [inseminations, checkSowState]);
 
-  // ĐÀN CON: LỌC BỎ LỨA LỊCH SỬ / ĐÃ BÁN
   const suckingLitters = useMemo(() => {
     return (Array.isArray(litters) ? litters : []).filter(l => {
       if (!l?.sow_ear_tag) return false;
@@ -709,7 +702,6 @@ export default function FarmApp() {
     return { totalLitters, totalBorn, avgBorn, sowLitters, sowInsems };
   }, [litters, inseminations]);
 
-  // HÀM CAI SỮA
   const executeWeaning = async (sowTag: string, litterId?: string, litterCount?: number) => {
     if (!requireAuth("cai sữa lợn")) return;
 
@@ -762,9 +754,6 @@ export default function FarmApp() {
     }
   };
 
-  // =========================================================================
-  // THUẬT TOÁN TỰ ĐỘNG SINH MÃ THẺ TAI KHÔNG TRÙNG LẶP CHO HẬU BỊ & THỊT
-  // =========================================================================
   const generateUniqueTag = (prefix: string, existingTags: Set<string>): string => {
     let index = 1;
     while (true) {
@@ -777,7 +766,6 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM CHUYỂN ĐÀN CON THÀNH HẬU BỊ / LỢN THỊT / XUẤT BÁN
   const handleTransferLitter = async () => {
     if (!requireAuth("chuyển đàn lợn con")) return;
     if (!selectedLitter) return;
@@ -798,17 +786,14 @@ export default function FarmApp() {
 
     setIsTransferring(true);
     try {
-      // 1. Thu thập toàn bộ thẻ tai đã từng tồn tại trong hệ thống (kể cả con đã bán/chết)
       const allExistingTags = new Set<string>();
       safePigs.forEach(p => {
         if (p?.ear_tag) allExistingTags.add(p.ear_tag.trim().toUpperCase());
       });
 
-      // 2. Tìm thông tin Bố và Mẹ của lô này
       const damTag = selectedLitter.sow_ear_tag.trim();
       const damPig = safePigs.find(p => p.ear_tag.trim().toUpperCase() === damTag.toUpperCase());
       
-      // Tìm đực phối từ lứa hoặc từ ghi chú
       let sireBreedAbbr = "";
       let boarUsedTag = "";
       const match = (selectedLitter.notes || "").match(/\[Đực:\s*([^\]]+)\]/i);
@@ -821,9 +806,6 @@ export default function FarmApp() {
 
       const damBreedAbbr = getBreedAbbr(damPig?.breed_id);
 
-      // Xác định tiền tố mã HẬU BỊ:
-      // - Nếu con lai: "viết tắt giống bố_viết tắt giống mẹ"
-      // - Nếu không rõ bố hoặc thuần: "viết tắt giống mẹ"
       let giltPrefix = damBreedAbbr;
       let calculatedBreed = damPig?.breed_id || "Hạ Lang";
 
@@ -837,7 +819,6 @@ export default function FarmApp() {
       const newPigsToInsert: Partial<Pig>[] = [];
       const generatedTags: string[] = [];
 
-      // Sinh mã cho NÁI HẬU BỊ
       for (let i = 0; i < giltNum; i++) {
         const uniqueTag = generateUniqueTag(giltPrefix, allExistingTags);
         generatedTags.push(uniqueTag);
@@ -855,7 +836,6 @@ export default function FarmApp() {
         });
       }
 
-      // Sinh mã cho LỢN THỊT
       const meatPrefix = `${damTag}_T`;
       for (let i = 0; i < meatNum; i++) {
         const uniqueTag = generateUniqueTag(meatPrefix, allExistingTags);
@@ -874,13 +854,11 @@ export default function FarmApp() {
         });
       }
 
-      // 3. Ghi vào database
       if (newPigsToInsert.length > 0) {
         const { error: insErr } = await supabase.from("pigs").insert(newPigsToInsert);
         if (insErr) throw insErr;
       }
 
-      // 4. Cập nhật số con còn lại của lô
       const remainingCount = totalInLitter - (giltNum + meatNum);
       const isCompletelyFinished = remainingCount <= 0;
 
@@ -890,7 +868,7 @@ export default function FarmApp() {
         notes: `${selectedLitter.notes || ""} [Đã chuyển: ${giltNum} Hậu bị, ${meatNum} Thịt]`.trim()
       }).eq("id", selectedLitter.id);
 
-      const logMsg = `Tách lô ${selectedLitter.litter_code} nái ${damTag}: tuyển ${giltNum} Hậu bị, ${meatNum} Thịt. Mã mới sinh: ${generatedTags.join(", ")}`;
+      const logMsg = `Tách lô ${selectedLitter.litter_code} nái ${damTag}: tuyển ${giltNum} Hậu bị, ${meatNum} Thịt. Mã mới: ${generatedTags.join(", ")}`;
       await logAction("TRANSFER_LITTER", damTag, logMsg);
 
       alert(`✅ Đã chuyển thành công!\n- ${giltNum} Hậu bị\n- ${meatNum} Lợn thịt\nCác mã tai mới sinh: ${generatedTags.join(", ")}`);
@@ -904,7 +882,36 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM XUẤT BÁN TOÀN BỘ LÔ
+  const handleRevertPigToLitter = async (pig: Pig) => {
+    if (!requireAuth("hoàn tác cá thể")) return;
+    if (!confirm(`Xác nhận XÓA cá thể "${pig.ear_tag}" và trả lại 1 con vào lô con nái mẹ (${pig.dam_ear_tag || "lô gốc"})?`)) {
+      return;
+    }
+
+    try {
+      const { error: delErr } = await supabase.from("pigs").delete().eq("id", pig.id);
+      if (delErr) throw delErr;
+
+      if (pig.dam_ear_tag) {
+        const normDam = pig.dam_ear_tag.trim().toUpperCase();
+        const parentLitter = litters.find(l => (l.sow_ear_tag || "").trim().toUpperCase() === normDam);
+        if (parentLitter) {
+          await supabase.from("farrowings").update({
+            alive_born: Number(parentLitter.alive_born || 0) + 1,
+            status: "DA_CAI_SUA"
+          }).eq("id", parentLitter.id);
+        }
+      }
+
+      await logAction("REVERT_PIG", pig.ear_tag, `Hoàn tác xóa cá thể ${pig.ear_tag} và trả 1 con về lô con nái mẹ ${pig.dam_ear_tag || "—"}`);
+      alert(`✅ Đã hoàn tác thành công cá thể ${pig.ear_tag}!`);
+      setActiveProfilePig(null);
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi hoàn tác cá thể: " + err.message);
+    }
+  };
+
   const handleSellLitter = async (litter: FarrowingLitter) => {
     if (!requireAuth("xuất bán lợn con")) return;
     const count = litter.alive_born || 0;
@@ -926,7 +933,6 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM BÁO ĐẺ CHO NÁI
   const handleConfirmFarrowing = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!requireAuth("ghi nhận nái đẻ")) return;
@@ -999,7 +1005,6 @@ export default function FarmApp() {
     }
   };
 
-  // LƯU FORM SỬA THÔNG TIN NÁI
   const handleSaveProfileEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!requireAuth("chỉnh sửa hồ sơ cá thể")) return;
@@ -1027,8 +1032,8 @@ export default function FarmApp() {
       setPigs(prev => prev.map(p => p.id === activeProfilePig.id ? { ...p, ...updatedPayload } : p));
       setActiveProfilePig(prev => prev ? { ...prev, ...updatedPayload } : null);
 
-      await logAction("UPDATE_PIG", cleanTag, `Cập nhật thông tin nái ${cleanTag} (${updatedPayload.stage})`);
-      alert(`✅ Đã lưu thành công! Nái ${cleanTag} hiện có trạng thái: "${updatedPayload.stage}".`);
+      await logAction("UPDATE_PIG", cleanTag, `Cập nhật thông tin cá thể ${cleanTag} (${updatedPayload.sex} - ${updatedPayload.stage})`);
+      alert(`✅ Đã lưu thành công! Cá thể ${cleanTag} hiện có trạng thái: "${updatedPayload.stage}".`);
       await fetchData();
     } catch (err: any) {
       alert("Lỗi lưu nái: " + (err?.message || JSON.stringify(err)));
@@ -1037,7 +1042,6 @@ export default function FarmApp() {
     }
   };
 
-  // THÊM / SỬA LỨA ĐẺ
   const handleSaveLitter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!requireAuth("thêm hoặc sửa lứa đẻ")) return;
@@ -1116,7 +1120,6 @@ export default function FarmApp() {
     }
   };
 
-  // XUẤT FILE WORD BÁO CÁO CƠ CẤU ĐÀN
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -1195,7 +1198,7 @@ export default function FarmApp() {
     document.body.removeChild(link);
   };
 
-  // NHIỆM VỤ TỰ ĐỘNG + TỰ ĐỘNG QUÉT ĐÀN CON VÀ NÁI HẬU BỊ
+  // NHIỆM VỤ TỰ ĐỘNG (CHUẨN HÓA TIÊU ĐỀ TĨNH & KIỂM TRA ĐỐI CHIẾU DATABASE ĐỂ CHỐNG LẶP)
   const fullTasks = useMemo(() => {
     const taskMap = new Map<string, FarmTask>();
 
@@ -1269,6 +1272,7 @@ export default function FarmApp() {
       });
     });
 
+    // 3. Quét nái hậu bị: CHUẨN HÓA TIÊU ĐỀ TĨNH & KIỂM TRA ĐỐI CHIẾU DATABASE
     sowList.filter(p => checkSowState(p) === "HAUBI" && p.birth_date).forEach(hb => {
       const tagUpper = hb.ear_tag.trim().toUpperCase();
       const ageDays = safeDateDiff(hb.birth_date);
@@ -1276,25 +1280,37 @@ export default function FarmApp() {
 
       if (ageDays >= 140 && ageDays <= 220) {
         const parvoKey = `vet-parvo-${tagUpper}`;
+        const isParvoDoneInDb = (Array.isArray(dbTasks) ? dbTasks : []).some(
+          t => (t.related_tag || "").trim().toUpperCase() === tagUpper &&
+               (t.title || "").toLowerCase().includes("parvovirus") &&
+               t.is_completed
+        );
+
         taskMap.set(parvoKey, {
           id: parvoKey,
-          title: `[HẬU BỊ] Tiêm vaccine Parvovirus (khô thai) nái hậu bị ${hb.ear_tag} (${ageDays} ngày tuổi)`,
+          title: `[HẬU BỊ] Tiêm vaccine Parvovirus (khô thai) nái hậu bị ${hb.ear_tag}`,
           due_date: safeAddDays(hb.birth_date, 160),
           related_tag: hb.ear_tag,
           category: "VET",
-          is_completed: completedTaskKeys.includes(parvoKey),
+          is_completed: completedTaskKeys.includes(parvoKey) || isParvoDoneInDb,
           is_dismissed: dismissedTaskKeys.includes(parvoKey),
           is_auto: true
         });
 
         const heatKey = `repro-heat-${tagUpper}`;
+        const isHeatDoneInDb = (Array.isArray(dbTasks) ? dbTasks : []).some(
+          t => (t.related_tag || "").trim().toUpperCase() === tagUpper &&
+               (t.title || "").toLowerCase().includes("theo dõi biểu hiện động dục") &&
+               t.is_completed
+        );
+
         taskMap.set(heatKey, {
           id: heatKey,
           title: `[HẬU BỊ] Theo dõi biểu hiện động dục & tiếp xúc đực thí nghiệm nái ${hb.ear_tag}`,
           due_date: safeAddDays(hb.birth_date, 175),
           related_tag: hb.ear_tag,
           category: "REPRO",
-          is_completed: completedTaskKeys.includes(heatKey),
+          is_completed: completedTaskKeys.includes(heatKey) || isHeatDoneInDb,
           is_dismissed: dismissedTaskKeys.includes(heatKey),
           is_auto: true
         });
@@ -1328,7 +1344,6 @@ export default function FarmApp() {
     return Array.from(taskMap.values());
   }, [inseminations, suckingLitters, sowList, checkSowState, dbTasks, completedTaskKeys, dismissedTaskKeys, safePigs]);
 
-  // Bộ lọc thời gian nhiệm vụ: 7, 15, 30 ngày (loại bỏ việc đã Bỏ qua)
   const filteredPendingTasks = useMemo(() => {
     return fullTasks.filter(t => {
       if (t.is_completed || t.is_dismissed) return false;
@@ -1350,224 +1365,6 @@ export default function FarmApp() {
       return dDiff >= 0 && dDiff <= completedTaskDays;
     });
   }, [fullTasks, taskCategoryFilter, completedTaskDays]);
-
-  // XÁC NHẬN HOÀN THÀNH NHIỆM VỤ (CHẶN KHÁCH & LƯU TỨC THÌ)
-  const confirmCompleteTask = async () => {
-    if (!requireAuth("xác nhận hoàn thành công việc")) return;
-    if (!selectedTask) return;
-    const taskKey = selectedTask.id;
-    const sowTag = selectedTask.related_tag?.trim().toUpperCase();
-    const taskTitle = selectedTask.title;
-
-    const newDone = Array.from(new Set([...completedTaskKeys, taskKey]));
-    setCompletedTaskKeys(newDone);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_done_task_keys", JSON.stringify(newDone)); } catch (e) {}
-    }
-
-    if (selectedTask.id.startsWith("repro-cd-") && sowTag) {
-      await supabase.from("pigs").update({ current_pen_code: "CD1" }).eq("ear_tag", sowTag);
-      setPigs(prev => prev.map(p => (p.ear_tag || "").trim().toUpperCase() === sowTag ? { ...p, current_pen_code: "CD1" } : p));
-    }
-
-    try {
-      await supabase.from("farm_tasks").insert([{
-        title: taskTitle,
-        due_date: selectedTask.due_date,
-        related_tag: selectedTask.related_tag,
-        category: selectedTask.category,
-        is_completed: true,
-        is_dismissed: false
-      }]);
-    } catch (e) {}
-
-    const logId = "log-" + Date.now();
-    const logDetails = `Đã hoàn thành công việc: ${taskTitle}`;
-    await logAction("COMPLETE_TASK", sowTag || "TASK", logDetails, undefined, taskKey);
-
-    setActivityPhotoModal({
-      isOpen: true,
-      activityTitle: taskTitle,
-      actionType: "COMPLETE_TASK",
-      targetId: sowTag || "TASK",
-      details: logDetails,
-      taskId: taskKey,
-      existingLogId: logId,
-      previewImg: ""
-    });
-
-    setShowTaskModal(false);
-    setSelectedTask(null);
-    await fetchData();
-  };
-
-  // HÀM BỎ QUA CÔNG VIỆC
-  const handleDismissTask = async (task: FarmTask) => {
-    if (!requireAuth("bỏ qua công việc")) return;
-    if (!confirm(`Bạn có chắc chắn muốn BỎ QUA công việc này?\n"${task.title}"\n(Bạn có thể khôi phục lại bất kỳ lúc nào trong mục Cài đặt & Nhật ký).`)) {
-      return;
-    }
-
-    const taskKey = task.id;
-    const newDismissed = Array.from(new Set([...dismissedTaskKeys, taskKey]));
-    setDismissedTaskKeys(newDismissed);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
-    }
-
-    await logAction("DISMISS_TASK", task.related_tag || "TASK", `[ĐÃ BỎ QUA] Công việc: ${task.title}`, undefined, taskKey);
-    alert(`Đã bỏ qua công việc "${task.title}".`);
-    setShowTaskModal(false);
-    setSelectedTask(null);
-  };
-
-  // HÀM KHÔI PHỤC LẠI CÔNG VIỆC ĐÃ BỎ QUA
-  const handleRestoreTask = async (taskId?: string, taskTitle?: string) => {
-    if (!requireAuth("khôi phục công việc")) return;
-    if (!taskId) return;
-    if (!confirm(`Khôi phục lại công việc này về danh sách Việc Cần Làm?\n"${taskTitle || ""}"`)) return;
-
-    const newDismissed = dismissedTaskKeys.filter(k => k !== taskId);
-    setDismissedTaskKeys(newDismissed);
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("farm_dismissed_task_keys", JSON.stringify(newDismissed)); } catch (e) {}
-    }
-
-    await logAction("RESTORE_TASK", "TASK", `[KHÔI PHỤC] Đã khôi phục lại công việc: ${taskTitle || ""}`);
-    alert(`✅ Đã khôi phục thành công! Công việc đã xuất hiện trở lại trong Việc Cần Làm.`);
-    await fetchData();
-  };
-
-  // RENDER THẺ CÁ THỂ
-  const renderPigCard = (pig: Pig) => {
-    const isThisSow = isSow(pig);
-    const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
-    const currentState = isThisSow ? checkSowState(pig) : "";
-    const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
-    const nutri = getNutritionAdvice(pig);
-    const breedCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
-
-    return (
-      <div
-        key={pig.id}
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "14px",
-          padding: "16px 18px",
-          border: "1.5px solid #e2e8f0",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.04)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "21px", fontWeight: "900", color: "#1e1b4b", letterSpacing: "0.5px" }}>
-              {pig.ear_tag}
-            </span>
-            <span style={{ fontSize: "11px", fontWeight: "800", padding: "3px 8px", borderRadius: "6px", background: "#f5f3ff", color: breedCat.badgeColor, border: `1px solid ${breedCat.badgeColor}33` }}>
-              {breedCat.label}
-            </span>
-          </div>
-          
-          <div style={{ display: "flex", gap: "6px" }}>
-            {isThisSow && currentState === "CHUA" && (
-              <button
-                onClick={() => {
-                  if (!requireAuth("báo đẻ")) return;
-                  setFarrowInput({
-                    farrow_date: new Date().toISOString().split("T")[0],
-                    alive_born: 10,
-                    dead_born: 0,
-                    notes: ""
-                  });
-                  setFarrowingSow(pig);
-                }}
-                style={{
-                  fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
-                  background: "#10b981", color: "#fff", border: "none", cursor: "pointer"
-                }}
-              >
-                🐷 Báo đẻ
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                setActiveProfilePig({ ...pig });
-                setProfileTab("EDIT");
-                setShowLitterForm(false);
-              }}
-              style={{
-                fontSize: "13px", fontWeight: "800", padding: "7px 14px", borderRadius: "10px",
-                background: "#ede9fe", color: "#6d28d9", border: "1.5px solid #ddd6fe", cursor: "pointer"
-              }}
-            >
-              ⚙️ Hồ Sơ & Chi Tiết
-            </button>
-          </div>
-        </div>
-
-        <div style={{ fontSize: "14px", color: "#334155" }}>
-          Giống: <strong style={{ color: "#0f172a" }}>{pig.breed_id || "—"}</strong> | Giới tính: <strong>{formatVietnameseSex(pig.sex)}</strong>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "2px" }}>
-          <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#f1f5f9", fontWeight: "700", color: "#1e293b" }}>
-            Ô: {pig.current_pen_code || "Chưa xếp"}
-          </span>
-          <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#ecfdf5", color: "#047857", fontWeight: "800" }}>
-            {formatVietnameseStage(pig.stage)}
-          </span>
-          {isThisSow && (
-            <span style={{ padding: "4px 10px", borderRadius: "8px", fontSize: "13px", background: "#eff6ff", color: "#1d4ed8", fontWeight: "800" }}>
-              Đã đẻ: {reproData?.totalLitters || 0} lứa
-            </span>
-          )}
-        </div>
-
-        {gestation && (
-          <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginTop: "4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: "800", marginBottom: "6px" }}>
-              <span style={{ color: "#3b82f6" }}>⏳ Ngày {gestation.daysPassed}/114 thai kỳ</span>
-              <span style={{ color: "#475569" }}>Dự sinh: {formatDateVN(gestation.expectedFarrowDate)}</span>
-            </div>
-            <div style={{ height: "8px", width: "100%", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${gestation.pct}%`, background: "#3b82f6" }} />
-            </div>
-          </div>
-        )}
-
-        {nutri && (
-          <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "10px", padding: "10px 12px", marginTop: "4px" }}>
-            <div style={{ fontSize: "12px", fontWeight: "900", color: "#854d0e", marginBottom: "4px", display: "flex", justifyContent: "space-between" }}>
-              <span>🌾 DINH DƯỠNG: {nutri.stage}</span>
-              <span style={{ color: "#b45309", fontWeight: "800" }}>{nutri.feed}</span>
-            </div>
-            <div style={{ fontSize: "12px", color: "#451a03", fontWeight: "700" }}>
-              • Tiêu chuẩn: {nutri.specs}
-            </div>
-            <div style={{ fontSize: "11px", color: "#92400e", marginTop: "3px", fontStyle: "italic" }}>
-              {nutri.warning}
-            </div>
-          </div>
-        )}
-
-        <div style={{ borderTop: "1px dashed #cbd5e1", paddingTop: "8px", marginTop: "4px", fontSize: "13px", color: "#475569", display: "flex", justifyContent: "space-between" }}>
-          <span>Bố: <strong style={{ color: "#1e40af" }}>{pig.sire_ear_tag || "—"}</strong></span>
-          <span>Mẹ: <strong style={{ color: "#b91c1c" }}>{pig.dam_ear_tag || "—"}</strong></span>
-        </div>
-      </div>
-    );
-  };
-
-  if (!mounted) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px" }}>Đang tải...</div>;
-
-  const sowPct = grandTotal > 0 ? ((sowList.length / grandTotal) * 100).toFixed(0) : "0";
-  const boarPct = grandTotal > 0 ? ((boarList.length / grandTotal) * 100).toFixed(0) : "0";
-  const pigletPct = grandTotal > 0 ? ((totalPigletsCount / grandTotal) * 100).toFixed(0) : "0";
-  const meatPct = grandTotal > 0 ? ((meatList.length / grandTotal) * 100).toFixed(0) : "0";
 
   return (
     <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", position: "relative", paddingBottom: "75px" }}>
@@ -1917,7 +1714,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. TAB LỢN CON THEO LÔ (CÓ THAO TÁC CHUYỂN HẬU BỊ / THỊT / XUẤT BÁN) */}
+      {/* 4. TAB LỢN CON THEO LÔ */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "15px", fontWeight: "900", color: "#16a34a", marginBottom: "14px" }}>
@@ -2086,7 +1883,6 @@ export default function FarmApp() {
                   
                   <div style={{ color: "#334155", lineHeight: "1.4" }}>{l.details}</div>
 
-                  {/* NÚT KHÔI PHỤC NẾU LÀ VIỆC ĐÃ BỎ QUA */}
                   {isDismissedLog && l.task_id && (
                     <div style={{ marginTop: "8px" }}>
                       <button
@@ -2098,7 +1894,6 @@ export default function FarmApp() {
                     </div>
                   )}
 
-                  {/* ẢNH GẮN VÀO DÒNG NHẬT KÝ ĐÓ */}
                   {l.image_url ? (
                     <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
                       <img
@@ -2218,7 +2013,7 @@ export default function FarmApp() {
                   🥩 Chuyển nuôi VỖ BÉO THỊT (con):
                 </label>
                 <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>
-                  Tự động sinh mã: <code>[Mẹ]_T[STT]</code>
+                  Tự động sinh mã: <code>[Mẹ]_T_[STT]</code>
                 </div>
                 <input
                   type="number"
@@ -2267,236 +2062,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL CHỌN ẢNH TỪ THƯ VIỆN HOẶC CAMERA */}
-      {activityPhotoModal && activityPhotoModal.isOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-              📷 Chụp / Bổ Sung Ảnh
-            </h3>
-            <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "4px" }}>
-              {activityPhotoModal.activityTitle}
-            </div>
-            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
-              Chọn hoặc chụp ảnh minh chứng để lưu vào đúng hoạt động này.
-            </div>
-
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  try {
-                    const compressed = await compressImage(file);
-                    setActivityPhotoModal(prev => prev ? { ...prev, previewImg: compressed } : null);
-                  } catch (err) {
-                    alert("Không thể đọc ảnh: " + err);
-                  }
-                }
-              }}
-            />
-
-            {activityPhotoModal.previewImg ? (
-              <div style={{ textAlign: "center", marginBottom: "12px" }}>
-                <img src={activityPhotoModal.previewImg} alt="Preview" style={{ width: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "10px", border: "1px solid #cbd5e1" }} />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ marginTop: "6px", fontSize: "12px", color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}
-                >
-                  (Chụp lại / Chọn ảnh khác)
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{ padding: "24px", border: "2px dashed #94a3b8", borderRadius: "12px", textAlign: "center", cursor: "pointer", background: "#f8fafc", marginBottom: "14px" }}
-              >
-                <div style={{ fontSize: "28px", marginBottom: "4px" }}>📸</div>
-                <div style={{ fontSize: "13px", fontWeight: "800", color: "#1e40af" }}>Chạm để Chụp ảnh hoặc Chọn từ Thư viện</div>
-                <div style={{ fontSize: "11px", color: "#64748b" }}>(Ảnh tự nén nhẹ gắn liền vào hoạt động này)</div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                onClick={() => setActivityPhotoModal(null)}
-                style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}
-              >
-                Hủy / Bỏ qua
-              </button>
-
-              <button
-                type="button"
-                disabled={!activityPhotoModal.previewImg}
-                onClick={async () => {
-                  if (!requireAuth("lưu ảnh hoạt động")) return;
-                  if (activityPhotoModal.previewImg) {
-                    if (activityPhotoModal.existingLogId) {
-                      await updateLogPhoto(activityPhotoModal.existingLogId, activityPhotoModal.previewImg);
-                      alert("✅ Đã bổ sung ảnh thành công vào dòng nhật ký!");
-                    } else {
-                      await logAction(
-                        activityPhotoModal.actionType,
-                        activityPhotoModal.targetId,
-                        activityPhotoModal.details,
-                        activityPhotoModal.previewImg,
-                        activityPhotoModal.taskId
-                      );
-                      alert("✅ Đã lưu ảnh thành công vào Nhật ký hoạt động!");
-                    }
-                    setActivityPhotoModal(null);
-                    await fetchData();
-                  }
-                }}
-                style={{
-                  flex: 1.2, padding: "10px", borderRadius: "8px", border: "none",
-                  background: activityPhotoModal.previewImg ? "#059669" : "#cbd5e1",
-                  color: "#fff", fontSize: "13px", fontWeight: "900",
-                  cursor: activityPhotoModal.previewImg ? "pointer" : "not-allowed"
-                }}
-              >
-                Lưu Ảnh Hoạt Động
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL PHÓNG TO ẢNH */}
-      {enlargedImage && (
-        <div onClick={() => setEnlargedImage(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 180, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-          <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
-            <img src={enlargedImage} alt="Ảnh lớn" style={{ width: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: "10px" }} />
-            <div style={{ textAlign: "center", color: "#fff", marginTop: "8px", fontSize: "13px" }}>Chạm bất kỳ đâu để đóng</div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL XÁC NHẬN CÔNG VIỆC: CÓ CẢ NÚT BỎ QUA */}
-      {showTaskModal && selectedTask && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
-              Xác Nhận Công Việc
-            </h3>
-            <div style={{ fontSize: "14px", fontWeight: "800", color: "#334155", marginBottom: "8px", lineHeight: "1.4" }}>
-              {selectedTask.title}
-            </div>
-            <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "18px" }}>
-              Hạn: <b>{formatDateVN(selectedTask.due_date)}</b> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <button
-                onClick={confirmCompleteTask}
-                style={{ padding: "12px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer" }}
-              >
-                ✓ Xác Nhận Đã Làm Xong
-              </button>
-              
-              <button
-                onClick={() => handleDismissTask(selectedTask)}
-                style={{ padding: "10px", borderRadius: "10px", background: "#fff7ed", color: "#c2410c", border: "1px solid #ffedd5", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
-              >
-                Bỏ Qua Công Việc Này
-              </button>
-
-              <button
-                onClick={() => { setShowTaskModal(false); setSelectedTask(null); }}
-                style={{ padding: "10px", borderRadius: "10px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", fontSize: "13px", cursor: "pointer" }}
-              >
-                Đóng Lại
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL GHI NHẬN NÁI ĐẺ */}
-      {farrowingSow && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: "18px", fontWeight: "900", color: "#047857" }}>
-              🎉 Ghi Nhận Nái Đẻ: {farrowingSow.ear_tag}
-            </h3>
-            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
-              Giống: <b>{farrowingSow.breed_id}</b> • Ô hiện tại: <b>{farrowingSow.current_pen_code}</b>
-            </div>
-
-            <form onSubmit={handleConfirmFarrowing} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800" }}>Ngày đẻ thực tế (*):</label>
-                <input
-                  type="date"
-                  required
-                  value={farrowInput.farrow_date}
-                  onChange={e => setFarrowInput({ ...farrowInput, farrow_date: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "4px" }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: "800", color: "#059669" }}>Số con sống (*):</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    max="25"
-                    value={farrowInput.alive_born}
-                    onChange={e => setFarrowInput({ ...farrowInput, alive_born: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1.5px solid #10b981", fontSize: "14px", fontWeight: "900", marginTop: "4px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: "800", color: "#ef4444" }}>Số con chết/lưu:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={farrowInput.dead_born}
-                    onChange={e => setFarrowInput({ ...farrowInput, dead_born: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px", marginTop: "4px" }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800" }}>Ghi chú ca đẻ:</label>
-                <input
-                  placeholder="Đẻ mổ, đẻ nhanh, nái dữ..."
-                  value={farrowInput.notes}
-                  onChange={e => setFarrowInput({ ...farrowInput, notes: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "4px" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button
-                  type="button"
-                  onClick={() => setFarrowingSow(null)}
-                  style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "8px 18px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontSize: "13px", fontWeight: "900", cursor: "pointer" }}
-                >
-                  ✓ Xác Nhận Đẻ
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL HỒ SƠ TỔNG HỢP: SỬA + SINH SẢN + GIA PHẢ 2 CHIỀU */}
+      {/* MODAL HỒ SƠ TỔNG HỢP: SỬA + HOÀN TÁC CÁ THỂ VỀ LÔ GỐC */}
       {activeProfilePig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "450px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
@@ -2548,28 +2114,31 @@ export default function FarmApp() {
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: "12px", fontWeight: "800" }}>Giống:</label>
+                      <label style={{ fontSize: "12px", fontWeight: "800" }}>Giới tính (*):</label>
                       <select
-                        value={activeProfilePig.breed_id || config.breeds[0]}
-                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, breed_id: e.target.value })}
+                        value={formatVietnameseSex(activeProfilePig.sex)}
+                        onChange={(e) => setActiveProfilePig({ ...activeProfilePig, sex: e.target.value })}
                         style={{ width: "100%", padding: "9px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px" }}
                       >
-                        {config.breeds.map(b => <option key={b} value={b}>{b}</option>)}
+                        <option value="Đực">Đực</option>
+                        <option value="Cái">Cái</option>
                       </select>
                     </div>
                   </div>
 
                   <div style={{ background: "#fdf2f4", padding: "12px", borderRadius: "10px", border: "1px solid #fce7f3" }}>
-                    <label style={{ fontSize: "12px", fontWeight: "900", color: "#db2777" }}>Trạng thái sinh sản hiện tại (*):</label>
+                    <label style={{ fontSize: "12px", fontWeight: "900", color: "#db2777" }}>Trạng thái / Giai đoạn hiện tại (*):</label>
                     <select
                       value={activeProfilePig.stage}
                       onChange={(e) => setActiveProfilePig({ ...activeProfilePig, stage: e.target.value })}
                       style={{ width: "100%", padding: "9px", borderRadius: "8px", border: "1.5px solid #f472b6", marginTop: "6px", fontWeight: "900", fontSize: "14px" }}
                     >
+                      <option value="Vỗ béo thịt">🥩 Vỗ béo thịt</option>
+                      <option value="Hậu bị">🐖 Nái Hậu bị</option>
+                      <option value="Chờ phối">⏳ Chờ phối</option>
                       <option value="Đang chửa">🤰 Đang chửa</option>
                       <option value="Nuôi con">🍼 Nuôi con</option>
-                      <option value="Chờ phối">⏳ Chờ phối</option>
-                      <option value="Hậu bị">🐖 Hậu bị</option>
+                      <option value="Đực giống">🐗 Đực giống</option>
                     </select>
                   </div>
 
@@ -2619,10 +2188,21 @@ export default function FarmApp() {
                   <button
                     type="submit"
                     disabled={isSavingEdit}
-                    style={{ padding: "12px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", marginTop: "6px" }}
+                    style={{ padding: "12px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer", marginTop: "4px" }}
                   >
-                    {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi Nái"}
+                    {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi"}
                   </button>
+
+                  {/* NÚT HOÀN TÁC / XÓA CÁ THỂ TRẢ VỀ ĐÀN CON NÁI MẸ */}
+                  {activeProfilePig.dam_ear_tag && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevertPigToLitter(activeProfilePig)}
+                      style={{ padding: "10px", borderRadius: "10px", background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", fontWeight: "800", fontSize: "12px", cursor: "pointer", marginTop: "4px" }}
+                    >
+                      ↺ Hoàn tác cá thể này về lại Lô con nái {activeProfilePig.dam_ear_tag}
+                    </button>
+                  )}
                 </form>
               )}
 
@@ -2789,8 +2369,6 @@ export default function FarmApp() {
 
                 return (
                   <div style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                    
-                    {/* KHỐI TỔ TIÊN */}
                     <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
                       <div style={{ fontSize: "12px", fontWeight: "900", color: "#475569", marginBottom: "8px" }}>▲ THẾ HỆ TRƯỚC (BỐ MẸ)</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -2807,7 +2385,6 @@ export default function FarmApp() {
                       </div>
                     </div>
 
-                    {/* CÁ THỂ HIỆN TẠI & THÔNG TIN TỶ LỆ MÁU */}
                     <div style={{ background: "#ede9fe", padding: "12px", borderRadius: "10px", textAlign: "center", border: "1.5px solid #a78bfa" }}>
                       <div style={{ fontSize: "11px", color: "#6d28d9", fontWeight: "800" }}>CÁ THỂ HIỆN TẠI</div>
                       <div style={{ fontSize: "19px", fontWeight: "900", color: "#4c1d95" }}>{activeProfilePig.ear_tag}</div>
@@ -2819,7 +2396,6 @@ export default function FarmApp() {
                       </div>
                     </div>
 
-                    {/* KHỐI HẬU DUỆ */}
                     <div style={{ background: "#f0fdf4", padding: "12px", borderRadius: "10px", border: "1.5px solid #bbf7d0" }}>
                       <div style={{ fontSize: "12px", fontWeight: "900", color: "#15803d", marginBottom: "8px" }}>
                         ▼ THẾ HỆ SAU: ĐÀN CON ĐÃ TUYỂN CHỌN ({childPigs.length} CÁ THỂ)
@@ -2858,11 +2434,9 @@ export default function FarmApp() {
                         ))}
                       </div>
                     </div>
-
                   </div>
                 );
               })()}
-
             </div>
 
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "12px", marginTop: "12px", textAlign: "right" }}>
@@ -2965,6 +2539,7 @@ export default function FarmApp() {
                 <option value="Chờ phối">Chờ phối</option>
                 <option value="Đang chửa">Đang chửa</option>
                 <option value="Nuôi con">Nuôi con</option>
+                <option value="Vỗ béo thịt">Vỗ béo thịt</option>
               </select>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
                 <button type="button" onClick={() => setShowAddPigModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff" }}>Hủy</button>
@@ -2989,6 +2564,235 @@ export default function FarmApp() {
                 <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#5b21b6", color: "#fff", border: "none", fontWeight: "800" }}>Vào</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN CÔNG VIỆC */}
+      {showTaskModal && selectedTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+              Xác Nhận Công Việc
+            </h3>
+            <div style={{ fontSize: "14px", fontWeight: "800", color: "#334155", marginBottom: "8px", lineHeight: "1.4" }}>
+              {selectedTask.title}
+            </div>
+            <div style={{ fontSize: "13px", color: "#64748b", marginBottom: "18px" }}>
+              Hạn: <b>{formatDateVN(selectedTask.due_date)}</b> {selectedTask.related_tag && `(Tai: ${selectedTask.related_tag})`}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button
+                onClick={confirmCompleteTask}
+                style={{ padding: "12px", borderRadius: "10px", background: "#059669", color: "#fff", border: "none", fontWeight: "900", fontSize: "14px", cursor: "pointer" }}
+              >
+                ✓ Xác Nhận Đã Làm Xong
+              </button>
+              
+              <button
+                onClick={() => handleDismissTask(selectedTask)}
+                style={{ padding: "10px", borderRadius: "10px", background: "#fff7ed", color: "#c2410c", border: "1px solid #ffedd5", fontWeight: "800", fontSize: "13px", cursor: "pointer" }}
+              >
+                Bỏ Qua Công Việc Này
+              </button>
+
+              <button
+                onClick={() => { setShowTaskModal(false); setSelectedTask(null); }}
+                style={{ padding: "10px", borderRadius: "10px", background: "#f1f5f9", color: "#475569", border: "none", fontWeight: "700", fontSize: "13px", cursor: "pointer" }}
+              >
+                Đóng Lại
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BÁO ĐẺ */}
+      {farrowingSow && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: "18px", fontWeight: "900", color: "#047857" }}>
+              🎉 Ghi Nhận Nái Đẻ: {farrowingSow.ear_tag}
+            </h3>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
+              Giống: <b>{farrowingSow.breed_id}</b> • Ô hiện tại: <b>{farrowingSow.current_pen_code}</b>
+            </div>
+
+            <form onSubmit={handleConfirmFarrowing} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Ngày đẻ thực tế (*):</label>
+                <input
+                  type="date"
+                  required
+                  value={farrowInput.farrow_date}
+                  onChange={e => setFarrowInput({ ...farrowInput, farrow_date: e.target.value })}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "4px" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "800", color: "#059669" }}>Số con sống (*):</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="25"
+                    value={farrowInput.alive_born}
+                    onChange={e => setFarrowInput({ ...farrowInput, alive_born: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1.5px solid #10b981", fontSize: "14px", fontWeight: "900", marginTop: "4px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "800", color: "#ef4444" }}>Số con chết/lưu:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={farrowInput.dead_born}
+                    onChange={e => setFarrowInput({ ...farrowInput, dead_born: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "14px", marginTop: "4px" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Ghi chú ca đẻ:</label>
+                <input
+                  placeholder="Đẻ mổ, đẻ nhanh, nái dữ..."
+                  value={farrowInput.notes}
+                  onChange={e => setFarrowInput({ ...farrowInput, notes: e.target.value })}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "4px" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setFarrowingSow(null)}
+                  style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: "8px 18px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontSize: "13px", fontWeight: "900", cursor: "pointer" }}
+                >
+                  ✓ Xác Nhận Đẻ
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ẢNH HOẠT ĐỘNG */}
+      {activityPhotoModal && activityPhotoModal.isOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "380px", padding: "20px" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: "900", color: "#1e1b4b" }}>
+              📷 Chụp / Bổ Sung Ảnh
+            </h3>
+            <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "4px" }}>
+              {activityPhotoModal.activityTitle}
+            </div>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
+              Chọn hoặc chụp ảnh minh chứng để lưu vào đúng hoạt động này.
+            </div>
+
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  try {
+                    const compressed = await compressImage(file);
+                    setActivityPhotoModal(prev => prev ? { ...prev, previewImg: compressed } : null);
+                  } catch (err) {
+                    alert("Không thể đọc ảnh: " + err);
+                  }
+                }
+              }}
+            />
+
+            {activityPhotoModal.previewImg ? (
+              <div style={{ textAlign: "center", marginBottom: "12px" }}>
+                <img src={activityPhotoModal.previewImg} alt="Preview" style={{ width: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "10px", border: "1px solid #cbd5e1" }} />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ marginTop: "6px", fontSize: "12px", color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}
+                >
+                  (Chụp lại / Chọn ảnh khác)
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ padding: "24px", border: "2px dashed #94a3b8", borderRadius: "12px", textAlign: "center", cursor: "pointer", background: "#f8fafc", marginBottom: "14px" }}
+              >
+                <div style={{ fontSize: "28px", marginBottom: "4px" }}>📸</div>
+                <div style={{ fontSize: "13px", fontWeight: "800", color: "#1e40af" }}>Chạm để Chụp ảnh hoặc Chọn từ Thư viện</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>(Ảnh tự nén nhẹ gắn liền vào hoạt động này)</div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setActivityPhotoModal(null)}
+                style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "13px", fontWeight: "800", cursor: "pointer" }}
+              >
+                Hủy / Bỏ qua
+              </button>
+
+              <button
+                type="button"
+                disabled={!activityPhotoModal.previewImg}
+                onClick={async () => {
+                  if (!requireAuth("lưu ảnh hoạt động")) return;
+                  if (activityPhotoModal.previewImg) {
+                    if (activityPhotoModal.existingLogId) {
+                      await updateLogPhoto(activityPhotoModal.existingLogId, activityPhotoModal.previewImg);
+                      alert("✅ Đã bổ sung ảnh thành công vào dòng nhật ký!");
+                    } else {
+                      await logAction(
+                        activityPhotoModal.actionType,
+                        activityPhotoModal.targetId,
+                        activityPhotoModal.details,
+                        activityPhotoModal.previewImg,
+                        activityPhotoModal.taskId
+                      );
+                      alert("✅ Đã lưu ảnh thành công vào Nhật ký hoạt động!");
+                    }
+                    setActivityPhotoModal(null);
+                    await fetchData();
+                  }
+                }}
+                style={{
+                  flex: 1.2, padding: "10px", borderRadius: "8px", border: "none",
+                  background: activityPhotoModal.previewImg ? "#059669" : "#cbd5e1",
+                  color: "#fff", fontSize: "13px", fontWeight: "900",
+                  cursor: activityPhotoModal.previewImg ? "pointer" : "not-allowed"
+                }}
+              >
+                Lưu Ảnh Hoạt Động
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PHÓNG TO ẢNH */}
+      {enlargedImage && (
+        <div onClick={() => setEnlargedImage(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 180, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
+            <img src={enlargedImage} alt="Ảnh lớn" style={{ width: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: "10px" }} />
+            <div style={{ textAlign: "center", color: "#fff", marginTop: "8px", fontSize: "13px" }}>Chạm bất kỳ đâu để đóng</div>
           </div>
         </div>
       )}
