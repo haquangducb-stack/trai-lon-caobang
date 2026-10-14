@@ -56,8 +56,8 @@ const getStandardWeight = (breedType: string, dayAge: number): number => {
     return 2100;
   }
 
-  // 2. Nhóm Gà đen bản địa (H'Mông) - Tăng trọng chậm hơn, thịt săn chắc
-  if (b.includes("đen") || b.includes("den") || b.includes("h'mông") || b.includes("hmong")) {
+  // 2. Nhóm Gà bản địa / Gà giống
+  if (b.includes("bản địa") || b.includes("gà ta") || b.includes("gà đen") || b.includes("h'mông")) {
     if (dayAge <= 7) return 55;
     if (dayAge <= 14) return 100;
     if (dayAge <= 21) return 180;
@@ -70,7 +70,6 @@ const getStandardWeight = (breedType: string, dayAge: number): number => {
     return 1950;
   }
 
-  // Tiêu chuẩn mặc định
   return Math.round(dayAge * 20);
 };
 
@@ -248,7 +247,7 @@ export default function ChickenPage() {
     }
   };
 
-  // Chuyển giai đoạn đàn Gà đen giống
+  // Chuyển giai đoạn đàn Gà giống
   const handlePromoteStage = async (batch: PoultryBatch) => {
     let nextStage = "NUOI_CHUNG";
     let confirmMsg = `Chuyển lô ${batch.batch_code} lên "Nuôi chung tập trung"?`;
@@ -284,7 +283,6 @@ export default function ChickenPage() {
 
   return (
     <div style={{ backgroundColor: "#fafafa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}>
-      {/* THANH ĐIỀU HƯỚNG DÙNG CHUNG (VUỐT ĐỔI LOÀI) */}
       <FarmSpeciesNav />
 
       <div style={{ padding: "16px" }}>
@@ -295,16 +293,16 @@ export default function ChickenPage() {
             {totalChickens} <span style={{ fontSize: "15px", color: "#cbd5e1" }}>con</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#e2e8f0", marginTop: "4px" }}>
-            <span>● Gà đen giống: <b>{breedCount} con</b></span>
+            <span>● Đàn sinh sản/giống: <b>{breedCount} con</b></span>
             <span>● Gà thịt thương phẩm: <b>{meatCount} con</b></span>
           </div>
         </div>
 
-        {/* THU GOM TRỨNG GÀ ĐEN BẢN ĐỊA */}
+        {/* THU GOM TRỨNG GÀ GIỐNG */}
         <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "14px", padding: "14px 16px", marginBottom: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <b style={{ color: "#854d0e", fontSize: "14px" }}>🥚 THU TRỨNG & LÒ ẤP GÀ ĐEN</b>
+              <b style={{ color: "#854d0e", fontSize: "14px" }}>🥚 THU TRỨNG & LÒ ẤP GÀ GIỐNG</b>
               <div style={{ fontSize: "12px", color: "#713f12", marginTop: "2px" }}>
                 Tổng thu gần đây: <b>{totalEggs} quả</b>
               </div>
@@ -322,7 +320,7 @@ export default function ChickenPage() {
         <div style={{ display: "flex", gap: "6px", marginBottom: "12px" }}>
           {[
             { id: "ALL", label: `Tất cả (${batches.length})` },
-            { id: "GIONG", label: `Gà đen giống (${batches.filter(b => b.purpose === "GIONG").length})` },
+            { id: "GIONG", label: `Gà giống (${batches.filter(b => b.purpose === "GIONG").length})` },
             { id: "THIT", label: `Gà thịt (${batches.filter(b => b.purpose === "THIT").length})` }
           ].map(tab => (
             <button
@@ -376,7 +374,6 @@ export default function ChickenPage() {
               const ageDays = safeDateDiff(b.hatch_date);
               const standardGram = getStandardWeight(b.breed_type, ageDays);
 
-              // Tìm lần cân gần nhất của lô này
               const latestWeigh = weightLogs.find(w => w.batch_id === b.id);
               const hasWeighed = !!latestWeigh;
 
@@ -407,7 +404,7 @@ export default function ChickenPage() {
                       color: b.purpose === "GIONG" ? "#6d28d9" : "#047857",
                       border: `1px solid ${b.purpose === "GIONG" ? "#ddd6fe" : "#a7f3d0"}`
                     }}>
-                      {b.purpose === "GIONG" ? "👑 Gà đen giống" : "🍗 Gà thịt"}
+                      {b.purpose === "GIONG" ? "👑 Gà giống" : "🍗 Gà thịt"}
                     </span>
                   </div>
 
@@ -472,7 +469,7 @@ export default function ChickenPage() {
 
         {/* QUY TRÌNH THÚ Y GÀ */}
         <div style={{ marginTop: "20px", background: "#f1f5f9", padding: "14px", borderRadius: "12px", fontSize: "12px", lineHeight: "1.7", color: "#334155" }}>
-          <b style={{ color: "#0f172a", fontSize: "13px" }}>🩺 QUY TRÌNH VACCINE GÀ THẢ VƯỜN & GÀ ĐEN:</b><br/>
+          <b style={{ color: "#0f172a", fontSize: "13px" }}>🩺 QUY TRÌNH VACCINE GÀ THẢ VƯỜN & GÀ GIỐNG:</b><br/>
           • <b>1 - 3 ngày tuổi:</b> Úm ấm (32-34°C), uống Gluco-C + B-complex.<br/>
           • <b>3 - 5 ngày:</b> Nhỏ mắt/mũi vaccine Newcastle (Lasota) + IB (viêm phế quản).<br/>
           • <b>7 ngày:</b> Nhỏ mồm vaccine Gumboro lần 1.<br/>
@@ -575,13 +572,13 @@ export default function ChickenPage() {
                       setNewBatch({
                         ...newBatch,
                         purpose: p,
-                        breed_type: p === "GIONG" ? "Gà đen bản địa" : "Ri lai 3/4"
+                        breed_type: p === "GIONG" ? "Gà bản địa" : "Ri lai 3/4"
                       });
                     }}
                     style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
                   >
                     <option value="THIT">Nuôi thịt</option>
-                    <option value="GIONG">Gây giống (Gà đen)</option>
+                    <option value="GIONG">Gây giống</option>
                   </select>
                 </div>
                 <div>
@@ -591,7 +588,7 @@ export default function ChickenPage() {
                     <option value="Ri lai 3/4">Ri lai 3/4</option>
                     <option value="Mía lai">Mía lai</option>
                     <option value="Hồ lai">Hồ lai</option>
-                    <option value="Gà đen bản địa">Gà đen bản địa</option>
+                    <option value="Gà bản địa">Gà bản địa</option>
                   </select>
                 </div>
               </div>
