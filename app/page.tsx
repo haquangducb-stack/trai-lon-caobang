@@ -352,6 +352,8 @@ export default function FarmApp() {
   const [matingSowTag, setMatingSowTag] = useState("");
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
   const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
+  const [isExternalSemen, setIsExternalSemen] = useState(false); // true: dùng tinh ngoài
+  const [externalSemenCode, setExternalSemenCode] = useState(""); // Mã/tên liều tinh ngoài
 
   const requireAuth = useCallback((actionName = "thao tác này"): boolean => {
     if (!user) {
@@ -3086,29 +3088,47 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL PHỐI GIỐNG */}
+      {/* MODAL PHỐI GIỐNG (HỖ TRỢ CẢ ĐỰC TRẠI VÀ TINH MUA NGOÀI) */}
       {showMatingModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Xác Nhận Phối Giống</h3>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "380px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#5b21b6" }}>🔬 Ghi Nhận Phối Giống</h3>
             <form onSubmit={async (e) => {
               e.preventDefault();
               if (!requireAuth("ghi nhận phối giống")) return;
-              if (!matingSowTag || !selectedBoarTag) return;
+              if (!matingSowTag) return;
+
+              const finalBoarTag = isExternalSemen 
+                ? (externalSemenCode.trim() || "Tinh ngoài")
+                : selectedBoarTag.trim().toUpperCase();
+
+              if (!finalBoarTag) {
+                alert("Vui lòng chọn đực trại hoặc nhập thông tin liều tinh ngoài!");
+                return;
+              }
+
               const expFarrow = safeAddDays(matingDate, 114);
               await supabase.from("inseminations").insert([{
                 sow_ear_tag: matingSowTag.trim().toUpperCase(),
-                boar_ear_tag: selectedBoarTag.trim().toUpperCase(),
+                boar_ear_tag: finalBoarTag,
                 mating_date: matingDate,
                 expected_farrow_date: expFarrow,
-                status: "Đã phối"
+                status: isExternalSemen ? "Đã phối (Tinh ngoài)" : "Đã phối"
               }]);
+
               await supabase.from("pigs").update({ stage: "Đang chửa" }).eq("ear_tag", matingSowTag);
-              await logAction("INSEMINATION", matingSowTag, `Phối nái ${matingSowTag} với đực ${selectedBoarTag} ngày ${formatDateVN(matingDate)}. Dự sinh: ${formatDateVN(expFarrow)}`);
-              alert(`✅ Đã ghi nhận phối giống cho nái ${matingSowTag}! Nái chuyển sang "Đang chửa".`);
+              await logAction(
+                "INSEMINATION", 
+                matingSowTag, 
+                `Phối nái ${matingSowTag} với ${isExternalSemen ? "tinh ngoài: " : "đực trại: "}${finalBoarTag} ngày ${formatDateVN(matingDate)}. Dự sinh: ${formatDateVN(expFarrow)}`
+              );
+
+              alert(`✅ Đã ghi nhận phối giống cho nái ${matingSowTag}!\n- Nguồn giống: ${finalBoarTag}\n- Dự sinh: ${formatDateVN(expFarrow)}\n- Nái chuyển trạng thái "Đang chửa".`);
               setShowMatingModal(false);
+              setExternalSemenCode("");
               await fetchData();
             }} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              
               <div>
                 <label style={{ fontSize: "12px", fontWeight: "800" }}>Nái phối (*):</label>
                 <select required value={matingSowTag} onChange={e => setMatingSowTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}>
@@ -3117,17 +3137,75 @@ export default function FarmApp() {
                 </select>
               </div>
 
+              {/* NÚT CHỌN NGUỒN TINH: TRONG TRẠI HOẶC MUA NGOÀI */}
               <div>
-                <label style={{ fontSize: "12px", fontWeight: "800" }}>Đực khai thác tinh (*):</label>
-                <select required value={selectedBoarTag} onChange={e => setSelectedBoarTag(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}>
-                  <option value="">-- Chọn Đực --</option>
-                  {boarList.map(b => <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>)}
-                </select>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Nguồn tinh phối giống (*):</label>
+                <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsExternalSemen(false)}
+                    style={{
+                      flex: 1, padding: "7px 0", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "800", cursor: "pointer",
+                      background: !isExternalSemen ? "#5b21b6" : "#f8fafc",
+                      color: !isExternalSemen ? "#fff" : "#475569"
+                    }}
+                  >
+                    🐗 Đực trong trại
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsExternalSemen(true)}
+                    style={{
+                      flex: 1, padding: "7px 0", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "800", cursor: "pointer",
+                      background: isExternalSemen ? "#059669" : "#f8fafc",
+                      color: isExternalSemen ? "#fff" : "#475569"
+                    }}
+                  >
+                    🧪 Tinh mua ngoài
+                  </button>
+                </div>
               </div>
+
+              {/* LỰA CHỌN ĐỰC TRẠI HOẶC NHẬP TÊN TINH NGOÀI */}
+              {!isExternalSemen ? (
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "800" }}>Chọn đực khai thác trong trại (*):</label>
+                  <select 
+                    required={!isExternalSemen} 
+                    value={selectedBoarTag} 
+                    onChange={e => setSelectedBoarTag(e.target.value)} 
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}
+                  >
+                    <option value="">-- Chọn Đực Giống --</option>
+                    {boarList.map(b => <option key={b.id} value={b.ear_tag}>{b.ear_tag} ({b.breed_id})</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: "800", color: "#059669" }}>Tên giống / Mã liều tinh ngoài (*):</label>
+                  <input
+                    type="text"
+                    required={isExternalSemen}
+                    placeholder="VD: Duroc ngoại liều 102, Pietrain 05..."
+                    value={externalSemenCode}
+                    onChange={e => setExternalSemenCode(e.target.value)}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1.5px solid #10b981", fontSize: "13px", marginTop: "3px", boxSizing: "border-box" }}
+                  />
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                    * Giúp tránh cận huyết và tự động lưu tên giống ngoài vào phả hệ đàn con.
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label style={{ fontSize: "12px", fontWeight: "800" }}>Ngày phối thực tế (*):</label>
-                <input type="date" required value={matingDate} onChange={e => setMatingDate(e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px", boxSizing: "border-box" }} />
+                <input 
+                  type="date" 
+                  required 
+                  value={matingDate} 
+                  onChange={e => setMatingDate(e.target.value)} 
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px", boxSizing: "border-box" }} 
+                />
               </div>
 
               <div style={{ fontSize: "12px", color: "#64748b" }}>
