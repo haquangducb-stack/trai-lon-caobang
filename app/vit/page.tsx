@@ -6,7 +6,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// COMPONENT ĐIỀU HƯỚNG VUỐT LOÀI (NHÚNG TRỰC TIẾP TRÁNH LỖI IMPORT)
 function FarmSpeciesNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -21,16 +20,12 @@ function FarmSpeciesNav() {
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
   };
-
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEndX.current = e.targetTouches[0].clientX;
   };
-
   const handleTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;
-    const threshold = 75;
-
-    if (Math.abs(diff) > threshold) {
+    if (Math.abs(diff) > 75) {
       if (diff > 0) {
         if (currentSpecies === "PIG") router.push("/ga");
         else if (currentSpecies === "CHICKEN") router.push("/vit");
@@ -46,26 +41,12 @@ function FarmSpeciesNav() {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      style={{
-        background: "#0f172a",
-        padding: "8px 12px",
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        borderBottom: "1px solid #1e293b",
-        maxWidth: "480px",
-        margin: "0 auto"
-      }}
+      style={{ background: "#0f172a", padding: "8px 12px", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #1e293b", maxWidth: "480px", margin: "0 auto" }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>
-          Hệ Thống Trại Nà Roác
-        </span>
-        <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>
-          (Vuốt đổi loài ⇄)
-        </span>
+        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>Hệ Thống Trại Nà Roác</span>
+        <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>(Vuốt đổi loài ⇄)</span>
       </div>
-
       <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
         {[
           { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
@@ -76,16 +57,9 @@ function FarmSpeciesNav() {
             key={item.id}
             onClick={() => router.push(item.path)}
             style={{
-              flex: 1,
-              padding: "7px 0",
-              borderRadius: "8px",
-              border: "none",
-              fontSize: "12px",
-              fontWeight: "900",
-              cursor: "pointer",
+              flex: 1, padding: "7px 0", borderRadius: "8px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
               background: currentSpecies === item.id ? "#38bdf8" : "transparent",
-              color: currentSpecies === item.id ? "#0f172a" : "#cbd5e1",
-              transition: "all 0.15s ease"
+              color: currentSpecies === item.id ? "#0f172a" : "#cbd5e1"
             }}
           >
             {item.label}
@@ -121,40 +95,39 @@ interface WeightLog {
   notes?: string;
 }
 
-// BIỂU CÂN NẶNG CHUẨN CHO VỊT THEO NGÀY TUỔI (GRAM)
+interface EggHarvest {
+  id: string;
+  harvest_date: string;
+  egg_count: number;
+  incubated_count: number;
+  notes?: string;
+}
+
 const getDuckStandardWeight = (breedType: string, dayAge: number): number => {
-  const b = breedType.toLowerCase();
-
-  // 1. Vịt Super (Siêu nạc, siêu thịt)
-  if (b.includes("super") || b.includes("siêu")) {
+  const b = (breedType || "").toLowerCase();
+  if (b.includes("super") || b.includes("siêu nạc") || b.includes("cherry")) {
     if (dayAge <= 7) return 180;
-    if (dayAge <= 14) return 500;
-    if (dayAge <= 21) return 1100;
-    if (dayAge <= 28) return 1700;
-    if (dayAge <= 35) return 2300;
-    if (dayAge <= 42) return 2850;
-    if (dayAge <= 50) return 3350;
-    return 3600;
+    if (dayAge <= 14) return 520;
+    if (dayAge <= 21) return 1150;
+    if (dayAge <= 28) return 1750;
+    if (dayAge <= 35) return 2350;
+    if (dayAge <= 42) return 2900;
+    if (dayAge <= 50) return 3400;
+    return 3650;
   }
-
-  // 2. Vịt Bầu (Địa phương / Bầu Bến)
-  if (b.includes("bầu") || b.includes("bau") || b.includes("cỏ") || b.includes("co")) {
-    if (dayAge <= 7) return 130;
-    if (dayAge <= 14) return 320;
-    if (dayAge <= 21) return 650;
-    if (dayAge <= 30) return 1050;
-    if (dayAge <= 45) return 1600;
-    if (dayAge <= 60) return 2050;
-    if (dayAge <= 75) return 2400;
-    return 2600;
-  }
-
-  return Math.round(dayAge * 35);
+  // Vịt Bầu, Vịt Cỏ Cao Bằng bản địa
+  if (dayAge <= 7) return 120;
+  if (dayAge <= 14) return 320;
+  if (dayAge <= 21) return 650;
+  if (dayAge <= 30) return 1050;
+  if (dayAge <= 45) return 1600;
+  if (dayAge <= 60) return 2050;
+  if (dayAge <= 75) return 2400;
+  return 2600;
 };
 
-// ĐỊNH MỨC THỨC ĂN (GRAM CÁM / CON / NGÀY) THEO TUỔI
 const getDuckDailyFeedGram = (breedType: string, dayAge: number): number => {
-  const isSuper = breedType.toLowerCase().includes("super");
+  const isSuper = (breedType || "").toLowerCase().includes("super");
   if (dayAge <= 7) return isSuper ? 35 : 25;
   if (dayAge <= 14) return isSuper ? 85 : 60;
   if (dayAge <= 21) return isSuper ? 140 : 100;
@@ -167,10 +140,7 @@ const formatDateVN = (dStr?: string) => {
   if (!dStr) return "—";
   const d = new Date(dStr);
   if (isNaN(d.getTime())) return dStr;
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 const safeDateDiff = (dStr?: string) => {
@@ -184,22 +154,26 @@ export default function DuckPage() {
   const [mounted, setMounted] = useState(false);
   const [batches, setBatches] = useState<PoultryBatch[]>([]);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
+  const [eggs, setEggs] = useState<EggHarvest[]>([]);
+  const [activeTab, setActiveTab] = useState<"BAN_DIA" | "THUONG_PHAM" | "QUY_TRINH">("THUONG_PHAM");
 
-  // Modal Nhập Lô Vịt
-  const [showAddBatchModal, setShowAddBatchModal] = useState(false);
-  const [newBatch, setNewBatch] = useState<Partial<PoultryBatch>>({
+  // Modal Thêm / Sửa Lô Vịt
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [batchFormData, setBatchFormData] = useState<Partial<PoultryBatch>>({
     batch_code: "",
     species: "DUCK",
-    breed_type: "Vịt Bầu",
+    breed_type: "Vịt Super Thịt",
     purpose: "THIT",
     stage: "THIT",
     hatch_date: new Date().toISOString().split("T")[0],
     initial_count: 50,
+    current_count: 50,
     pen_location: "Khu nuôi bờ ao",
     notes: ""
   });
 
-  // Modal Báo cân mẫu
+  // Modal Báo cân
   const [showWeighModal, setShowWeighModal] = useState(false);
   const [selectedBatchForWeigh, setSelectedBatchForWeigh] = useState<PoultryBatch | null>(null);
   const [weighInput, setWeighInput] = useState({
@@ -209,22 +183,31 @@ export default function DuckPage() {
     notes: ""
   });
 
+  // Modal Nhặt trứng vịt
+  const [showEggModal, setShowEggModal] = useState(false);
+  const [eggInput, setEggInput] = useState({
+    harvest_date: new Date().toISOString().split("T")[0],
+    egg_count: 20,
+    incubated_count: 15,
+    notes: ""
+  });
+
   const supabase = useMemo(() => {
     const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://eqlegigaftimjdmyuofg.supabase.co";
-    const rawKey =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig";
+    const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbGVnaWdhZnRpbWpkbXl1b2ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQyODAsImV4cCI6MjEwNjY1MDI4MH0.mlF6wNkZMt6Rtv6bXr0bcYSkdpjiiQxPsoNW-PgA1ig";
     return createClient(rawUrl.trim(), rawKey.trim());
   }, []);
 
   const fetchData = useCallback(async () => {
     try {
-      const [batchRes, weighRes] = await Promise.all([
+      const [batchRes, weighRes, eggRes] = await Promise.all([
         supabase.from("poultry_batches").select("*").eq("species", "DUCK").order("hatch_date", { ascending: false }),
-        supabase.from("poultry_weight_logs").select("*").order("weigh_date", { ascending: false })
+        supabase.from("poultry_weight_logs").select("*").order("weigh_date", { ascending: false }),
+        supabase.from("egg_harvests").select("*").order("harvest_date", { ascending: false }).limit(30)
       ]);
       if (batchRes?.data) setBatches(batchRes.data);
       if (weighRes?.data) setWeightLogs(weighRes.data);
+      if (eggRes?.data) setEggs(eggRes.data);
     } catch (e) {}
   }, [supabase]);
 
@@ -233,44 +216,95 @@ export default function DuckPage() {
     fetchData();
   }, [fetchData]);
 
-  const totalDucks = batches.reduce((sum, b) => sum + (b.current_count || 0), 0);
+  // Phân chia rõ 2 nhóm
+  const nativeBatches = batches.filter(b => b.purpose === "GIONG");
+  const meatBatches = batches.filter(b => b.purpose === "THIT");
 
-  // Tính tổng lượng cám toàn đàn vịt hôm nay
-  const totalDailyFeedAllBatchesKg = batches.reduce((acc, b) => {
+  const totalNativeCount = nativeBatches.reduce((s, b) => s + (b.current_count || 0), 0);
+  const totalMeatCount = meatBatches.reduce((s, b) => s + (b.current_count || 0), 0);
+  const totalEggs = eggs.reduce((s, e) => s + (e.egg_count || 0), 0);
+
+  const totalFeedTodayKg = batches.reduce((acc, b) => {
     const age = safeDateDiff(b.hatch_date);
-    const feedG = getDuckDailyFeedGram(b.breed_type, age);
-    return acc + (feedG * (b.current_count || 0)) / 1000;
+    return acc + (getDuckDailyFeedGram(b.breed_type, age) * (b.current_count || 0)) / 1000;
   }, 0).toFixed(1);
 
-  // Nhập lô vịt mới
-  const handleCreateBatch = async (e: React.FormEvent) => {
+  // Mở modal Sửa Lô Vịt
+  const handleOpenEditModal = (batch: PoultryBatch) => {
+    setEditingBatchId(batch.id);
+    setBatchFormData({
+      batch_code: batch.batch_code,
+      species: "DUCK",
+      breed_type: batch.breed_type || "Vịt Bầu",
+      purpose: batch.purpose,
+      stage: batch.stage,
+      hatch_date: batch.hatch_date,
+      initial_count: batch.initial_count,
+      current_count: batch.current_count,
+      pen_location: batch.pen_location,
+      notes: batch.notes || ""
+    });
+    setShowBatchModal(true);
+  };
+
+  // Mở modal Thêm Lô Vịt
+  const handleOpenAddModal = (purpose: "GIONG" | "THIT") => {
+    setEditingBatchId(null);
+    const count = purpose === "GIONG" ? nativeBatches.length + 1 : meatBatches.length + 1;
+    const code = purpose === "GIONG" ? `VB-${new Date().getFullYear().toString().slice(-2)}-${String(count).padStart(2, "0")}` : `VS-${new Date().getFullYear().toString().slice(-2)}-${String(count).padStart(2, "0")}`;
+    setBatchFormData({
+      batch_code: code,
+      species: "DUCK",
+      breed_type: purpose === "GIONG" ? "Vịt Cỏ Bản Địa (Vịt Bầu Bến)" : "Vịt Super Thịt",
+      purpose,
+      stage: purpose === "GIONG" ? "UM" : "THIT",
+      hatch_date: new Date().toISOString().split("T")[0],
+      initial_count: 50,
+      current_count: 50,
+      pen_location: purpose === "GIONG" ? "Ô đàn giống" : "Khu bờ ao",
+      notes: ""
+    });
+    setShowBatchModal(true);
+  };
+
+  // Lưu Thêm/Sửa Lô
+  const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBatch.batch_code?.trim()) return;
+    if (!batchFormData.batch_code?.trim()) return;
 
     try {
-      const { error } = await supabase.from("poultry_batches").insert([{
-        batch_code: newBatch.batch_code.trim().toUpperCase(),
+      const payload = {
+        batch_code: batchFormData.batch_code.trim().toUpperCase(),
         species: "DUCK",
-        breed_type: newBatch.breed_type || "Vịt Bầu",
-        purpose: "THIT",
-        stage: "THIT",
-        hatch_date: newBatch.hatch_date,
-        initial_count: Number(newBatch.initial_count || 0),
-        current_count: Number(newBatch.initial_count || 0),
-        pen_location: newBatch.pen_location || "Khu nuôi bờ ao",
-        notes: newBatch.notes || null
-      }]);
+        breed_type: batchFormData.breed_type || "Vịt Bầu",
+        breed_name: batchFormData.breed_type || "Vịt Bầu",
+        purpose: batchFormData.purpose || "THIT",
+        stage: batchFormData.stage || "THIT",
+        hatch_date: batchFormData.hatch_date,
+        initial_count: Number(batchFormData.initial_count || 0),
+        current_count: Number(batchFormData.current_count || 0),
+        pen_location: batchFormData.pen_location || "Khu bờ ao",
+        notes: batchFormData.notes || null
+      };
 
-      if (error) throw error;
-      alert(`✅ Đã nhập thành công lô vịt ${newBatch.batch_code}!`);
-      setShowAddBatchModal(false);
+      if (editingBatchId) {
+        const { error } = await supabase.from("poultry_batches").update(payload).eq("id", editingBatchId);
+        if (error) throw error;
+        alert(`✅ Đã cập nhật thành công lô vịt ${payload.batch_code}!`);
+      } else {
+        const { error } = await supabase.from("poultry_batches").insert([payload]);
+        if (error) throw error;
+        alert(`✅ Đã tạo mới thành công lô vịt ${payload.batch_code}!`);
+      }
+
+      setShowBatchModal(false);
       await fetchData();
     } catch (err: any) {
-      alert("Lỗi nhập lô vịt: " + err.message);
+      alert("Lỗi lưu lô: " + err.message);
     }
   };
 
-  // Lưu biên bản báo cân mẫu vịt
+  // Lưu biên bản báo cân
   const handleSaveWeightLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchForWeigh) return;
@@ -279,7 +313,6 @@ export default function DuckPage() {
       const ageDays = safeDateDiff(selectedBatchForWeigh.hatch_date);
       const standardGram = getDuckStandardWeight(selectedBatchForWeigh.breed_type, ageDays);
       const actualGram = Number(weighInput.avg_weight_gram);
-
       const diff = actualGram - standardGram;
       const diffPct = ((diff / standardGram) * 100).toFixed(1);
 
@@ -287,7 +320,7 @@ export default function DuckPage() {
       if (diff > standardGram * 0.08) evaluation = `Vượt chuẩn (+${diffPct}%)`;
       else if (diff < -standardGram * 0.08) evaluation = `Hụt cân (${diffPct}%)`;
 
-      const { error } = await supabase.from("poultry_weight_logs").insert([{
+      await supabase.from("poultry_weight_logs").insert([{
         batch_id: selectedBatchForWeigh.id,
         weigh_date: weighInput.weigh_date,
         day_age: ageDays,
@@ -297,228 +330,388 @@ export default function DuckPage() {
         notes: `${evaluation}. ${weighInput.notes || ""}`.trim()
       }]);
 
-      if (error) throw error;
-
-      alert(`✅ Đã lưu kết quả cân lô vịt ${selectedBatchForWeigh.batch_code}!\n- Thực tế: ${actualGram}g | Chuẩn: ${standardGram}g (${diff >= 0 ? "+" : ""}${diff}g)\n- Đánh giá: ${evaluation}`);
+      alert(`✅ Đã lưu kết quả cân lô vịt ${selectedBatchForWeigh.batch_code}!\n- Thực tế: ${actualGram}g | Chuẩn: ${standardGram}g\n- Đánh giá: ${evaluation}`);
       setShowWeighModal(false);
-      setSelectedBatchForWeigh(null);
-      await fetchData();
-    } catch (err: any) {
-      alert("Lỗi lưu biểu cân: " + err.message);
-    }
-  };
-
-  // Đánh dấu xuất bán toàn bộ lô
-  const handleMarkExported = async (batch: PoultryBatch) => {
-    if (!confirm(`Xác nhận XUẤT BÁN toàn bộ lô vịt ${batch.batch_code} (${batch.current_count} con)?`)) return;
-
-    try {
-      const { error } = await supabase.from("poultry_batches").update({
-        current_count: 0,
-        stage: "DA_XUAT",
-        notes: `${batch.notes || ""} [Đã xuất bán ngày ${new Date().toLocaleDateString('vi-VN')}]`.trim()
-      }).eq("id", batch.id);
-
-      if (error) throw error;
-      alert(`✅ Đã ghi nhận xuất bán thành công lô vịt ${batch.batch_code}!`);
       await fetchData();
     } catch (err: any) {
       alert("Lỗi: " + err.message);
     }
   };
 
-  if (!mounted) {
-    return (
-      <div style={{ backgroundColor: "#f0fdfa", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        Đang tải phân hệ Vịt...
-      </div>
-    );
-  }
+  // Xuất bán lô vịt
+  const handleSellBatch = async (batch: PoultryBatch) => {
+    if (!confirm(`Xác nhận XUẤT BÁN toàn bộ ${batch.current_count} con của lô ${batch.batch_code}?`)) return;
+    try {
+      await supabase.from("poultry_batches").update({
+        current_count: 0,
+        stage: "DA_XUAT",
+        notes: `${batch.notes || ""} [Đã xuất bán ngày ${new Date().toLocaleDateString("vi-VN")}]`.trim()
+      }).eq("id", batch.id);
+      alert("✅ Đã ghi nhận xuất bán thành công!");
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    }
+  };
+
+  if (!mounted) return <div style={{ padding: "20px", textAlign: "center" }}>Đang tải phân hệ Vịt...</div>;
 
   return (
     <div style={{ backgroundColor: "#f0fdfa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}>
-      {/* THANH ĐIỀU HƯỚNG DÙNG CHUNG (VUỐT ĐỔI LOÀI) */}
       <FarmSpeciesNav />
 
       <div style={{ padding: "16px" }}>
-        {/* TỔNG QUAN PHÂN HỆ VỊT */}
-        <div style={{ background: "linear-gradient(135deg, #0d9488 0%, #0f766e 100%)", borderRadius: "16px", padding: "18px 20px", color: "#fff", marginBottom: "16px" }}>
-          <div style={{ fontSize: "11px", color: "#99f6e4", fontWeight: "800", textTransform: "uppercase" }}>QUẢN LÝ ĐÀN VỊT THƯƠNG PHẨM</div>
+        {/* BANNER TỔNG ĐÀN VỊT */}
+        <div style={{ background: "linear-gradient(135deg, #0d9488 0%, #0f766e 100%)", borderRadius: "16px", padding: "18px 20px", color: "#fff", marginBottom: "14px" }}>
+          <div style={{ fontSize: "11px", color: "#99f6e4", fontWeight: "800", textTransform: "uppercase" }}>QUẢN LÝ ĐÀN VỊT TRANG TRẠI</div>
           <div style={{ fontSize: "28px", fontWeight: "900", margin: "4px 0" }}>
-            {totalDucks} <span style={{ fontSize: "15px", color: "#ccfbf1" }}>con</span>
+            {totalNativeCount + totalMeatCount} <span style={{ fontSize: "15px", color: "#ccfbf1" }}>con</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#e6fffa", marginTop: "4px" }}>
-            <span>● Số lô đang nuôi: <b>{batches.filter(b => b.current_count > 0).length} lô</b></span>
-            <span>● Cám xuất kho hôm nay: <b>~{totalDailyFeedAllBatchesKg} kg</b></span>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#e6fffa" }}>
+            <span>● Đàn sinh sản/bản địa: <b>{totalNativeCount} con</b></span>
+            <span>● Vịt thương phẩm: <b>{totalMeatCount} con</b></span>
+          </div>
+          <div style={{ fontSize: "12px", color: "#fef08a", marginTop: "4px", fontWeight: "800" }}>
+            🌾 Định mức cám xuất kho hôm nay: ~{totalFeedTodayKg} kg
           </div>
         </div>
 
-        {/* TIÊU ĐỀ & NÚT NHẬP LÔ */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-          <span style={{ fontSize: "14px", fontWeight: "900", color: "#134e4a" }}>
-            DANH SÁCH LÔ VỊT THỊT ({batches.length})
-          </span>
-          <button
-            onClick={() => {
-              setNewBatch({
-                batch_code: `VT-${new Date().getFullYear().toString().slice(-2)}-${String(batches.length + 1).padStart(2, "0")}`,
-                species: "DUCK",
-                breed_type: "Vịt Bầu",
-                purpose: "THIT",
-                stage: "THIT",
-                hatch_date: new Date().toISOString().split("T")[0],
-                initial_count: 50,
-                pen_location: "Khu nuôi bờ ao",
-                notes: ""
-              });
-              setShowAddBatchModal(true);
-            }}
-            style={{ padding: "6px 12px", borderRadius: "8px", background: "#0d9488", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
-          >
-            + Nhập Lô Mới
-          </button>
+        {/* THANH CHUYỂN TAB CHUYÊN NGHIỆP */}
+        <div style={{ display: "flex", gap: "6px", background: "#ccfbf1", padding: "4px", borderRadius: "12px", marginBottom: "16px" }}>
+          {[
+            { id: "THUONG_PHAM", label: `🦆 Vịt Thịt (${meatBatches.length})` },
+            { id: "BAN_DIA", label: `👑 Vịt Bản Địa (${nativeBatches.length})` },
+            { id: "QUY_TRINH", label: `🩺 Quy Trình Kỹ Thuật` }
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id as any)}
+              style={{
+                flex: 1, padding: "8px 0", borderRadius: "9px", border: "none", fontSize: "11.5px", fontWeight: "900", cursor: "pointer",
+                background: activeTab === t.id ? "#0f766e" : "transparent",
+                color: activeTab === t.id ? "#fff" : "#134e4a",
+                transition: "all 0.15s ease"
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        {/* DANH SÁCH LÔ VỊT */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {batches.length === 0 ? (
-            <div style={{ padding: "16px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px", border: "1px solid #99f6e4" }}>
-              Chưa có lô vịt nào. Bấm <b>"+ Nhập Lô Mới"</b> để bắt đầu theo dõi!
+        {/* ================================================================= */}
+        {/* TAB 1: VỊT THƯƠNG PHẨM (VỊT SUPER, VỊT BẦU THỊT)                   */}
+        {/* ================================================================= */}
+        {activeTab === "THUONG_PHAM" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <span style={{ fontSize: "14px", fontWeight: "900", color: "#134e4a" }}>CÁC LÔ VỊT THỊT ({meatBatches.length})</span>
+              <button
+                onClick={() => handleOpenAddModal("THIT")}
+                style={{ padding: "6px 12px", borderRadius: "8px", background: "#0d9488", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
+              >
+                + Nhập Lô Mới
+              </button>
             </div>
-          ) : (
-            batches.map(b => {
-              const ageDays = safeDateDiff(b.hatch_date);
-              const isSuper = b.breed_type.toLowerCase().includes("super");
-              const targetDays = isSuper ? 50 : 70;
-              const daysLeft = Math.max(0, targetDays - ageDays);
-              const isExported = b.stage === "DA_XUAT" || b.current_count === 0;
 
-              const standardGram = getDuckStandardWeight(b.breed_type, ageDays);
-              const feedPerDuckGram = getDuckDailyFeedGram(b.breed_type, ageDays);
-              const totalFeedBatchKg = ((feedPerDuckGram * b.current_count) / 1000).toFixed(1);
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {meatBatches.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px", border: "1px solid #99f6e4" }}>
+                  Chưa có lô vịt thịt nào. Bấm <b>"+ Nhập Lô Mới"</b> để bắt đầu theo dõi định mức cám và xuất bán!
+                </div>
+              ) : (
+                meatBatches.map(b => {
+                  const ageDays = safeDateDiff(b.hatch_date);
+                  const isSuper = (b.breed_type || "").toLowerCase().includes("super");
+                  const targetDays = isSuper ? 50 : 70;
+                  const daysLeft = Math.max(0, targetDays - ageDays);
+                  const isExported = b.stage === "DA_XUAT" || b.current_count === 0;
 
-              const latestWeigh = weightLogs.find(w => w.batch_id === b.id);
-              const hasWeighed = !!latestWeigh;
+                  const standardGram = getDuckStandardWeight(b.breed_type, ageDays);
+                  const feedPerDuck = getDuckDailyFeedGram(b.breed_type, ageDays);
+                  const batchFeedKg = ((feedPerDuck * b.current_count) / 1000).toFixed(1);
+                  const latestWeigh = weightLogs.find(w => w.batch_id === b.id);
 
-              let weightBadgeColor = "#64748b";
-              let weightDiffText = "";
-              if (latestWeigh) {
-                const diff = Number(latestWeigh.avg_weight_gram) - Number(latestWeigh.standard_weight_gram);
-                if (diff >= 0) {
-                  weightBadgeColor = "#059669";
-                  weightDiffText = `+${diff}g`;
-                } else {
-                  weightBadgeColor = diff < -200 ? "#dc2626" : "#d97706";
-                  weightDiffText = `${diff}g`;
-                }
-              }
-
-              return (
-                <div key={b.id} style={{ background: isExported ? "#f1f5f9" : "#fff", padding: "14px 16px", borderRadius: "14px", border: isExported ? "1px solid #cbd5e1" : "1.5px solid #99f6e4", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <b style={{ fontSize: "16px", color: "#0f766e" }}>{b.batch_code}</b>
-                      <span style={{ fontSize: "12px", marginLeft: "6px", color: "#334155", fontWeight: "700" }}>({b.breed_type})</span>
-                    </div>
-
-                    <span style={{
-                      fontSize: "11px", fontWeight: "800", padding: "3px 8px", borderRadius: "6px",
-                      background: isExported ? "#e2e8f0" : daysLeft === 0 ? "#dcfce7" : "#ccfbf1",
-                      color: isExported ? "#475569" : daysLeft === 0 ? "#15803d" : "#0f766e"
-                    }}>
-                      {isExported ? "Đã xuất bán" : daysLeft === 0 ? "✅ Đã tới ngày xuất" : `⏳ Còn ${daysLeft} ngày xuất`}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: "13px", color: "#334155", margin: "8px 0", lineHeight: "1.6" }}>
-                    • Tuổi đàn: <b>{ageDays} ngày tuổi</b> (Nhập: {formatDateVN(b.hatch_date)})<br/>
-                    • Quy mô: <b style={{ color: isExported ? "#64748b" : "#0d9488" }}>{b.current_count} con</b> (Ban đầu: {b.initial_count})<br/>
-                    {!isExported && (
-                      <>
-                        • Định mức cám hôm nay: <b style={{ color: "#b45309" }}>~{totalFeedBatchKg} kg/ngày</b> ({feedPerDuckGram}g/con)<br/>
-                      </>
-                    )}
-                    • Vị trí nuôi: <b>{b.pen_location || "—"}</b>
-                  </div>
-
-                  {/* KHỐI BIỂU CÂN ĐỐI CHIẾU TIÊU CHUẨN */}
-                  {!isExported && (
-                    <div style={{ background: "#f0fdfa", padding: "10px 12px", borderRadius: "10px", border: "1px solid #99f6e4", marginBottom: "8px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px" }}>
-                        <span>⚖️ Chuẩn {ageDays} ngày: <b style={{ color: "#0d9488" }}>{standardGram}g</b></span>
-                        {hasWeighed ? (
-                          <span>
-                            Thực tế: <b style={{ color: weightBadgeColor }}>{latestWeigh.avg_weight_gram}g</b> ({weightDiffText})
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Chưa báo cân</span>
-                        )}
+                  return (
+                    <div key={b.id} style={{ background: isExported ? "#f1f5f9" : "#fff", padding: "14px 16px", borderRadius: "14px", border: isExported ? "1px solid #cbd5e1" : "1.5px solid #99f6e4" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <b style={{ fontSize: "16px", color: "#0f766e" }}>{b.batch_code}</b>
+                          <span style={{ fontSize: "12px", color: "#334155", fontWeight: "800", marginLeft: "6px" }}>({b.breed_type})</span>
+                        </div>
+                        <span style={{
+                          fontSize: "11px", fontWeight: "800", padding: "3px 8px", borderRadius: "6px",
+                          background: isExported ? "#e2e8f0" : daysLeft === 0 ? "#dcfce7" : "#ccfbf1",
+                          color: isExported ? "#475569" : daysLeft === 0 ? "#15803d" : "#0f766e"
+                        }}>
+                          {isExported ? "Đã xuất bán" : daysLeft === 0 ? "✅ Đã tới ngày xuất" : `⏳ Còn ${daysLeft} ngày xuất`}
+                        </span>
                       </div>
 
-                      {hasWeighed && latestWeigh.notes && (
-                        <div style={{ fontSize: "11px", color: "#475569", marginTop: "3px" }}>
-                          Đánh giá: <b>{latestWeigh.notes}</b> (Cân ngày: {formatDateVN(latestWeigh.weigh_date)})
+                      <div style={{ fontSize: "13px", color: "#334155", margin: "8px 0", lineHeight: "1.6" }}>
+                        • Tuổi đàn: <b>{ageDays} ngày</b> (Vào đàn: {formatDateVN(b.hatch_date)})<br/>
+                        • Quy mô: <b style={{ color: "#0d9488" }}>{b.current_count} con</b> (Ban đầu: {b.initial_count})<br/>
+                        {!isExported && <>• Định mức cám hôm nay: <b style={{ color: "#b45309" }}>~{batchFeedKg} kg</b> ({feedPerDuck}g/con/ngày)<br/></>}
+                        • Ô nuôi: <b>{b.pen_location || "—"}</b>
+                      </div>
+
+                      <div style={{ background: "#f0fdfa", padding: "8px 10px", borderRadius: "8px", fontSize: "12px", border: "1px solid #99f6e4", marginBottom: "8px" }}>
+                        Chuẩn giống ({ageDays} ngày): <b>{standardGram}g</b> | Thực tế: <b>{latestWeigh ? `${latestWeigh.avg_weight_gram}g (${latestWeigh.notes || ""})` : "Chưa cân"}</b>
+                      </div>
+
+                      {!isExported && (
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            onClick={() => {
+                              setSelectedBatchForWeigh(b);
+                              setWeighInput({ weigh_date: new Date().toISOString().split("T")[0], sample_count: 10, avg_weight_gram: standardGram, notes: "" });
+                              setShowWeighModal(true);
+                            }}
+                            style={{ flex: 1, padding: "7px", borderRadius: "8px", background: "#ccfbf1", color: "#0f766e", border: "1px solid #99f6e4", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                          >
+                            ⚖️ Báo cân
+                          </button>
+                          <button
+                            onClick={() => handleSellBatch(b)}
+                            style={{ flex: 1, padding: "7px", borderRadius: "8px", background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                          >
+                            💰 Xuất bán
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditModal(b)}
+                            style={{ padding: "7px 12px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                          >
+                            ✎ Sửa
+                          </button>
                         </div>
                       )}
                     </div>
-                  )}
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
-                  {/* KHỐI VACCINE THEO MỐC NGÀY TUỔI */}
-                  {!isExported && (
-                    <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", fontSize: "11px", color: "#334155", marginBottom: "8px", border: "1px solid #e2e8f0" }}>
-                      <b>Lịch vaccine:</b>{" "}
-                      {ageDays <= 3 ? "Tiêm Viêm gan siêu vi trùng (1-3 ngày)" :
-                       ageDays <= 15 ? "Tiêm Dịch tả vịt lần 1 (14-15 ngày)" :
-                       ageDays <= 25 ? "Tiêm Cúm gia cầm H5N1 (21-25 ngày)" :
-                       "Duy trì vỗ béo tăng trọng đến xuất chuồng"}
-                    </div>
-                  )}
-
-                  {/* NÚT BÁO CÂN & XUẤT BÁN */}
-                  {!isExported && (
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        onClick={() => {
-                          setSelectedBatchForWeigh(b);
-                          setWeighInput({
-                            weigh_date: new Date().toISOString().split("T")[0],
-                            sample_count: 10,
-                            avg_weight_gram: standardGram,
-                            notes: ""
-                          });
-                          setShowWeighModal(true);
-                        }}
-                        style={{ flex: 1, padding: "8px", borderRadius: "8px", background: "#ccfbf1", color: "#0f766e", border: "1px solid #99f6e4", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
-                      >
-                        ⚖️ Báo cân mẫu
-                      </button>
-
-                      <button
-                        onClick={() => handleMarkExported(b)}
-                        style={{ flex: 1, padding: "8px", borderRadius: "8px", background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
-                      >
-                        💰 Xuất bán lô này
-                      </button>
-                    </div>
-                  )}
+        {/* ================================================================= */}
+        {/* TAB 2: VỊT BẢN ĐỊA / ĐÀN SINH SẢN                                  */}
+        {/* ================================================================= */}
+        {activeTab === "BAN_DIA" && (
+          <div>
+            {/* THU GOM TRỨNG VỊT */}
+            <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "14px", padding: "14px 16px", marginBottom: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <b style={{ color: "#854d0e", fontSize: "13.5px" }}>🥚 THU TRỨNG & ẤP NỞ VỊT BẢN ĐỊA</b>
+                  <div style={{ fontSize: "12px", color: "#713f12", marginTop: "2px" }}>
+                    Tổng thu gần đây: <b>{totalEggs} quả</b>
+                  </div>
                 </div>
-              );
-            })
-          )}
-        </div>
+                <button
+                  onClick={() => setShowEggModal(true)}
+                  style={{ padding: "8px 12px", borderRadius: "8px", background: "#ca8a04", color: "#fff", border: "none", fontWeight: "900", fontSize: "12px", cursor: "pointer" }}
+                >
+                  + Nhặt trứng
+                </button>
+              </div>
+            </div>
 
-        {/* QUY TRÌNH THÚ Y & THỨC ĂN VỊT */}
-        <div style={{ marginTop: "20px", background: "#f0fdf4", padding: "14px", borderRadius: "12px", fontSize: "12px", lineHeight: "1.7", color: "#166534" }}>
-          <b style={{ color: "#14532d", fontSize: "13px" }}>🦆 QUY TRÌNH VACCINE & CHĂM SÓC VỊT THỊT:</b><br/>
-          • <b>1 - 3 ngày tuổi:</b> Tiêm vaccine phòng Viêm gan siêu vi trùng vịt.<br/>
-          • <b>14 - 15 ngày:</b> Tiêm vaccine Dịch tả vịt lần 1.<br/>
-          • <b>21 - 25 ngày:</b> Tiêm vaccine Cúm gia cầm (H5N1 / H5N6).<br/>
-          • <b>35 ngày:</b> Nhắc lại Dịch tả vịt (nếu nuôi vịt Bầu kéo dài trên 60 ngày).<br/>
-          • <b>Giai đoạn vỗ béo:</b> Cung cấp đầy đủ nước sạch, kết hợp cám viên đậm đặc với ngô ủ men, rau bèo sẵn có tại địa phương để giảm chi phí thức ăn.
-        </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <span style={{ fontSize: "14px", fontWeight: "900", color: "#134e4a" }}>CÁC LÔ VỊT BẢN ĐỊA / SINH SẢN ({nativeBatches.length})</span>
+              <button
+                onClick={() => handleOpenAddModal("GIONG")}
+                style={{ padding: "6px 12px", borderRadius: "8px", background: "#059669", color: "#fff", border: "none", fontWeight: "800", fontSize: "12px", cursor: "pointer" }}
+              >
+                + Tạo Lô Giống
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {nativeBatches.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px", border: "1px solid #99f6e4" }}>
+                  Chưa có lô vịt bản địa / sinh sản nào. Bấm <b>"+ Tạo Lô Giống"</b> để đưa đàn vịt Cỏ / vịt Bầu vào theo dõi!
+                </div>
+              ) : (
+                nativeBatches.map(b => {
+                  const ageDays = safeDateDiff(b.hatch_date);
+                  const standardGram = getDuckStandardWeight(b.breed_type, ageDays);
+                  const latestWeigh = weightLogs.find(w => w.batch_id === b.id);
+
+                  return (
+                    <div key={b.id} style={{ background: "#fff", padding: "14px 16px", borderRadius: "14px", border: "1.5px solid #99f6e4" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <b style={{ fontSize: "16px", color: "#0f766e" }}>{b.batch_code}</b>
+                          <span style={{ fontSize: "12px", color: "#047857", fontWeight: "800", marginLeft: "6px" }}>({b.breed_type})</span>
+                        </div>
+                        <span style={{ fontSize: "11px", fontWeight: "800", padding: "3px 8px", borderRadius: "6px", background: "#dcfce7", color: "#15803d" }}>
+                          {b.stage === "SINH_SAN" ? "👑 Đàn Đẻ Trứng" : b.stage === "UM" ? "🐣 Đang Úm" : "Hậu Bị"}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: "13px", color: "#334155", margin: "8px 0", lineHeight: "1.6" }}>
+                        • Tuổi đàn: <b>{ageDays} ngày</b> (Nhập: {formatDateVN(b.hatch_date)})<br/>
+                        • Quy mô: <b style={{ color: "#0f766e" }}>{b.current_count} con</b> (Ban đầu: {b.initial_count})<br/>
+                        • Ô chuồng: <b>{b.pen_location || "—"}</b>
+                      </div>
+
+                      <div style={{ background: "#f0fdfa", padding: "8px 10px", borderRadius: "8px", fontSize: "12px", border: "1px solid #99f6e4", marginBottom: "8px" }}>
+                        Chuẩn giống: <b>{standardGram}g</b> | Cân gần nhất: <b>{latestWeigh ? `${latestWeigh.avg_weight_gram}g (${latestWeigh.notes || ""})` : "Chưa cân"}</b>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          onClick={() => {
+                            setSelectedBatchForWeigh(b);
+                            setWeighInput({ weigh_date: new Date().toISOString().split("T")[0], sample_count: 10, avg_weight_gram: standardGram, notes: "" });
+                            setShowWeighModal(true);
+                          }}
+                          style={{ flex: 1, padding: "7px", borderRadius: "8px", background: "#ccfbf1", color: "#0f766e", border: "1px solid #99f6e4", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                        >
+                          ⚖️ Cân mẫu
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditModal(b)}
+                          style={{ padding: "7px 14px", borderRadius: "8px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}
+                        >
+                          ✎ Sửa
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 3: QUY TRÌNH KỸ THUẬT & THÚ Y VỊT CHI TIẾT                     */}
+        {/* ================================================================= */}
+        {activeTab === "QUY_TRINH" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#0f766e" }}>
+                🦆 1. KỸ THUẬT ÚM VỊT CON (1 – 21 NGÀY TUỔI)
+              </h3>
+              • <b>Nhiệt độ úm:</b> Ngày 1–3: 32–34°C; Ngày 4–7: 30–32°C; Tuần 2: 26–28°C; Tuần 3: 22–25°C. Vịt con rất mẫn cảm với ẩm ướt và lạnh bụng.<br/>
+              • <b>Nước uống:</b> Vịt cần lượng nước gấp đôi gia cầm khác, nhưng <b>tuyệt đối không để vịt ướt lông hoặc bơi lội trước 14 ngày tuổi</b> vì chưa phát triển tuyến nhờn chống thấm nước.<br/>
+              • <b>Tập ăn:</b> Ngày 1 cho ăn hạt gạo tấm hoặc ngô mảnh ngâm mềm; từ ngày thứ 2 bắt đầu cho ăn cám viên chuyên dụng cho vịt con.
+            </div>
+
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#1d4ed8" }}>
+                💉 2. PHÁC ĐỒ VACCINE VỊT BẮT BUỘC
+              </h3>
+              • <b>1 – 3 ngày:</b> Tiêm vaccine hoặc kháng thể phòng bệnh <b>Viêm gan siêu vi trùng vịt</b> (bệnh gây chết nhanh co giật ngửa cổ).<br/>
+              • <b>14 – 15 ngày:</b> Tiêm dưới da cổ vaccine phòng bệnh <b>Dịch tả vịt lần 1</b>.<br/>
+              • <b>21 – 25 ngày:</b> Tiêm vaccine phòng <b>Cúm gia cầm (H5N1 / H5N6)</b> mũi 1.<br/>
+              • <b>35 ngày:</b> Nhắc lại Dịch tả vịt lần 2 (nếu nuôi vịt Bầu kéo dài trên 60 ngày hoặc vịt đẻ).<br/>
+              • <b>Phòng bại liệt, E.coli, Riemerella:</b> Định kỳ bổ sung kháng sinh amoxicillin hoặc doxy-colistin vào các ngày thay đổi thời tiết.
+            </div>
+
+            <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#15803d" }}>
+                🌾 3. DINH DƯỠNG VỖ BÉO & TẬN DỤNG THỦY SINH
+              </h3>
+              • <b>Vịt Super thịt:</b> Nuôi nhốt cạn hoặc bán thâm canh, cho ăn cám công nghiệp tự do kết hợp máng uống tự động để đạt cân nặng 3.4–3.6 kg ở ngày 48–50.<br/>
+              • <b>Vịt Bầu / Vịt Cỏ Cao Bằng:</b> Sau 25 ngày có thể thả mặt nước ao hồ sạch, đồng ruộng sau mùa gặt. Bổ sung ốc bươu, cá tép, ngô hạt ủ men vi sinh để thịt thơm đậm đà, giảm 40% tiền cám viên.
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* MODAL BÁO CÂN MẪU */}
+      {/* MODAL THÊM / SỬA LÔ VỊT */}
+      {showBatchModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#0f766e" }}>
+              {editingBatchId ? "✎ Chỉnh Sửa Thông Tin Lô Vịt" : "+ Nhập Lô Vịt Mới"}
+            </h3>
+            <form onSubmit={handleSaveBatch} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Mã Lô (*):</label>
+                <input required value={batchFormData.batch_code} onChange={e => setBatchFormData({ ...batchFormData, batch_code: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Phân hệ nuôi:</label>
+                  <select
+                    value={batchFormData.purpose}
+                    onChange={e => {
+                      const p = e.target.value as "GIONG" | "THIT";
+                      setBatchFormData({
+                        ...batchFormData,
+                        purpose: p,
+                        breed_type: p === "GIONG" ? "Vịt Cỏ Bản Địa (Vịt Bầu Bến)" : "Vịt Super Thịt"
+                      });
+                    }}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                  >
+                    <option value="THIT">🦆 Nuôi Thịt</option>
+                    <option value="GIONG">👑 Bản Địa / Sinh Sản</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Tên giống vịt:</label>
+                  <input
+                    placeholder="VD: Vịt Bầu, Vịt Super..."
+                    value={batchFormData.breed_type}
+                    onChange={e => setBatchFormData({ ...batchFormData, breed_type: e.target.value })}
+                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Ngày nhập đàn:</label>
+                  <input type="date" required value={batchFormData.hatch_date} onChange={e => setBatchFormData({ ...batchFormData, hatch_date: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Giai đoạn:</label>
+                  <select value={batchFormData.stage} onChange={e => setBatchFormData({ ...batchFormData, stage: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                    <option value="UM">🐣 Đang Úm</option>
+                    <option value="THIT">🦆 Nuôi thịt</option>
+                    <option value="SINH_SAN">👑 Đàn Đẻ Trứng</option>
+                    <option value="DA_XUAT">🏷️ Đã xuất bán</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Số ban đầu:</label>
+                  <input type="number" required min="1" value={batchFormData.initial_count} onChange={e => setBatchFormData({ ...batchFormData, initial_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: "800", color: "#0d9488" }}>Số hiện tại:</label>
+                  <input type="number" required min="0" value={batchFormData.current_count} onChange={e => setBatchFormData({ ...batchFormData, current_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1.5px solid #0d9488", fontWeight: "800", boxSizing: "border-box" }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Khu vực nuôi / Bờ ao:</label>
+                <input value={batchFormData.pen_location} onChange={e => setBatchFormData({ ...batchFormData, pen_location: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú thêm:</label>
+                <input placeholder="Thương lái đặt trước, tình trạng..." value={batchFormData.notes} onChange={e => setBatchFormData({ ...batchFormData, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
+                <button type="button" onClick={() => setShowBatchModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" style={{ padding: "6px 16px", borderRadius: "6px", background: "#0d9488", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>
+                  {editingBatchId ? "Cập Nhật" : "Lưu Lô"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BÁO CÂN */}
       {showWeighModal && selectedBatchForWeigh && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "18px" }}>
@@ -528,58 +721,28 @@ export default function DuckPage() {
             <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
               Giống: <b>{selectedBatchForWeigh.breed_type}</b> • Tuổi: <b>{safeDateDiff(selectedBatchForWeigh.hatch_date)} ngày</b>
             </div>
-
             <form onSubmit={handleSaveWeightLog} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "800" }}>Ngày cân:</label>
-                <input
-                  type="date"
-                  required
-                  value={weighInput.weigh_date}
-                  onChange={e => setWeighInput({ ...weighInput, weigh_date: e.target.value })}
-                  style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
+                <input type="date" required value={weighInput.weigh_date} onChange={e => setWeighInput({ ...weighInput, weigh_date: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Số con cân mẫu:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={weighInput.sample_count}
-                    onChange={e => setWeighInput({ ...weighInput, sample_count: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                  />
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Số con bắt cân:</label>
+                  <input type="number" min="1" value={weighInput.sample_count} onChange={e => setWeighInput({ ...weighInput, sample_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
                 </div>
                 <div>
                   <label style={{ fontSize: "11px", fontWeight: "800", color: "#0f766e" }}>Cân TB thực tế (g):</label>
-                  <input
-                    type="number"
-                    required
-                    min="10"
-                    max="6000"
-                    value={weighInput.avg_weight_gram}
-                    onChange={e => setWeighInput({ ...weighInput, avg_weight_gram: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1.5px solid #0d9488", fontWeight: "800", boxSizing: "border-box" }}
-                  />
+                  <input type="number" required min="10" max="6000" value={weighInput.avg_weight_gram} onChange={e => setWeighInput({ ...weighInput, avg_weight_gram: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1.5px solid #0d9488", fontWeight: "800", boxSizing: "border-box" }} />
                 </div>
               </div>
-
               <div style={{ background: "#f0fdfa", padding: "8px", borderRadius: "8px", fontSize: "12px", color: "#0f766e" }}>
                 Chuẩn giống ở tuổi này: <b>{getDuckStandardWeight(selectedBatchForWeigh.breed_type, safeDateDiff(selectedBatchForWeigh.hatch_date))} gram</b>
               </div>
-
               <div>
-                <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú tình trạng vịt:</label>
-                <input
-                  placeholder="Lông mượt, ăn mạnh, bơi tốt..."
-                  value={weighInput.notes}
-                  onChange={e => setWeighInput({ ...weighInput, notes: e.target.value })}
-                  style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}
-                />
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú tình trạng đàn:</label>
+                <input placeholder="Lông mượt, ăn mạnh, bơi tốt..." value={weighInput.notes} onChange={e => setWeighInput({ ...weighInput, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
-
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px" }}>
                 <button type="button" onClick={() => setShowWeighModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
                 <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#0d9488", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>Lưu Kết Quả</button>
@@ -589,44 +752,41 @@ export default function DuckPage() {
         </div>
       )}
 
-      {/* MODAL NHẬP LÔ VỊT MỚI */}
-      {showAddBatchModal && (
+      {/* MODAL THU GOM TRỨNG */}
+      {showEggModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "340px", padding: "18px" }}>
-            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#0f766e" }}>+ Nhập Lô Vịt Thịt Mới</h3>
-            <form onSubmit={handleCreateBatch} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "320px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "900", color: "#854d0e" }}>🥚 Ghi Nhận Thu Gom Trứng Vịt</h3>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              await supabase.from("egg_harvests").insert([{
+                harvest_date: eggInput.harvest_date,
+                egg_count: Number(eggInput.egg_count || 0),
+                incubated_count: Number(eggInput.incubated_count || 0),
+                notes: eggInput.notes || null,
+                species: "DUCK"
+              }]);
+              alert(`✅ Đã lưu ${eggInput.egg_count} quả trứng vịt!`);
+              setShowEggModal(false);
+              await fetchData();
+            }} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <div>
-                <label style={{ fontSize: "11px", fontWeight: "800" }}>Mã Lô (*):</label>
-                <input required value={newBatch.batch_code} onChange={e => setNewBatch({ ...newBatch, batch_code: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Ngày thu:</label>
+                <input type="date" required value={eggInput.harvest_date} onChange={e => setEggInput({ ...eggInput, harvest_date: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
-
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "800" }}>Giống vịt:</label>
-                <select value={newBatch.breed_type} onChange={e => setNewBatch({ ...newBatch, breed_type: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }}>
-                  <option value="Vịt Bầu">Vịt Bầu (Địa phương / Bầu Bến)</option>
-                  <option value="Vịt Super">Vịt Super (Siêu nạc / Siêu thịt)</option>
-                </select>
-              </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Ngày nhập đàn:</label>
-                  <input type="date" required value={newBatch.hatch_date} onChange={e => setNewBatch({ ...newBatch, hatch_date: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Tổng số trứng:</label>
+                  <input type="number" required min="1" value={eggInput.egg_count} onChange={e => setEggInput({ ...eggInput, egg_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Số con nhập:</label>
-                  <input type="number" required min="1" value={newBatch.initial_count} onChange={e => setNewBatch({ ...newBatch, initial_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                  <label style={{ fontSize: "11px", fontWeight: "800" }}>Vào lò ấp:</label>
+                  <input type="number" min="0" value={eggInput.incubated_count} onChange={e => setEggInput({ ...eggInput, incubated_count: Number(e.target.value) })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
                 </div>
               </div>
-
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: "800" }}>Khu vực / Ô chuồng:</label>
-                <input value={newBatch.pen_location} onChange={e => setNewBatch({ ...newBatch, pen_location: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-              </div>
-
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px" }}>
-                <button type="button" onClick={() => setShowAddBatchModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
-                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#0d9488", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>Nhập Đàn</button>
+                <button type="button" onClick={() => setShowEggModal(false)} style={{ padding: "6px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" style={{ padding: "6px 14px", borderRadius: "6px", background: "#ca8a04", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>Lưu Lại</button>
               </div>
             </form>
           </div>
