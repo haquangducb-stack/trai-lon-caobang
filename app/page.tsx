@@ -1172,17 +1172,18 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM XUẤT FILE WORD BÁO CÁO THEO ĐÚNG MẪU CHUẨN CỦA ANH
+  // HÀM XUẤT FILE WORD BÁO CÁO THEO ĐÚNG MẪU CHUẨN
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const yyyy = today.getFullYear();
     const yy = String(yyyy).slice(-2);
+    const todayStr = today.toISOString().split("T")[0];
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
-    // 1. Thu thập biến động đàn trong N ngày qua (các lứa đẻ / cai sữa trong khoảng time)
+    // 1. Thu thập biến động đàn trong N ngày qua (các lứa đẻ / cai sữa trong kỳ)
     const recentEvents: string[] = [];
     (Array.isArray(litters) ? litters : []).forEach(l => {
       const dDiff = safeDateDiff(l.farrow_date);
@@ -1198,14 +1199,12 @@ export default function FarmApp() {
     });
 
     // 2. Thống kê cơ cấu đàn theo từng nhóm giống
-    // Đực giống
     const boarsByBreed: Record<string, number> = {};
     boarList.forEach(b => {
       const br = b.breed_id || "Landrace";
       boarsByBreed[br] = (boarsByBreed[br] || 0) + 1;
     });
 
-    // Nái phân theo giống và trạng thái
     const sowsGrouped: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
       let br = s.breed_id || "Hạ Lang";
@@ -1219,13 +1218,26 @@ export default function FarmApp() {
       sowsGrouped[br][st] = (sowsGrouped[br][st] || 0) + 1;
     });
 
-    // 3. Chuẩn bị danh sách việc đã làm & việc sắp tới
-    const doneTasksText = filteredCompletedTasks.length > 0 
-      ? filteredCompletedTasks.map((t, idx) => `• ${t.title} (Ngày xong: ${formatDateVN(t.due_date)})`).join("<br/>")
+    // 3. Xử lý danh sách việc ĐÃ LÀM & KẾ HOẠCH TIẾP THEO (Bỏ ngày, loại việc quá hạn/đã bỏ qua)
+    // Việc đã làm xong trong N ngày qua (chỉ ghi nội dung, bỏ ngày thực hiện)
+    const doneTasksList = filteredCompletedTasks.map(t => `• ${t.title}`);
+    const doneTasksText = doneTasksList.length > 0 
+      ? doneTasksList.join("<br/>")
       : "• Không có công việc phát sinh đặc biệt.";
 
-    const nextTasksText = filteredPendingTasks.length > 0
-      ? filteredPendingTasks.map((t, idx) => `• ${t.title} (Hạn: ${formatDateVN(t.due_date)})`).join("<br/>")
+    // Việc kế hoạch: LOẠI BỎ VIỆC QUÁ HẠN (due_date < today) VÀ VIỆC ĐÃ BỎ QUA (is_dismissed)
+    const validUpcomingTasks = fullTasks.filter(t => {
+      if (t.is_completed || t.is_dismissed) return false;
+      // Chỉ lấy việc từ ngày hôm nay trở đi (không lấy việc quá hạn cũ)
+      if (t.due_date && t.due_date < todayStr) return false;
+      
+      const dDiff = safeDateDiff(t.due_date);
+      // Nằm trong khoảng kế hoạch reportDays tới
+      return Math.abs(dDiff) <= reportDays;
+    }).map(t => `• ${t.title}`);
+
+    const nextTasksText = validUpcomingTasks.length > 0
+      ? validUpcomingTasks.join("<br/>")
       : "• Tiếp tục theo dõi chăm sóc nuôi dưỡng và duy trì an toàn sinh học toàn trại.";
 
     // 4. Tạo bảng HTML theo đúng quy chuẩn Word của file mẫu
