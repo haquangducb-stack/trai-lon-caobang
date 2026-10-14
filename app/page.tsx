@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient, User } from "@supabase/supabase-js";
+import FarmSpeciesNav from "@/components/FarmSpeciesNav";
 
 interface Pig {
   id: string;
@@ -1139,7 +1140,6 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM LƯU SỬA NGÀY PHỐI GIỐNG (INSEMINATION)
   const handleSaveInsemEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!requireAuth("sửa thông tin phối giống")) return;
@@ -1172,7 +1172,6 @@ export default function FarmApp() {
     }
   };
 
-  // HÀM XUẤT FILE WORD BÁO CÁO THEO ĐÚNG MẪU CHUẨN
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
@@ -1183,7 +1182,6 @@ export default function FarmApp() {
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
-    // 1. Thu thập biến động đàn trong N ngày qua (các lứa đẻ / cai sữa trong kỳ)
     const recentEvents: string[] = [];
     (Array.isArray(litters) ? litters : []).forEach(l => {
       const dDiff = safeDateDiff(l.farrow_date);
@@ -1198,7 +1196,6 @@ export default function FarmApp() {
       }
     });
 
-    // 2. Thống kê cơ cấu đàn theo từng nhóm giống
     const boarsByBreed: Record<string, number> = {};
     boarList.forEach(b => {
       const br = b.breed_id || "Landrace";
@@ -1218,21 +1215,16 @@ export default function FarmApp() {
       sowsGrouped[br][st] = (sowsGrouped[br][st] || 0) + 1;
     });
 
-    // 3. Xử lý danh sách việc ĐÃ LÀM & KẾ HOẠCH TIẾP THEO (Bỏ ngày, loại việc quá hạn/đã bỏ qua)
-    // Việc đã làm xong trong N ngày qua (chỉ ghi nội dung, bỏ ngày thực hiện)
     const doneTasksList = filteredCompletedTasks.map(t => `• ${t.title}`);
     const doneTasksText = doneTasksList.length > 0 
       ? doneTasksList.join("<br/>")
       : "• Không có công việc phát sinh đặc biệt.";
 
-    // Việc kế hoạch: LOẠI BỎ VIỆC QUÁ HẠN (due_date < today) VÀ VIỆC ĐÃ BỎ QUA (is_dismissed)
     const validUpcomingTasks = fullTasks.filter(t => {
       if (t.is_completed || t.is_dismissed) return false;
-      // Chỉ lấy việc từ ngày hôm nay trở đi (không lấy việc quá hạn cũ)
       if (t.due_date && t.due_date < todayStr) return false;
       
       const dDiff = safeDateDiff(t.due_date);
-      // Nằm trong khoảng kế hoạch reportDays tới
       return Math.abs(dDiff) <= reportDays;
     }).map(t => `• ${t.title}`);
 
@@ -1240,11 +1232,9 @@ export default function FarmApp() {
       ? validUpcomingTasks.join("<br/>")
       : "• Tiếp tục theo dõi chăm sóc nuôi dưỡng và duy trì an toàn sinh học toàn trại.";
 
-    // 4. Tạo bảng HTML theo đúng quy chuẩn Word của file mẫu
     let tableRowsHtml = "";
     let stt = 1;
 
-    // A. Hàng Đực giống
     Object.entries(boarsByBreed).forEach(([br, cnt]) => {
       tableRowsHtml += `
         <tr>
@@ -1257,7 +1247,6 @@ export default function FarmApp() {
       `;
     });
 
-    // B. Các hàng Nái theo từng nhóm
     Object.entries(sowsGrouped).forEach(([groupName, stages]) => {
       const stageEntries = Object.entries(stages);
       const totalInGroup = stageEntries.reduce((sum, [_, c]) => sum + c, 0);
@@ -1285,7 +1274,6 @@ export default function FarmApp() {
       });
     });
 
-    // C. Hàng Lợn con (Theo mẹ + Cai sữa)
     tableRowsHtml += `
       <tr>
         <td rowspan="2" align="center">${stt++}</td>
@@ -1300,7 +1288,6 @@ export default function FarmApp() {
       </tr>
     `;
 
-    // D. Hàng Lợn thịt
     tableRowsHtml += `
       <tr>
         <td align="center">${stt++}</td>
@@ -1311,7 +1298,6 @@ export default function FarmApp() {
       </tr>
     `;
 
-    // E. Hàng Tổng cộng
     tableRowsHtml += `
       <tr style="background:#f2f2f2; font-weight:bold;">
         <td colspan="4" align="center">Tổng</td>
@@ -1319,7 +1305,6 @@ export default function FarmApp() {
       </tr>
     `;
 
-    // 5. Khung HTML chuẩn MS Word
     const wordHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
@@ -1636,7 +1621,6 @@ export default function FarmApp() {
     await fetchData();
   };
 
-  // RENDER THẺ CÁ THỂ NÁI / ĐỰC / THỊT
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
@@ -1644,8 +1628,6 @@ export default function FarmApp() {
     const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
     const nutri = getNutritionAdvice(pig);
     const breedCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
-
-    // Có thể phối giống ngay nếu là nái Chờ phối hoặc Hậu bị
     const canMate = isThisSow && (currentState === "CHOPHOI" || currentState === "HAUBI");
 
     return (
@@ -1673,7 +1655,6 @@ export default function FarmApp() {
           </div>
           
           <div style={{ display: "flex", gap: "6px" }}>
-            {/* NÚT PHỐI GIỐNG NHANH CHO NÁI CHỜ PHỐI & HẬU BỊ */}
             {canMate && (
               <button
                 onClick={() => {
@@ -1802,8 +1783,11 @@ export default function FarmApp() {
   return (
     <div style={{ backgroundColor: "#fdf8fb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", position: "relative", paddingBottom: "75px" }}>
       
+      {/* THANH ĐIỀU HƯỚNG VẬT NUÔI DÙNG CHUNG */}
+      <FarmSpeciesNav />
+
       {/* HEADER */}
-      <header style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: 0, zIndex: 30 }}>
+      <header style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1e5f0", backgroundColor: "#fff", position: "sticky", top: "58px", zIndex: 30 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button onClick={() => setIsSidebarOpen(true)} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer" }}>☰</button>
           <div>
@@ -2148,7 +2132,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* 4. TAB LỢN CON THEO LÔ */}
+      {/* 4. TAB LỢN CON THEO LÔ (CÓ BẢNG TÍCH CHỌN PHÂN LOẠI) */}
       {currentMenu === "PIGLET" && (
         <div style={{ padding: "16px" }}>
           <div style={{ fontSize: "15px", fontWeight: "900", color: "#16a34a", marginBottom: "14px" }}>
@@ -2669,7 +2653,6 @@ export default function FarmApp() {
                     {isSavingEdit ? "Đang lưu..." : "💾 Lưu Thay Đổi"}
                   </button>
 
-                  {/* NÚT HOÀN TÁC CÁ THỂ VỀ LẠI LÔ CON GỐC */}
                   {activeProfilePig.dam_ear_tag && (
                     <button
                       type="button"
@@ -2682,7 +2665,7 @@ export default function FarmApp() {
                 </form>
               )}
 
-              {/* TAB 2: SINH SẢN (CÓ THÊM SỬA NGÀY PHỐI GIỐNG) */}
+              {/* TAB 2: SINH SẢN */}
               {profileTab === "REPRO" && (() => {
                 const analysis = getSowReproAnalysis(activeProfilePig.ear_tag);
                 return (
@@ -2702,7 +2685,7 @@ export default function FarmApp() {
                       </div>
                     </div>
 
-                    {/* MỤC 1: LỊCH SỬ PHỐI GIỐNG (CÓ NÚT SỬA NGÀY PHỐI) */}
+                    {/* MỤC 1: LỊCH SỬ PHỐI GIỐNG */}
                     <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
                       <b style={{ fontSize: "14px", color: "#1e1b4b" }}>🔬 Lịch sử các lần phối giống:</b>
                       
@@ -3017,7 +3000,7 @@ export default function FarmApp() {
         </div>
       )}
 
-      {/* MODAL PHỐI GIỐNG (TỰ ĐIỀN NÁI ĐÃ CHỌN HOẶC CHỌN TỪ DANH SÁCH) */}
+      {/* MODAL PHỐI GIỐNG */}
       {showMatingModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 140, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
