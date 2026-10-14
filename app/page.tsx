@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
+import FarmSpeciesNav from "../components/FarmSpeciesNav";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient, User } from "@supabase/supabase-js";
 import FarmSpeciesNav from "@/components/FarmSpeciesNav";
