@@ -2,10 +2,9 @@
 
 export const dynamic = "force-dynamic";
 
-import FarmSpeciesNav from "../components/FarmSpeciesNav";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import FarmSpeciesNav from "@/components/FarmSpeciesNav";
 
 interface PoultryBatch {
   id: string;
