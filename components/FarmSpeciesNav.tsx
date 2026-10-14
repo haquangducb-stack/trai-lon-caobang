@@ -7,12 +7,12 @@ export default function FarmSpeciesNav() {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Xác định loài hiện tại dựa theo đường dẫn URL
+  // Xác định loài hiện tại dựa trên URL
   let currentSpecies: "PIG" | "CHICKEN" | "DUCK" = "PIG";
   if (pathname.startsWith("/ga")) currentSpecies = "CHICKEN";
   else if (pathname.startsWith("/vit")) currentSpecies = "DUCK";
 
-  // Bắt cử chỉ vuốt cảm ứng (Swipe gesture)
+  // Bắt cử chỉ vuốt ngang trên điện thoại (Swipe Gesture)
   const touchStartX = useRef<number>(0);
   const touchEndX = useRef<number>(0);
 
@@ -26,15 +26,15 @@ export default function FarmSpeciesNav() {
 
   const handleTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;
-    const threshold = 75; // Độ dài vuốt tối thiểu trên điện thoại
+    const threshold = 75; // Ngưỡng vuốt tối thiểu (px) để tránh chạm nhầm
 
     if (Math.abs(diff) > threshold) {
       if (diff > 0) {
-        // Vuốt sang trái (Chuyển tiếp loài sau)
+        // Vuốt sang trái (Chuyển sang trang tiếp theo)
         if (currentSpecies === "PIG") router.push("/ga");
         else if (currentSpecies === "CHICKEN") router.push("/vit");
       } else {
-        // Vuốt sang phải (Lùi về loài trước)
+        // Vuốt sang phải (Lùi về trang trước)
         if (currentSpecies === "DUCK") router.push("/ga");
         else if (currentSpecies === "CHICKEN") router.push("/");
       }
@@ -58,8 +58,8 @@ export default function FarmSpeciesNav() {
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>
-          Hệ Thống Quản Lý Trại
+        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          Hệ Thống Trại Nà Roác
         </span>
         <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>
           (Vuốt đổi loài ⇄)
@@ -69,8 +69,8 @@ export default function FarmSpeciesNav() {
       <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
         {[
           { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
-          { id: "CHICKEN", label: "🐓 Gà Đen", path: "/ga" },
-          { id: "DUCK", label: "🦆 Vịt Thịt", path: "/vit" }
+          { id: "CHICKEN", label: "🐓 Trại Gà", path: "/ga" },
+          { id: "DUCK", label: "🦆 Trại Vịt", path: "/vit" }
         ].map(item => (
           <button
             key={item.id}
