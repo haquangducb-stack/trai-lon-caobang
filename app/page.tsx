@@ -1172,75 +1172,199 @@ export default function FarmApp() {
     }
   };
 
+  // HÀM XUẤT FILE WORD BÁO CÁO THEO ĐÚNG MẪU CHUẨN CỦA ANH
   const handleExportWord = () => {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, "0");
     const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const yy = String(today.getFullYear()).slice(-2);
+    const yyyy = today.getFullYear();
+    const yy = String(yyyy).slice(-2);
     const filename = `baocao_${reportDays}ngay_${dd}_${mm}_${yy}.doc`;
     const formatNum = (n: number) => String(n).padStart(2, "0");
 
-    const masterRows: { stt: number; type: string; details: string; count: string; operator: string }[] = [];
-    let counter = 1;
+    // 1. Thu thập biến động đàn trong N ngày qua (các lứa đẻ / cai sữa trong khoảng time)
+    const recentEvents: string[] = [];
+    (Array.isArray(litters) ? litters : []).forEach(l => {
+      const dDiff = safeDateDiff(l.farrow_date);
+      if (dDiff >= 0 && dDiff <= reportDays) {
+        const sowInfo = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (l.sow_ear_tag || "").trim().toUpperCase());
+        const bName = sowInfo?.breed_id ? `Hạ Lang ${l.sow_ear_tag}` : l.sow_ear_tag;
+        let noteStr = `Ngày ${formatDateVN(l.farrow_date)} – Lợn nái ${bName} đẻ ${formatNum(l.alive_born)} con`;
+        if (l.weaning_date && (l.status === "DA_CAI_SUA" || (l.notes || "").includes("cai sữa"))) {
+          noteStr += ` (đã cai sữa ngày ${formatDateVN(l.weaning_date)})`;
+        }
+        recentEvents.push(noteStr);
+      }
+    });
 
+    // 2. Thống kê cơ cấu đàn theo từng nhóm giống
+    // Đực giống
+    const boarsByBreed: Record<string, number> = {};
     boarList.forEach(b => {
-      masterRows.push({
-        stt: counter++,
-        type: `Đực giống ${b.breed_id || ""}`,
-        details: `Khai thác tinh dịch phối giống`,
-        count: "01 con",
-        operator: activeOperator
-      });
+      const br = b.breed_id || "Landrace";
+      boarsByBreed[br] = (boarsByBreed[br] || 0) + 1;
     });
 
+    // Nái phân theo giống và trạng thái
+    const sowsGrouped: Record<string, Record<string, number>> = {};
     sowList.forEach(s => {
-      masterRows.push({
-        stt: counter++,
-        type: `Nái sinh sản ${s.breed_id || ""}`,
-        details: `${formatVietnameseStage(s.stage)} (Ô: ${s.current_pen_code || "—"})`,
-        count: "01 con",
-        operator: activeOperator
+      let br = s.breed_id || "Hạ Lang";
+      if (br.toLowerCase().includes("hạ lang") || br.toLowerCase().includes("ha lang")) br = "Nái sinh sản Hạ Lang";
+      else if (br.toLowerCase().includes("hương") || br.toLowerCase().includes("huong")) br = "Nái sinh sản Hương";
+      else if (br.toLowerCase().includes("lai") || br.toLowerCase().includes("york")) br = "Nái sinh sản Lai";
+      else br = `Nái sinh sản ${br}`;
+
+      if (!sowsGrouped[br]) sowsGrouped[br] = {};
+      const st = formatVietnameseStage(s.stage);
+      sowsGrouped[br][st] = (sowsGrouped[br][st] || 0) + 1;
+    });
+
+    // 3. Chuẩn bị danh sách việc đã làm & việc sắp tới
+    const doneTasksText = filteredCompletedTasks.length > 0 
+      ? filteredCompletedTasks.map((t, idx) => `• ${t.title} (Ngày xong: ${formatDateVN(t.due_date)})`).join("<br/>")
+      : "• Không có công việc phát sinh đặc biệt.";
+
+    const nextTasksText = filteredPendingTasks.length > 0
+      ? filteredPendingTasks.map((t, idx) => `• ${t.title} (Hạn: ${formatDateVN(t.due_date)})`).join("<br/>")
+      : "• Tiếp tục theo dõi chăm sóc nuôi dưỡng và duy trì an toàn sinh học toàn trại.";
+
+    // 4. Tạo bảng HTML theo đúng quy chuẩn Word của file mẫu
+    let tableRowsHtml = "";
+    let stt = 1;
+
+    // A. Hàng Đực giống
+    Object.entries(boarsByBreed).forEach(([br, cnt]) => {
+      tableRowsHtml += `
+        <tr>
+          <td align="center">${stt++}</td>
+          <td>Đực giống ${br}</td>
+          <td align="center">Khai thác</td>
+          <td align="center">${formatNum(cnt)} con</td>
+          <td align="center">${formatNum(cnt)}</td>
+        </tr>
+      `;
+    });
+
+    // B. Các hàng Nái theo từng nhóm
+    Object.entries(sowsGrouped).forEach(([groupName, stages]) => {
+      const stageEntries = Object.entries(stages);
+      const totalInGroup = stageEntries.reduce((sum, [_, c]) => sum + c, 0);
+      const rowSpan = stageEntries.length;
+
+      stageEntries.forEach(([stName, cnt], idx) => {
+        if (idx === 0) {
+          tableRowsHtml += `
+            <tr>
+              <td rowspan="${rowSpan}" align="center">${stt++}</td>
+              <td rowspan="${rowSpan}">${groupName}</td>
+              <td align="center">${stName}</td>
+              <td align="center">${formatNum(cnt)} con</td>
+              <td rowspan="${rowSpan}" align="center">${formatNum(totalInGroup)}</td>
+            </tr>
+          `;
+        } else {
+          tableRowsHtml += `
+            <tr>
+              <td align="center">${stName}</td>
+              <td align="center">${formatNum(cnt)} con</td>
+            </tr>
+          `;
+        }
       });
     });
 
-    if (suckingPigletsCount > 0) {
-      masterRows.push({
-        stt: counter++,
-        type: `Lợn con theo mẹ (Bú sữa)`,
-        details: `Đang theo ${suckingLitters.length} nái mẹ`,
-        count: `${formatNum(suckingPigletsCount)} con`,
-        operator: activeOperator
-      });
-    }
-
-    if (weanedPigletsCount > 0) {
-      masterRows.push({
-        stt: counter++,
-        type: `Lợn con cai sữa (Tách mẹ)`,
-        details: `Đã tách mẹ (${weanedLitters.length} lô)`,
-        count: `${formatNum(weanedPigletsCount)} con`,
-        operator: activeOperator
-      });
-    }
-
-    let contentHtml = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Báo Cáo</title></head>
-      <body>
-        <h2 style='text-align:center;'>TRẠI LỢN NÀ ROÁC</h2>
-        <h3 style='text-align:center;'>BÁO CÁO CƠ CẤU ĐÀN (${reportDays} NGÀY QUA)</h3>
-        <p style='text-align:center;'><i>Người thực hiện: ${activeOperator} - Ngày ${dd}/${mm}/20${yy}</i></p>
-        <p><b>Tổng quy mô: ${formatNum(grandTotal)} con</b> (Nái: ${sowList.length} | Đực: ${boarList.length} | Lợn con: ${totalPigletsCount} | Lợn thịt: ${meatList.length}).</p>
-        <table border='1' cellspacing='0' cellpadding='6' style='width:100%; border-collapse:collapse;'>
-          <thead><tr style='background:#f2f2f2;'><th>STT</th><th>Phân loại</th><th>Chi tiết</th><th>Số lượng</th><th>Người làm</th></tr></thead>
-          <tbody>
-            ${masterRows.map(r => `<tr><td align='center'>${r.stt}</td><td>${r.type}</td><td>${r.details}</td><td align='center'>${r.count}</td><td align='center'>${r.operator}</td></tr>`).join("")}
-          </tbody>
-        </table>
-      </body></html>
+    // C. Hàng Lợn con (Theo mẹ + Cai sữa)
+    tableRowsHtml += `
+      <tr>
+        <td rowspan="2" align="center">${stt++}</td>
+        <td rowspan="2">Lợn con</td>
+        <td align="center">Theo mẹ</td>
+        <td align="center">${formatNum(suckingPigletsCount)} con</td>
+        <td rowspan="2" align="center">${formatNum(totalPigletsCount)}</td>
+      </tr>
+      <tr>
+        <td align="center">Cai sữa</td>
+        <td align="center">${formatNum(weanedPigletsCount)} con</td>
+      </tr>
     `;
 
-    const blob = new Blob([contentHtml], { type: "application/msword;charset=utf-8" });
+    // D. Hàng Lợn thịt
+    tableRowsHtml += `
+      <tr>
+        <td align="center">${stt++}</td>
+        <td>Lợn thịt</td>
+        <td align="center">Vỗ béo</td>
+        <td align="center">${formatNum(meatList.length)} con</td>
+        <td align="center">${formatNum(meatList.length)}</td>
+      </tr>
+    `;
+
+    // E. Hàng Tổng cộng
+    tableRowsHtml += `
+      <tr style="background:#f2f2f2; font-weight:bold;">
+        <td colspan="4" align="center">Tổng</td>
+        <td align="center">${grandTotal}</td>
+      </tr>
+    `;
+
+    // 5. Khung HTML chuẩn MS Word
+    const wordHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Báo Cáo</title>
+        <style>
+          body { font-family: 'Times New Roman', serif; font-size: 13pt; line-height: 1.5; }
+          h2 { text-align: center; font-size: 17pt; font-weight: bold; margin-bottom: 2px; }
+          p.sub { text-align: center; font-style: italic; font-size: 12pt; margin-top: 0; margin-bottom: 16px; }
+          h3 { font-size: 13.5pt; font-weight: bold; margin-top: 14px; margin-bottom: 6px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12pt; }
+          th, td { border: 1px solid black; padding: 6px 8px; }
+          th { background-color: #f2f2f2; font-weight: bold; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h2>BÁO CÁO NHANH BỘ PHẬN CHĂN NUÔI</h2>
+        <p class="sub">Người báo cáo: ${activeOperator} - Ngày ${dd}/${mm}/${yyyy}</p>
+
+        <h3>I. CƠ CẤU ĐÀN (${reportDays} NGÀY QUA)</h3>
+        <p><b>Tổng đàn: ${grandTotal} con</b> (Nái: ${sowList.length} | Đực: ${boarList.length} | Lợn con: ${totalPigletsCount} | Lợn thịt: ${meatList.length}).</p>
+
+        <p><b>Biến động đàn:</b><br/>
+          ${recentEvents.length > 0 
+            ? recentEvents.map(e => `&nbsp;&nbsp;&nbsp;&nbsp;${e}`).join("<br/>") 
+            : "&nbsp;&nbsp;&nbsp;&nbsp;Không có biến động đẻ/cai sữa trong kỳ báo cáo."}
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 8%;">STT</th>
+              <th style="width: 38%;">Phân loại</th>
+              <th style="width: 24%;">Trạng thái</th>
+              <th style="width: 18%;">Số lượng</th>
+              <th style="width: 12%;">Tổng</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+          </tbody>
+        </table>
+
+        <h3>II. NHỮNG CÔNG VIỆC ĐÃ THỰC HIỆN (${reportDays} NGÀY QUA)</h3>
+        <div style="font-size: 12pt; line-height: 1.6; margin-left: 10px;">
+          ${doneTasksText}
+        </div>
+
+        <h3>III. KẾ HOẠCH CÔNG VIỆC THỜI GIAN TIẾP THEO</h3>
+        <div style="font-size: 12pt; line-height: 1.6; margin-left: 10px;">
+          ${nextTasksText}
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([wordHtml], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
