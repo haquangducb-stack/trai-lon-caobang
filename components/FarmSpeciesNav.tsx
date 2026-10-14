@@ -7,12 +7,10 @@ export default function FarmSpeciesNav() {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Xác định loài hiện tại dựa trên URL
   let currentSpecies: "PIG" | "CHICKEN" | "DUCK" = "PIG";
   if (pathname.startsWith("/ga")) currentSpecies = "CHICKEN";
   else if (pathname.startsWith("/vit")) currentSpecies = "DUCK";
 
-  // Bắt cử chỉ vuốt ngang trên điện thoại (Swipe Gesture)
   const touchStartX = useRef<number>(0);
   const touchEndX = useRef<number>(0);
 
@@ -26,15 +24,13 @@ export default function FarmSpeciesNav() {
 
   const handleTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;
-    const threshold = 75; // Ngưỡng vuốt tối thiểu (px) để tránh chạm nhầm
+    const threshold = 75;
 
     if (Math.abs(diff) > threshold) {
       if (diff > 0) {
-        // Vuốt sang trái (Chuyển sang trang tiếp theo)
         if (currentSpecies === "PIG") router.push("/ga");
         else if (currentSpecies === "CHICKEN") router.push("/vit");
       } else {
-        // Vuốt sang phải (Lùi về trang trước)
         if (currentSpecies === "DUCK") router.push("/ga");
         else if (currentSpecies === "CHICKEN") router.push("/");
       }
@@ -58,7 +54,7 @@ export default function FarmSpeciesNav() {
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>
           Hệ Thống Trại Nà Roác
         </span>
         <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>
