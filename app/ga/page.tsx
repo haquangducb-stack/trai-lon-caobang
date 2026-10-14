@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// COMPONENT ĐIỀU HƯỚNG VUỐT LOÀI (NHÚNG TRỰC TIẾP TRÁNH LỖI IMPORT)
+// COMPONENT ĐIỀU HƯỚNG VUỐT LOÀI (ĐÃ NHÚNG TRỰC TIẾP, KHÔNG CÓ BẤT KỲ DÒNG IMPORT NÀO)
 function FarmSpeciesNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -133,7 +133,7 @@ interface EggHarvest {
 const getStandardWeight = (breedType: string, dayAge: number): number => {
   const b = breedType.toLowerCase();
 
-  // 1. Nhóm Gà Ri lai, Mía lai, Hồ lai (Thương phẩm thả vườn)
+  // 1. Nhóm Gà Ri lai, Mía lai, Hồ lai
   if (b.includes("ri") || b.includes("mía") || b.includes("mia") || b.includes("hồ") || b.includes("ho")) {
     if (dayAge <= 7) return 65;
     if (dayAge <= 14) return 130;
@@ -187,7 +187,6 @@ export default function ChickenPage() {
   const [eggs, setEggs] = useState<EggHarvest[]>([]);
   const [filterPurpose, setFilterPurpose] = useState<"ALL" | "GIONG" | "THIT">("ALL");
 
-  // Modal tạo Lô mới
   const [showAddBatchModal, setShowAddBatchModal] = useState(false);
   const [newBatch, setNewBatch] = useState<Partial<PoultryBatch>>({
     batch_code: "",
@@ -201,7 +200,6 @@ export default function ChickenPage() {
     notes: ""
   });
 
-  // Modal Báo cân mẫu
   const [showWeighModal, setShowWeighModal] = useState(false);
   const [selectedBatchForWeigh, setSelectedBatchForWeigh] = useState<PoultryBatch | null>(null);
   const [weighInput, setWeighInput] = useState({
@@ -211,7 +209,6 @@ export default function ChickenPage() {
     notes: ""
   });
 
-  // Modal Thu gom trứng
   const [showEggModal, setShowEggModal] = useState(false);
   const [eggInput, setEggInput] = useState({
     harvest_date: new Date().toISOString().split("T")[0],
@@ -251,7 +248,6 @@ export default function ChickenPage() {
   const meatCount = batches.filter(b => b.purpose === "THIT").reduce((sum, b) => sum + (b.current_count || 0), 0);
   const totalEggs = eggs.reduce((sum, e) => sum + (e.egg_count || 0), 0);
 
-  // Tạo Lô Gà mới
   const handleCreateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBatch.batch_code?.trim()) return;
@@ -279,7 +275,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Lưu biên bản Báo Cân Mẫu
   const handleSaveWeightLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchForWeigh) return;
@@ -317,7 +312,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Ghi nhận trứng
   const handleSaveEggs = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -337,7 +331,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Chuyển giai đoạn đàn Gà giống
   const handlePromoteStage = async (batch: PoultryBatch) => {
     let nextStage = "NUOI_CHUNG";
     let confirmMsg = `Chuyển lô ${batch.batch_code} lên "Nuôi chung tập trung"?`;
@@ -504,7 +497,6 @@ export default function ChickenPage() {
                     • Ô nhốt: <b>{b.pen_location || "—"}</b>
                   </div>
 
-                  {/* KHỐI BIỂU CÂN NẶNG ĐỐI CHIẾU TIÊU CHUẨN */}
                   <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #cbd5e1", marginBottom: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px" }}>
                       <span>⚖️ Chuẩn {ageDays} ngày: <b style={{ color: "#2563eb" }}>{standardGram}g</b></span>
@@ -524,7 +516,6 @@ export default function ChickenPage() {
                     )}
                   </div>
 
-                  {/* CÁC NÚT THAO TÁC */}
                   <div style={{ display: "flex", gap: "6px" }}>
                     <button
                       onClick={() => {
