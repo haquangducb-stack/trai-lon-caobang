@@ -3,72 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-
-function FarmSpeciesNav() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  let currentSpecies: "PIG" | "CHICKEN" | "DUCK" = "CHICKEN";
-  if (pathname.startsWith("/vit")) currentSpecies = "DUCK";
-  else if (pathname === "/") currentSpecies = "PIG";
-
-  const touchStartX = useRef<number>(0);
-  const touchEndX = useRef<number>(0);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchEnd = () => {
-    const diff = touchStartX.current - touchEndX.current;
-    if (Math.abs(diff) > 75) {
-      if (diff > 0) {
-        if (currentSpecies === "PIG") router.push("/ga");
-        else if (currentSpecies === "CHICKEN") router.push("/vit");
-      } else {
-        if (currentSpecies === "DUCK") router.push("/ga");
-        else if (currentSpecies === "CHICKEN") router.push("/");
-      }
-    }
-  };
-
-  return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ background: "#0f172a", padding: "8px 12px", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #1e293b", maxWidth: "480px", margin: "0 auto" }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>Hệ Thống Trại Nà Roác</span>
-        <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>(Vuốt đổi loài ⇄)</span>
-      </div>
-      <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
-        {[
-          { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
-          { id: "CHICKEN", label: "🐓 Trại Gà", path: "/ga" },
-          { id: "DUCK", label: "🦆 Trại Vịt", path: "/vit" }
-        ].map(item => (
-          <button
-            key={item.id}
-            onClick={() => router.push(item.path)}
-            style={{
-              flex: 1, padding: "7px 0", borderRadius: "8px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
-              background: currentSpecies === item.id ? "#38bdf8" : "transparent",
-              color: currentSpecies === item.id ? "#0f172a" : "#cbd5e1"
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface PoultryBatch {
   id: string;
@@ -117,7 +53,6 @@ const getStandardWeightChicken = (breedType: string, dayAge: number): number => 
     if (dayAge <= 120) return 1800;
     return 2050;
   }
-  // Gà lai thịt (Ri lai, Mía, Hồ, Lạc Thủy)
   if (dayAge <= 7) return 65;
   if (dayAge <= 14) return 135;
   if (dayAge <= 21) return 260;
@@ -145,11 +80,39 @@ const safeDateDiff = (dStr?: string) => {
 };
 
 export default function ChickenPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [batches, setBatches] = useState<PoultryBatch[]>([]);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [eggs, setEggs] = useState<EggHarvest[]>([]);
   const [activeTab, setActiveTab] = useState<"BAN_DIA" | "THUONG_PHAM" | "QUY_TRINH">("BAN_DIA");
+
+  // Bắt cử chỉ vuốt toàn màn hình (Cực nhạy)
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    touchStartY.current = e.targetTouches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const diffX = touchStartX.current - endX;
+    const diffY = touchStartY.current - endY;
+
+    // Chỉ nhận diện vuốt ngang nếu khoảng vuốt ngang lớn hơn hẳn vuốt dọc (tránh nhầm khi cuộn trang)
+    if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+      if (diffX > 0) {
+        // Vuốt sang trái -> Sang Trại Vịt
+        router.push("/vit");
+      } else {
+        // Vuốt sang phải -> Về Trại Lợn
+        router.push("/");
+      }
+    }
+  };
 
   // Modal Thêm / Sửa Lô
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -163,7 +126,7 @@ export default function ChickenPage() {
     hatch_date: new Date().toISOString().split("T")[0],
     initial_count: 50,
     current_count: 50,
-    pen_location: "Ô úm 1",
+    pen_location: "Ô úm giống",
     notes: ""
   });
 
@@ -210,7 +173,6 @@ export default function ChickenPage() {
     fetchData();
   }, [fetchData]);
 
-  // Phân tách 2 nhóm rõ ràng
   const nativeBatches = batches.filter(b => b.purpose === "GIONG");
   const meatBatches = batches.filter(b => b.purpose === "THIT");
 
@@ -218,7 +180,6 @@ export default function ChickenPage() {
   const totalMeatCount = meatBatches.reduce((s, b) => s + (b.current_count || 0), 0);
   const totalEggs = eggs.reduce((s, e) => s + (e.egg_count || 0), 0);
 
-  // Mở modal Sửa Lô
   const handleOpenEditModal = (batch: PoultryBatch) => {
     setEditingBatchId(batch.id);
     setBatchFormData({
@@ -236,7 +197,6 @@ export default function ChickenPage() {
     setShowBatchModal(true);
   };
 
-  // Mở modal Thêm Lô
   const handleOpenAddModal = (purpose: "GIONG" | "THIT") => {
     setEditingBatchId(null);
     const count = purpose === "GIONG" ? nativeBatches.length + 1 : meatBatches.length + 1;
@@ -256,7 +216,6 @@ export default function ChickenPage() {
     setShowBatchModal(true);
   };
 
-  // Lưu Thêm/Sửa Lô
   const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batchFormData.batch_code?.trim()) return;
@@ -279,7 +238,7 @@ export default function ChickenPage() {
       if (editingBatchId) {
         const { error } = await supabase.from("poultry_batches").update(payload).eq("id", editingBatchId);
         if (error) throw error;
-        alert(`✅ Đã cập nhật thông tin lô ${payload.batch_code}!`);
+        alert(`✅ Đã cập nhật thành công lô ${payload.batch_code}!`);
       } else {
         const { error } = await supabase.from("poultry_batches").insert([payload]);
         if (error) throw error;
@@ -293,7 +252,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Lưu biên bản báo cân
   const handleSaveWeightLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchForWeigh) return;
@@ -327,7 +285,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Chuyển giai đoạn cho Gà bản địa
   const handlePromoteStage = async (batch: PoultryBatch) => {
     let nextStage = "NUOI_CHUNG";
     let msg = `Chuyển lô ${batch.batch_code} lên "Nuôi chung tập trung"?`;
@@ -345,7 +302,6 @@ export default function ChickenPage() {
     }
   };
 
-  // Xuất bán toàn bộ lô
   const handleSellBatch = async (batch: PoultryBatch) => {
     if (!confirm(`Xác nhận XUẤT BÁN toàn bộ ${batch.current_count} con của lô ${batch.batch_code}?`)) return;
     try {
@@ -364,8 +320,37 @@ export default function ChickenPage() {
   if (!mounted) return <div style={{ padding: "20px", textAlign: "center" }}>Đang tải phân hệ Gà...</div>;
 
   return (
-    <div style={{ backgroundColor: "#fafafa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}>
-      <FarmSpeciesNav />
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{ backgroundColor: "#fafafa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}
+    >
+      {/* THANH ĐIỀU HƯỚNG TRÊN CÙNG */}
+      <div style={{ background: "#0f172a", padding: "8px 12px", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #1e293b" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+          <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>Hệ Thống Trại Nà Roác</span>
+          <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>⇄ Vuốt màn hình đổi loài</span>
+        </div>
+        <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
+          {[
+            { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
+            { id: "CHICKEN", label: "🐓 Trại Gà", path: "/ga" },
+            { id: "DUCK", label: "🦆 Trại Vịt", path: "/vit" }
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => router.push(item.path)}
+              style={{
+                flex: 1, padding: "7px 0", borderRadius: "8px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
+                background: item.id === "CHICKEN" ? "#38bdf8" : "transparent",
+                color: item.id === "CHICKEN" ? "#0f172a" : "#cbd5e1"
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div style={{ padding: "16px" }}>
         {/* BANNER TỔNG ĐÀN GÀ */}
@@ -380,21 +365,20 @@ export default function ChickenPage() {
           </div>
         </div>
 
-        {/* THANH CHUYỂN TAB CHUYÊN NGHIỆP */}
+        {/* THANH CHUYỂN TAB */}
         <div style={{ display: "flex", gap: "6px", background: "#e2e8f0", padding: "4px", borderRadius: "12px", marginBottom: "16px" }}>
           {[
-            { id: "BAN_DIA", label: `👑 Gà Bản Địa (${nativeBatches.length})` },
+            { id: "BAN_DIA", label: `👑 Bản Địa (${nativeBatches.length})` },
             { id: "THUONG_PHAM", label: `🍗 Gà Thịt (${meatBatches.length})` },
-            { id: "QUY_TRINH", label: `🩺 Quy Trình Kỹ Thuật` }
+            { id: "QUY_TRINH", label: `🩺 Quy Trình` }
           ].map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
               style={{
-                flex: 1, padding: "8px 0", borderRadius: "9px", border: "none", fontSize: "11.5px", fontWeight: "900", cursor: "pointer",
+                flex: 1, padding: "8px 0", borderRadius: "9px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
                 background: activeTab === t.id ? "#0f172a" : "transparent",
-                color: activeTab === t.id ? "#fff" : "#475569",
-                transition: "all 0.15s ease"
+                color: activeTab === t.id ? "#fff" : "#475569"
               }}
             >
               {t.label}
@@ -402,16 +386,13 @@ export default function ChickenPage() {
           ))}
         </div>
 
-        {/* ================================================================= */}
-        {/* TAB 1: GÀ BẢN ĐỊA (GÂY GIỐNG & KHÉP KÍN)                           */}
-        {/* ================================================================= */}
+        {/* TAB 1: GÀ BẢN ĐỊA */}
         {activeTab === "BAN_DIA" && (
           <div>
-            {/* THU GOM TRỨNG & ẤP NỞ */}
             <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "14px", padding: "14px 16px", marginBottom: "14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <b style={{ color: "#854d0e", fontSize: "13.5px" }}>🥚 THU TRỨNG & LÒ ẤP BẢN ĐỊA</b>
+                  <b style={{ color: "#854d0e", fontSize: "13.5px" }}>🥚 THU TRỨNG & ẤP NỞ BẢN ĐỊA</b>
                   <div style={{ fontSize: "12px", color: "#713f12", marginTop: "2px" }}>
                     Tổng thu gần đây: <b>{totalEggs} quả</b>
                   </div>
@@ -438,7 +419,7 @@ export default function ChickenPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {nativeBatches.length === 0 ? (
                 <div style={{ padding: "20px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px", border: "1px solid #e2e8f0" }}>
-                  Chưa có lô gà bản địa nào. Bấm <b>"+ Tạo Lô Giống Mới"</b> để đưa lứa ấp nở vào theo dõi!
+                  Chưa có lô gà bản địa nào. Bấm <b>"+ Tạo Lô Giống Mới"</b> để bắt đầu theo dõi!
                 </div>
               ) : (
                 nativeBatches.map(b => {
@@ -469,7 +450,6 @@ export default function ChickenPage() {
                         • Ô chuồng: <b>{b.pen_location || "—"}</b>
                       </div>
 
-                      {/* BIỂU CÂN */}
                       <div style={{ background: "#f8fafc", padding: "8px 10px", borderRadius: "8px", fontSize: "12px", border: "1px solid #cbd5e1", marginBottom: "8px" }}>
                         Chuẩn giống ({ageDays} ngày): <b>{standardGram}g</b> | Thực tế: <b>{latestWeigh ? `${latestWeigh.avg_weight_gram}g (${latestWeigh.notes || ""})` : "Chưa cân"}</b>
                       </div>
@@ -510,9 +490,7 @@ export default function ChickenPage() {
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* TAB 2: GÀ THƯƠNG PHẨM (NUÔI THỊT)                                  */}
-        {/* ================================================================= */}
+        {/* TAB 2: GÀ THƯƠNG PHẨM */}
         {activeTab === "THUONG_PHAM" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
@@ -533,7 +511,7 @@ export default function ChickenPage() {
               ) : (
                 meatBatches.map(b => {
                   const ageDays = safeDateDiff(b.hatch_date);
-                  const targetDays = 95; // Tuổi xuất chuồng chuẩn cho gà thả vườn
+                  const targetDays = 95;
                   const daysLeft = Math.max(0, targetDays - ageDays);
                   const standardGram = getStandardWeightChicken(b.breed_type, ageDays);
                   const latestWeigh = weightLogs.find(w => w.batch_id === b.id);
@@ -562,7 +540,7 @@ export default function ChickenPage() {
                       </div>
 
                       <div style={{ background: "#f0f9ff", padding: "8px 10px", borderRadius: "8px", fontSize: "12px", border: "1px solid #bae6fd", marginBottom: "8px" }}>
-                        Chuẩn tăng trọng: <b>{standardGram}g</b> | Cân mẫu gần nhất: <b>{latestWeigh ? `${latestWeigh.avg_weight_gram}g (${latestWeigh.notes || ""})` : "Chưa cân"}</b>
+                        Chuẩn tăng trọng: <b>{standardGram}g</b> | Cân gần nhất: <b>{latestWeigh ? `${latestWeigh.avg_weight_gram}g (${latestWeigh.notes || ""})` : "Chưa cân"}</b>
                       </div>
 
                       {!isExported && (
@@ -599,42 +577,40 @@ export default function ChickenPage() {
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* TAB 3: QUY TRÌNH KỸ THUẬT & THÚ Y GÀ CHI TIẾT                       */}
-        {/* ================================================================= */}
+        {/* TAB 3: QUY TRÌNH KỸ THUẬT */}
         {activeTab === "QUY_TRINH" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #e2e8f0", fontSize: "13px", lineHeight: "1.8" }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#b45309" }}>
                 🐥 1. KỸ THUẬT ÚM GÀ CON (0 – 28 NGÀY TUỔI)
               </h3>
-              • <b>Nhiệt độ úm:</b> Tuần 1: 32–34°C; Tuần 2: 29–31°C; Tuần 3: 26–28°C; Tuần 4: 24–26°C. Quan sát gà tản đều là đủ nhiệt, tụ cụm là lạnh, há mỏ tản xa là nóng.<br/>
-              • <b>Nước uống & Cám:</b> 2 giờ đầu chỉ cho uống nước ấm pha <i>Gluco-C + B-complex + Kháng thể E.coli</i>. Sau 2 giờ mới rải cám hạt nhỏ tập ăn đều đặn nhiều bữa trong ngày.<br/>
-              • <b>Độn chuồng:</b> Rải trấu dày 7–10cm, phun khử trùng và ủ khô men vi sinh trước khi thả gà vào 24 giờ.
+              • <b>Nhiệt độ úm:</b> Tuần 1: 32–34°C; Tuần 2: 29–31°C; Tuần 3: 26–28°C; Tuần 4: 24–26°C. Quan sát đàn: Gà tản đều là đủ nhiệt, tụ cụm dưới bóng sưởi là lạnh, há mỏ tản xa vách là quá nóng.<br/>
+              • <b>Nước uống & Cám:</b> 2 giờ đầu khi đón gà về chỉ cho uống nước ấm pha <i>Gluco-C + B-complex + Men sống</i>. Sau 2 giờ mới rải cám hạt nhỏ tập ăn đều đặn nhiều bữa trong ngày.<br/>
+              • <b>Độn chuồng:</b> Rải trấu dày 7–10cm, rắc men ủ vi sinh khử mùi định kỳ.
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #e2e8f0", fontSize: "13px", lineHeight: "1.8" }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#1d4ed8" }}>
                 💉 2. LỊCH VACCINE PHÒNG BỆNH CHUẨN
               </h3>
-              • <b>1 – 3 ngày:</b> Nhỏ mắt/mũi Marek (nếu lò chưa tiêm), uống hạ sốt & men sống.<br/>
-              • <b>3 – 5 ngày:</b> Nhỏ mắt, mũi vaccine Newcastle (Lasota) kết hợp IB (Viêm phế quản truyền nhiễm).<br/>
-              • <b>7 – 8 ngày:</b> Nhỏ mồm vaccine Gumboro lần 1 (chủng trung bình B2).<br/>
+              • <b>1 – 3 ngày:</b> Tiêm Marek (nếu lò chưa tiêm), uống phòng thương hàn & E.coli.<br/>
+              • <b>3 – 5 ngày:</b> Nhỏ mắt/mũi vaccine Newcastle (Lasota) + IB (Viêm phế quản).<br/>
+              • <b>7 – 8 ngày:</b> Nhỏ mồm vaccine Gumboro lần 1.<br/>
               • <b>10 – 12 ngày:</b> Chủng đậu gà qua màng cánh.<br/>
               • <b>14 – 15 ngày:</b> Cho uống nhắc lại vaccine Gumboro lần 2.<br/>
               • <b>21 – 24 ngày:</b> Nhỏ nhắc lại Lasota hoặc tiêm vaccine Newcastle nhũ dầu.<br/>
               • <b>35 – 40 ngày:</b> Tiêm dưới da gáy cổ vaccine Cúm gia cầm (H5N1) lần 1.<br/>
               • <b>50 – 55 ngày:</b> Tiêm vaccine Tụ huyết trùng gia cầm.<br/>
-              • <b>60 ngày:</b> Tẩy giun sán bằng Levamisole hoặc Mebendazole trước khi thả vườn rộng.
+              • <b>60 ngày:</b> Tẩy giun sán trước khi vỗ béo hoặc đưa vào hậu bị.
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #e2e8f0", fontSize: "13px", lineHeight: "1.8" }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#047857" }}>
                 🌾 3. CHĂM SÓC ĐÀN SINH SẢN & VỖ BÉO
               </h3>
-              • <b>Đàn gà đen sinh sản:</b> Khống chế trọng lượng không cho gà mái quá béo (gây tịt đẻ hoặc trứng vỏ mỏng). Bổ sung vỏ sò, bột đá (Canxi/Photpho) và Vitamin ADE 2 tuần trước khi vào đẻ bói.<br/>
+              • <b>Đàn gà đen sinh sản:</b> Khống chế trọng lượng không cho gà mái quá béo. Bổ sung Canxi/Photpho (bột đá, vỏ sò) và Vitamin ADE 2 tuần trước khi gà vào đẻ.<br/>
               • <b>Thu gom trứng ấp:</b> Thu 2–3 lần/ngày, xếp đầu to hướng lên trên, bảo quản nơi thoáng mát 16–20°C, không quá 7 ngày phải đưa vào lò ấp.<br/>
-              • <b>Vỗ béo gà thịt:</b> Trước xuất bán 20 ngày, tăng cường ngô mảnh ủ men vi sinh và rau xanh để thịt săn chắc, vàng da, tích mỡ thơm ngậy.
+              • <b>Vỗ béo gà thịt:</b> Trước xuất bán 20 ngày, tăng cường ngô hạt ủ men vi sinh và rau xanh để thịt săn chắc, thơm ngậy.
             </div>
           </div>
         )}
@@ -668,7 +644,7 @@ export default function ChickenPage() {
                     }}
                     style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
                   >
-                    <option value="GIONG">👑 Gà Giống Bản Địa</option>
+                    <option value="GIONG">👑 Gà Bản Địa / Giống</option>
                     <option value="THIT">🍗 Gà Thịt Thương Phẩm</option>
                   </select>
                 </div>
@@ -717,7 +693,7 @@ export default function ChickenPage() {
 
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú thêm:</label>
-                <input placeholder="Nguồn gốc giống, tình trạng..." value={batchFormData.notes} onChange={e => setBatchFormData({ ...batchFormData, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                <input placeholder="Nguồn giống, tình trạng..." value={batchFormData.notes} onChange={e => setBatchFormData({ ...batchFormData, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
