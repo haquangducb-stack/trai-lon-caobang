@@ -353,7 +353,7 @@ export default function FarmApp() {
   const [selectedBoarTag, setSelectedBoarTag] = useState("");
   const [matingDate, setMatingDate] = useState(new Date().toISOString().split("T")[0]);
   const [isExternalSemen, setIsExternalSemen] = useState(false); // true: dùng tinh ngoài
-  const [externalSemenCode, setExternalSemenCode] = useState(""); // Mã/tên liều tinh ngoài
+  const [externalSemenCode, setExternalSemenCode] = useState(""); // Tên/mã liều tinh ngoài
 
   const requireAuth = useCallback((actionName = "thao tác này"): boolean => {
     if (!user) {
