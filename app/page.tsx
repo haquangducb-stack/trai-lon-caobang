@@ -331,8 +331,8 @@ export default function FarmApp() {
   });
 
   const [editingInsemId, setEditingInsemId] = useState<string | null>(null);
-  const [insemFormData, setInsemFormData] = useState({
   const [isEditInsemExternal, setIsEditInsemExternal] = useState<boolean>(false);
+  const [insemFormData, setInsemFormData] = useState({
     sow_ear_tag: "",
     boar_ear_tag: "",
     mating_date: new Date().toISOString().split("T")[0]
