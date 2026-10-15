@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient, User } from "@supabase/supabase-js";
 
 interface Pig {
@@ -521,6 +521,94 @@ export default function FarmApp() {
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
 
+  // Tính số lần lốc liên tiếp của nái
+  const getSowConsecutiveRepeats = useCallback((sowTag: string) => {
+    const normTag = sowTag.trim().toUpperCase();
+    const insems = (inseminations || [])
+      .filter(i => (i.sow_ear_tag || "").trim().toUpperCase() === normTag)
+      .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime());
+
+    let repeats = 0;
+    for (const ins of insems) {
+      const st = (ins.status || "").toLowerCase();
+      if (st.includes("lốc") || st.includes("trượt") || st.includes("loc") || st.includes("truot")) {
+        repeats++;
+      } else {
+        break;
+      }
+    }
+    return repeats;
+  }, [inseminations]);
+
+  // Xử lý báo lốc nái (chuyển về Chờ phối, lưu vết lần phối cũ)
+  const handleReportSowRepeat = async (sowTag: string) => {
+    if (!requireAuth("ghi nhận nái lốc")) return;
+    const normTag = sowTag.trim().toUpperCase();
+
+    const latestInsem = (inseminations || [])
+      .filter(i => (i.sow_ear_tag || "").trim().toUpperCase() === normTag)
+      .sort((a, b) => new Date(b.mating_date).getTime() - new Date(a.mating_date).getTime())[0];
+
+    if (!latestInsem) {
+      alert("Không tìm thấy dữ liệu phối giống của nái này!");
+      return;
+    }
+
+    const daysPassed = safeDateDiff(latestInsem.mating_date);
+    const currentRepeats = getSowConsecutiveRepeats(normTag) + 1;
+
+    let confirmMsg = `Xác nhận nái ${normTag} bị LỐC (trượt thai) sau ${daysPassed} ngày phối?\n\n`;
+    if (currentRepeats >= 3) {
+      confirmMsg += `⚠️ CẢNH BÁO: Nái đã lốc liên tiếp ${currentRepeats} lần! Đề xuất loại thải hoặc khám chuyên sâu!`;
+    } else if (currentRepeats === 2) {
+      confirmMsg += `⚠️ Chú ý: Nái lốc lần 2 liên tiếp. Cần kiểm tra viêm tử cung trước khi phối lại!`;
+    } else {
+      confirmMsg += `Nái sẽ được chuyển về "Chờ phối" để theo dõi phối lại.`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      // Đánh dấu lần phối cũ là Lốc (bảo tồn dữ liệu cũ)
+      await supabase
+        .from("inseminations")
+        .update({ status: `Lốc (Trượt ngày ${formatDateVN(todayStr)})` })
+        .eq("id", latestInsem.id);
+
+      // Chuyển nái về Chờ phối
+      await supabase
+        .from("pigs")
+        .update({ stage: "Chờ phối" })
+        .eq("ear_tag", normTag);
+
+      // Ghi nhật ký
+      await logAction(
+        "SOW_REPEAT",
+        normTag,
+        `Nái ${normTag} lốc sau ${daysPassed} ngày phối (Đực cũ: ${latestInsem.boar_ear_tag}). Lốc liên tiếp: ${currentRepeats} lần -> Chuyển Chờ phối.`
+      );
+
+      // Nếu lốc >= 2 lần, tạo việc cần làm cho thú y can thiệp
+      if (currentRepeats >= 2) {
+        await supabase.from("farm_tasks").insert([{
+          title: `[THÚ Y] Thụt rửa tử cung & kiểm tra nái ${normTag} (đã lốc ${currentRepeats} lần)`,
+          due_date: todayStr,
+          related_tag: normTag,
+          category: "VET",
+          is_completed: false,
+          is_dismissed: false
+        }]);
+      }
+
+      alert(`✅ Đã ghi nhận nái ${normTag} bị lốc!\nNái đã được chuyển về trạng thái "Chờ phối".`);
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi ghi nhận nái lốc: " + err.message);
+    }
+  };
+
   const getBreedCategoryInfo = useCallback((breedName?: string, sireTag?: string, damTag?: string) => {
     const bName = (breedName || "").trim();
     const sire = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === (sireTag || "").trim().toUpperCase());
@@ -577,7 +665,7 @@ export default function FarmApp() {
     }
 
     if (currentState === "CHUA") {
-      const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper);
+      const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === tagUpper && !ins.status.includes("Lốc") && !ins.status.includes("Trượt"));
       if (latestInsem?.mating_date) {
         const days = safeDateDiff(latestInsem.mating_date);
         if (days >= 0 && days <= 30) {
@@ -703,7 +791,7 @@ export default function FarmApp() {
 
   const getGestationProgress = useCallback((sowTag: string) => {
     const sTag = sowTag.trim().toUpperCase();
-    const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === sTag);
+    const latestInsem = inseminations.find(ins => (ins.sow_ear_tag || "").trim().toUpperCase() === sTag && !ins.status.includes("Lốc") && !ins.status.includes("Trượt"));
     if (!latestInsem?.mating_date) return null;
 
     const daysPassed = safeDateDiff(latestInsem.mating_date);
@@ -1402,6 +1490,8 @@ export default function FarmApp() {
 
     (Array.isArray(inseminations) ? inseminations : []).forEach(ins => {
       if (!ins?.mating_date || !ins?.sow_ear_tag) return;
+      if (ins.status?.includes("Lốc") || ins.status?.includes("Trượt")) return;
+
       const tagUpper = ins.sow_ear_tag.trim().toUpperCase();
       const d = safeDateDiff(ins.mating_date);
       if (d === -999) return;
@@ -1655,6 +1745,7 @@ export default function FarmApp() {
     const nutri = getNutritionAdvice(pig);
     const breedCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
     const canMate = isThisSow && (currentState === "CHOPHOI" || currentState === "HAUBI");
+    const consecutiveRepeats = isThisSow ? getSowConsecutiveRepeats(pig.ear_tag) : 0;
 
     return (
       <div
@@ -1702,24 +1793,36 @@ export default function FarmApp() {
             )}
 
             {isThisSow && currentState === "CHUA" && (
-              <button
-                onClick={() => {
-                  if (!requireAuth("báo đẻ")) return;
-                  setFarrowInput({
-                    farrow_date: new Date().toISOString().split("T")[0],
-                    alive_born: 10,
-                    dead_born: 0,
-                    notes: ""
-                  });
-                  setFarrowingSow(pig);
-                }}
-                style={{
-                  fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
-                  background: "#10b981", color: "#fff", border: "none", cursor: "pointer"
-                }}
-              >
-                🐷 Báo đẻ
-              </button>
+              <>
+                <button
+                  onClick={() => handleReportSowRepeat(pig.ear_tag)}
+                  style={{
+                    fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                    background: "#ea580c", color: "#fff", border: "none", cursor: "pointer"
+                  }}
+                >
+                  ⚡ Báo Lốc
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!requireAuth("báo đẻ")) return;
+                    setFarrowInput({
+                      farrow_date: new Date().toISOString().split("T")[0],
+                      alive_born: 10,
+                      dead_born: 0,
+                      notes: ""
+                    });
+                    setFarrowingSow(pig);
+                  }}
+                  style={{
+                    fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                    background: "#10b981", color: "#fff", border: "none", cursor: "pointer"
+                  }}
+                >
+                  🐷 Báo đẻ
+                </button>
+              </>
             )}
 
             <button
@@ -1738,6 +1841,13 @@ export default function FarmApp() {
             </button>
           </div>
         </div>
+
+        {/* CẢNH BÁO NÁI LỐC LIÊN TIẾP */}
+        {isThisSow && consecutiveRepeats >= 2 && (
+          <div style={{ background: "#fee2e2", border: "1.5px solid #f87171", borderRadius: "8px", padding: "6px 10px", fontSize: "12px", color: "#991b1b", fontWeight: "800" }}>
+            ⚠️ CẢNH BÁO: Nái đã lốc liên tiếp {consecutiveRepeats} lần! {consecutiveRepeats >= 3 ? "Đề xuất lập hội đồng loại thải." : "Cần can thiệp thú y (chữa viêm)."}
+          </div>
+        )}
 
         <div style={{ fontSize: "14px", color: "#334155" }}>
           Giống: <strong style={{ color: "#0f172a" }}>{pig.breed_id || "—"}</strong> | Giới tính: <strong>{formatVietnameseSex(pig.sex)}</strong>
@@ -2767,7 +2877,7 @@ export default function FarmApp() {
                     <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
                       <b style={{ fontSize: "14px", color: "#1e1b4b" }}>🔬 Lịch sử các lần phối giống:</b>
                       
-                      {/* FORM SỬA PHỐI GIỐNG (HỖ TRỢ ĐỰC TRẠI VÀ TINH NGOÀI) */}
+                      {/* FORM SỬA PHỐI GIỐNG */}
                       {editingInsemId && (
                         <form onSubmit={handleSaveInsemEdit} style={{ background: "#ede9fe", padding: "12px", borderRadius: "10px", border: "1.5px solid #c4b5fd", marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
                           <div style={{ fontSize: "13px", fontWeight: "900", color: "#5b21b6" }}>
@@ -2859,14 +2969,20 @@ export default function FarmApp() {
                         ) : (
                           analysis.sowInsems.map(ins => {
                             const daysDiff = safeDateDiff(ins.mating_date);
+                            const isRepeat = ins.status.includes("Lốc") || ins.status.includes("Trượt");
+
                             return (
-                              <div key={ins.id} style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div key={ins.id} style={{ background: isRepeat ? "#fff7ed" : "#fff", padding: "8px 10px", borderRadius: "8px", border: isRepeat ? "1.5px solid #fed7aa" : "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <div>
-                                  <div style={{ fontWeight: "800", color: "#1e1b4b" }}>
-                                    Ngày phối: {formatDateVN(ins.mating_date)} • Đực: <span style={{ color: "#2563eb" }}>{ins.boar_ear_tag || "—"}</span>
+                                  <div style={{ fontWeight: "800", color: isRepeat ? "#c2410c" : "#1e1b4b" }}>
+                                    Ngày phối: {formatDateVN(ins.mating_date)} • Đực/Tinh: <span style={{ color: "#2563eb" }}>{ins.boar_ear_tag || "—"}</span>
                                   </div>
                                   <div style={{ fontSize: "11px", color: "#475569", marginTop: "2px" }}>
-                                    Dự sinh: <b>{formatDateVN(ins.expected_farrow_date)}</b> (Hiện tại: Ngày {daysDiff}/114) • <i>{ins.status || "Đã phối"}</i>
+                                    {isRepeat ? (
+                                      <b style={{ color: "#ea580c" }}>{ins.status}</b>
+                                    ) : (
+                                      <>Dự sinh: <b>{formatDateVN(ins.expected_farrow_date)}</b> (Ngày {daysDiff}/114) • <i>{ins.status || "Đã phối"}</i></>
+                                    )}
                                   </div>
                                 </div>
                                 <button
@@ -3094,7 +3210,7 @@ export default function FarmApp() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                         {childLitters.map(cl => (
-                          <div key={cl.id} style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #dcfce7", fontSize: "12px", display: "flex", justifyContent: "space-between" }}>
+                          <div key={cl.id} style={{ background: "#fff", padding: "8px 10px", borderRadius: "8px", border: "1px solid #dcfce7", display: "flex", justifyContent: "space-between" }}>
                             <span>Lứa {cl.litter_code} (Đẻ: {formatDateVN(cl.farrow_date)} - Cai: {formatDateVN(cl.weaning_date)})</span>
                             <b>{cl.alive_born} con ({cl.status === "DANG_THEO_ME" ? "Bú mẹ" : cl.status === "DA_CAI_SUA" ? "Đã cai sữa" : "Đã xuất bán"})</b>
                           </div>
