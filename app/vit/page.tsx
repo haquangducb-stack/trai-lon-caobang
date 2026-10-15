@@ -3,72 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-
-function FarmSpeciesNav() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  let currentSpecies: "PIG" | "CHICKEN" | "DUCK" = "DUCK";
-  if (pathname.startsWith("/ga")) currentSpecies = "CHICKEN";
-  else if (pathname === "/") currentSpecies = "PIG";
-
-  const touchStartX = useRef<number>(0);
-  const touchEndX = useRef<number>(0);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.targetTouches[0].clientX;
-  };
-  const handleTouchEnd = () => {
-    const diff = touchStartX.current - touchEndX.current;
-    if (Math.abs(diff) > 75) {
-      if (diff > 0) {
-        if (currentSpecies === "PIG") router.push("/ga");
-        else if (currentSpecies === "CHICKEN") router.push("/vit");
-      } else {
-        if (currentSpecies === "DUCK") router.push("/ga");
-        else if (currentSpecies === "CHICKEN") router.push("/");
-      }
-    }
-  };
-
-  return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ background: "#0f172a", padding: "8px 12px", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #1e293b", maxWidth: "480px", margin: "0 auto" }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-        <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>Hệ Thống Trại Nà Roác</span>
-        <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>(Vuốt đổi loài ⇄)</span>
-      </div>
-      <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
-        {[
-          { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
-          { id: "CHICKEN", label: "🐓 Trại Gà", path: "/ga" },
-          { id: "DUCK", label: "🦆 Trại Vịt", path: "/vit" }
-        ].map(item => (
-          <button
-            key={item.id}
-            onClick={() => router.push(item.path)}
-            style={{
-              flex: 1, padding: "7px 0", borderRadius: "8px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
-              background: currentSpecies === item.id ? "#38bdf8" : "transparent",
-              color: currentSpecies === item.id ? "#0f172a" : "#cbd5e1"
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface PoultryBatch {
   id: string;
@@ -115,7 +51,6 @@ const getDuckStandardWeight = (breedType: string, dayAge: number): number => {
     if (dayAge <= 50) return 3400;
     return 3650;
   }
-  // Vịt Bầu, Vịt Cỏ Cao Bằng bản địa
   if (dayAge <= 7) return 120;
   if (dayAge <= 14) return 320;
   if (dayAge <= 21) return 650;
@@ -151,11 +86,38 @@ const safeDateDiff = (dStr?: string) => {
 };
 
 export default function DuckPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [batches, setBatches] = useState<PoultryBatch[]>([]);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [eggs, setEggs] = useState<EggHarvest[]>([]);
-  const [activeTab, setActiveTab] = useState<"BAN_DIA" | "THUONG_PHAM" | "QUY_TRINH">("THUONG_PHAM");
+  const [activeTab, setActiveTab] = useState<"THUONG_PHAM" | "BAN_DIA" | "QUY_TRINH">("THUONG_PHAM");
+
+  // Bắt cử chỉ vuốt toàn màn hình (Cực nhạy)
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    touchStartY.current = e.targetTouches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const diffX = touchStartX.current - endX;
+    const diffY = touchStartY.current - endY;
+
+    if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+      if (diffX > 0) {
+        // Vuốt sang trái -> Về Trại Lợn
+        router.push("/");
+      } else {
+        // Vuốt sang phải -> Sang Trại Gà
+        router.push("/ga");
+      }
+    }
+  };
 
   // Modal Thêm / Sửa Lô Vịt
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -216,7 +178,6 @@ export default function DuckPage() {
     fetchData();
   }, [fetchData]);
 
-  // Phân chia rõ 2 nhóm
   const nativeBatches = batches.filter(b => b.purpose === "GIONG");
   const meatBatches = batches.filter(b => b.purpose === "THIT");
 
@@ -229,7 +190,6 @@ export default function DuckPage() {
     return acc + (getDuckDailyFeedGram(b.breed_type, age) * (b.current_count || 0)) / 1000;
   }, 0).toFixed(1);
 
-  // Mở modal Sửa Lô Vịt
   const handleOpenEditModal = (batch: PoultryBatch) => {
     setEditingBatchId(batch.id);
     setBatchFormData({
@@ -247,7 +207,6 @@ export default function DuckPage() {
     setShowBatchModal(true);
   };
 
-  // Mở modal Thêm Lô Vịt
   const handleOpenAddModal = (purpose: "GIONG" | "THIT") => {
     setEditingBatchId(null);
     const count = purpose === "GIONG" ? nativeBatches.length + 1 : meatBatches.length + 1;
@@ -267,7 +226,6 @@ export default function DuckPage() {
     setShowBatchModal(true);
   };
 
-  // Lưu Thêm/Sửa Lô
   const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batchFormData.batch_code?.trim()) return;
@@ -304,7 +262,6 @@ export default function DuckPage() {
     }
   };
 
-  // Lưu biên bản báo cân
   const handleSaveWeightLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBatchForWeigh) return;
@@ -338,7 +295,6 @@ export default function DuckPage() {
     }
   };
 
-  // Xuất bán lô vịt
   const handleSellBatch = async (batch: PoultryBatch) => {
     if (!confirm(`Xác nhận XUẤT BÁN toàn bộ ${batch.current_count} con của lô ${batch.batch_code}?`)) return;
     try {
@@ -357,8 +313,37 @@ export default function DuckPage() {
   if (!mounted) return <div style={{ padding: "20px", textAlign: "center" }}>Đang tải phân hệ Vịt...</div>;
 
   return (
-    <div style={{ backgroundColor: "#f0fdfa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}>
-      <FarmSpeciesNav />
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{ backgroundColor: "#f0fdfa", minHeight: "100vh", fontFamily: "system-ui, sans-serif", maxWidth: "480px", margin: "0 auto", paddingBottom: "75px" }}
+    >
+      {/* THANH ĐIỀU HƯỚNG TRÊN CÙNG */}
+      <div style={{ background: "#0f172a", padding: "8px 12px", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #1e293b" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+          <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "800", textTransform: "uppercase" }}>Hệ Thống Trại Nà Roác</span>
+          <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>⇄ Vuốt màn hình đổi loài</span>
+        </div>
+        <div style={{ display: "flex", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "3px", borderRadius: "10px" }}>
+          {[
+            { id: "PIG", label: "🐖 Trại Lợn", path: "/" },
+            { id: "CHICKEN", label: "🐓 Trại Gà", path: "/ga" },
+            { id: "DUCK", label: "🦆 Trại Vịt", path: "/vit" }
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => router.push(item.path)}
+              style={{
+                flex: 1, padding: "7px 0", borderRadius: "8px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
+                background: item.id === "DUCK" ? "#38bdf8" : "transparent",
+                color: item.id === "DUCK" ? "#0f172a" : "#cbd5e1"
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div style={{ padding: "16px" }}>
         {/* BANNER TỔNG ĐÀN VỊT */}
@@ -376,21 +361,20 @@ export default function DuckPage() {
           </div>
         </div>
 
-        {/* THANH CHUYỂN TAB CHUYÊN NGHIỆP */}
+        {/* THANH CHUYỂN TAB */}
         <div style={{ display: "flex", gap: "6px", background: "#ccfbf1", padding: "4px", borderRadius: "12px", marginBottom: "16px" }}>
           {[
             { id: "THUONG_PHAM", label: `🦆 Vịt Thịt (${meatBatches.length})` },
-            { id: "BAN_DIA", label: `👑 Vịt Bản Địa (${nativeBatches.length})` },
-            { id: "QUY_TRINH", label: `🩺 Quy Trình Kỹ Thuật` }
+            { id: "BAN_DIA", label: `👑 Bản Địa (${nativeBatches.length})` },
+            { id: "QUY_TRINH", label: `🩺 Quy Trình` }
           ].map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
               style={{
-                flex: 1, padding: "8px 0", borderRadius: "9px", border: "none", fontSize: "11.5px", fontWeight: "900", cursor: "pointer",
+                flex: 1, padding: "8px 0", borderRadius: "9px", border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
                 background: activeTab === t.id ? "#0f766e" : "transparent",
-                color: activeTab === t.id ? "#fff" : "#134e4a",
-                transition: "all 0.15s ease"
+                color: activeTab === t.id ? "#fff" : "#134e4a"
               }}
             >
               {t.label}
@@ -398,9 +382,7 @@ export default function DuckPage() {
           ))}
         </div>
 
-        {/* ================================================================= */}
-        {/* TAB 1: VỊT THƯƠNG PHẨM (VỊT SUPER, VỊT BẦU THỊT)                   */}
-        {/* ================================================================= */}
+        {/* TAB 1: VỊT THƯƠNG PHẨM */}
         {activeTab === "THUONG_PHAM" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
@@ -492,16 +474,13 @@ export default function DuckPage() {
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* TAB 2: VỊT BẢN ĐỊA / ĐÀN SINH SẢN                                  */}
-        {/* ================================================================= */}
+        {/* TAB 2: VỊT BẢN ĐỊA */}
         {activeTab === "BAN_DIA" && (
           <div>
-            {/* THU GOM TRỨNG VỊT */}
             <div style={{ background: "#fefce8", border: "1.5px solid #fef08a", borderRadius: "14px", padding: "14px 16px", marginBottom: "14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <b style={{ color: "#854d0e", fontSize: "13.5px" }}>🥚 THU TRỨNG & ẤP NỞ VỊT BẢN ĐỊA</b>
+                  <b style={{ color: "#854d0e", fontSize: "13.5px" }}>🥚 THU TRỨNG & ẤP NỞ BẢN ĐỊA</b>
                   <div style={{ fontSize: "12px", color: "#713f12", marginTop: "2px" }}>
                     Tổng thu gần đây: <b>{totalEggs} quả</b>
                   </div>
@@ -528,7 +507,7 @@ export default function DuckPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {nativeBatches.length === 0 ? (
                 <div style={{ padding: "20px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px", border: "1px solid #99f6e4" }}>
-                  Chưa có lô vịt bản địa / sinh sản nào. Bấm <b>"+ Tạo Lô Giống"</b> để đưa đàn vịt Cỏ / vịt Bầu vào theo dõi!
+                  Chưa có lô vịt bản địa / sinh sản nào. Bấm <b>"+ Tạo Lô Giống"</b> để đưa đàn vịt vào theo dõi!
                 </div>
               ) : (
                 nativeBatches.map(b => {
@@ -584,9 +563,7 @@ export default function DuckPage() {
           </div>
         )}
 
-        {/* ================================================================= */}
-        {/* TAB 3: QUY TRÌNH KỸ THUẬT & THÚ Y VỊT CHI TIẾT                     */}
-        {/* ================================================================= */}
+        {/* TAB 3: QUY TRÌNH KỸ THUẬT */}
         {activeTab === "QUY_TRINH" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
@@ -594,27 +571,26 @@ export default function DuckPage() {
                 🦆 1. KỸ THUẬT ÚM VỊT CON (1 – 21 NGÀY TUỔI)
               </h3>
               • <b>Nhiệt độ úm:</b> Ngày 1–3: 32–34°C; Ngày 4–7: 30–32°C; Tuần 2: 26–28°C; Tuần 3: 22–25°C. Vịt con rất mẫn cảm với ẩm ướt và lạnh bụng.<br/>
-              • <b>Nước uống:</b> Vịt cần lượng nước gấp đôi gia cầm khác, nhưng <b>tuyệt đối không để vịt ướt lông hoặc bơi lội trước 14 ngày tuổi</b> vì chưa phát triển tuyến nhờn chống thấm nước.<br/>
-              • <b>Tập ăn:</b> Ngày 1 cho ăn hạt gạo tấm hoặc ngô mảnh ngâm mềm; từ ngày thứ 2 bắt đầu cho ăn cám viên chuyên dụng cho vịt con.
+              • <b>Nước uống:</b> Cung cấp nước sạch dồi dào, nhưng <b>tuyệt đối không để vịt ướt lông hoặc bơi lội trước 14 ngày tuổi</b> vì chưa hoàn thiện tuyến nhờn chống thấm nước.<br/>
+              • <b>Tập ăn:</b> Ngày đầu cho ăn gạo tấm hoặc ngô mảnh ngâm mềm; từ ngày thứ 2 chuyển sang cám viên úm chuyên dụng.
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#1d4ed8" }}>
                 💉 2. PHÁC ĐỒ VACCINE VỊT BẮT BUỘC
               </h3>
-              • <b>1 – 3 ngày:</b> Tiêm vaccine hoặc kháng thể phòng bệnh <b>Viêm gan siêu vi trùng vịt</b> (bệnh gây chết nhanh co giật ngửa cổ).<br/>
+              • <b>1 – 3 ngày:</b> Tiêm vaccine phòng bệnh <b>Viêm gan siêu vi trùng vịt</b>.<br/>
               • <b>14 – 15 ngày:</b> Tiêm dưới da cổ vaccine phòng bệnh <b>Dịch tả vịt lần 1</b>.<br/>
               • <b>21 – 25 ngày:</b> Tiêm vaccine phòng <b>Cúm gia cầm (H5N1 / H5N6)</b> mũi 1.<br/>
-              • <b>35 ngày:</b> Nhắc lại Dịch tả vịt lần 2 (nếu nuôi vịt Bầu kéo dài trên 60 ngày hoặc vịt đẻ).<br/>
-              • <b>Phòng bại liệt, E.coli, Riemerella:</b> Định kỳ bổ sung kháng sinh amoxicillin hoặc doxy-colistin vào các ngày thay đổi thời tiết.
+              • <b>35 ngày:</b> Nhắc lại Dịch tả vịt lần 2 (nếu nuôi vịt Bầu kéo dài trên 60 ngày hoặc nuôi đẻ trứng).
             </div>
 
             <div style={{ background: "#fff", padding: "16px", borderRadius: "14px", border: "1px solid #99f6e4", fontSize: "13px", lineHeight: "1.8" }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: "900", color: "#15803d" }}>
-                🌾 3. DINH DƯỠNG VỖ BÉO & TẬN DỤNG THỦY SINH
+                🌾 3. DINH DƯỠNG VỖ BÉO & THẢ MẶT NƯỚC
               </h3>
-              • <b>Vịt Super thịt:</b> Nuôi nhốt cạn hoặc bán thâm canh, cho ăn cám công nghiệp tự do kết hợp máng uống tự động để đạt cân nặng 3.4–3.6 kg ở ngày 48–50.<br/>
-              • <b>Vịt Bầu / Vịt Cỏ Cao Bằng:</b> Sau 25 ngày có thể thả mặt nước ao hồ sạch, đồng ruộng sau mùa gặt. Bổ sung ốc bươu, cá tép, ngô hạt ủ men vi sinh để thịt thơm đậm đà, giảm 40% tiền cám viên.
+              • <b>Vịt Super thịt:</b> Nuôi nhốt bán thâm canh, cám viên tự do kết hợp máng uống chảy liên tục để đạt trọng lượng 3.4–3.6 kg ở ngày 48–50.<br/>
+              • <b>Vịt Bầu / Vịt Cỏ bản địa:</b> Sau 25 ngày bắt đầu cho tắm ao sạch hoặc thả đồng sau gặt. Bổ sung ngô hạt ủ men vi sinh và rau bèo để thịt chắc, thơm ngậy.
             </div>
           </div>
         )}
@@ -697,7 +673,7 @@ export default function DuckPage() {
 
               <div>
                 <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú thêm:</label>
-                <input placeholder="Thương lái đặt trước, tình trạng..." value={batchFormData.notes} onChange={e => setBatchFormData({ ...batchFormData, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
+                <input placeholder="Thương lái, tình trạng..." value={batchFormData.notes} onChange={e => setBatchFormData({ ...batchFormData, notes: e.target.value })} style={{ width: "100%", padding: "7px", borderRadius: "6px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "8px" }}>
