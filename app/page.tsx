@@ -332,6 +332,7 @@ export default function FarmApp() {
 
   const [editingInsemId, setEditingInsemId] = useState<string | null>(null);
   const [insemFormData, setInsemFormData] = useState({
+  const [isEditInsemExternal, setIsEditInsemExternal] = useState<boolean>(false);
     sow_ear_tag: "",
     boar_ear_tag: "",
     mating_date: new Date().toISOString().split("T")[0]
@@ -2828,19 +2829,21 @@ export default function FarmApp() {
                                   </div>
                                 </div>
                                 <button
-                                  onClick={() => {
-                                    if (!requireAuth("sửa ngày phối giống")) return;
-                                    setEditingInsemId(ins.id);
-                                    setInsemFormData({
-                                      sow_ear_tag: ins.sow_ear_tag,
-                                      boar_ear_tag: ins.boar_ear_tag || "",
-                                      mating_date: ins.mating_date || new Date().toISOString().split("T")[0]
-                                    });
-                                  }}
-                                  style={{ padding: "5px 10px", borderRadius: "6px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
-                                >
-                                  ✎ Sửa ngày phối
-                                </button>
+    onClick={() => {
+      if (!requireAuth("sửa ngày phối giống")) return;
+      setEditingInsemId(ins.id);
+      const isBoarInFarm = boarList.some(b => b.ear_tag.trim().toUpperCase() === (ins.boar_ear_tag || "").trim().toUpperCase());
+      setIsEditInsemExternal(!isBoarInFarm && !!ins.boar_ear_tag);
+      setInsemFormData({
+        sow_ear_tag: ins.sow_ear_tag,
+        boar_ear_tag: ins.boar_ear_tag || "",
+        mating_date: ins.mating_date || new Date().toISOString().split("T")[0]
+      });
+    }}
+    style={{ padding: "5px 10px", borderRadius: "6px", background: "#ede9fe", color: "#6d28d9", border: "none", fontSize: "11px", fontWeight: "800", cursor: "pointer" }}
+  >
+    ✎ Sửa ngày phối
+  </button>
                               </div>
                             );
                           })
