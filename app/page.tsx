@@ -1544,7 +1544,26 @@ export default function FarmApp() {
         is_auto: true
       });
     });
+    // TỰ ĐỘNG NHẮC CAI SỮA (MỐC 24 - 30 NGÀY TUỔI)
+      if (ageDays >= 24) {
+        const weanKey = `wean-alert-${tagUpper}-${lit.farrow_date}`;
+        const isWeanedInDb = (Array.isArray(dbTasks) ? dbTasks : []).some(
+          t => (t.related_tag || "").trim().toUpperCase() === tagUpper &&
+               t.category === "WEAN" &&
+               t.is_completed
+        );
 
+        taskMap.set(weanKey, {
+          id: weanKey,
+          title: `[CAI SỮA] Đàn con nái ${lit.sow_ear_tag} đã ${ageDays} ngày tuổi (${lit.alive_born} con) - Đạt tuổi cai sữa!`,
+          due_date: safeAddDays(lit.farrow_date, 28),
+          related_tag: lit.sow_ear_tag,
+          category: "WEAN",
+          is_completed: completedTaskKeys.includes(weanKey) || isWeanedInDb,
+          is_dismissed: dismissedTaskKeys.includes(weanKey),
+          is_auto: true
+        });
+      }
     sowList.filter(p => checkSowState(p) === "HAUBI" && p.birth_date).forEach(hb => {
       const tagUpper = hb.ear_tag.trim().toUpperCase();
       const ageDays = safeDateDiff(hb.birth_date);
@@ -2325,7 +2344,16 @@ export default function FarmApp() {
                     <span>Lô nái {lit.sow_ear_tag} ({lit.litter_code})</span>
                     <span style={{ color: "#047857" }}>{lit.alive_born} con</span>
                   </div>
-                  <div style={{ fontSize: "13px", color: "#64748b", margin: "6px 0" }}>Ngày đẻ: {formatDateVN(lit.farrow_date)}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
+  <span style={{ fontSize: "13px", color: "#64748b" }}>
+    Ngày đẻ: <b>{formatDateVN(lit.farrow_date)}</b> ({safeDateDiff(lit.farrow_date)} ngày tuổi)
+  </span>
+  {safeDateDiff(lit.farrow_date) >= 28 && (
+    <span style={{ background: "#fee2e2", color: "#dc2626", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: "900", border: "1px solid #fecaca" }}>
+      ⚠️ ĐẾN NGÀY CAI SỮA
+    </span>
+  )}
+</div>
                   
                   {/* HÀNG NÚT BẤM ĐẦY ĐỦ TRỰC TIẾP TẠI TAB */}
                   <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
