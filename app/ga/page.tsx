@@ -41,28 +41,37 @@ interface EggHarvest {
 
 const getStandardWeightChicken = (breedType: string, dayAge: number): number => {
   const b = (breedType || "").toLowerCase();
-  if (b.includes("h'mông") || b.includes("đen") || b.includes("bản địa") || b.includes("ta")) {
-    if (dayAge <= 7) return 55;
-    if (dayAge <= 14) return 100;
-    if (dayAge <= 21) return 180;
-    if (dayAge <= 30) return 310;
-    if (dayAge <= 45) return 550;
-    if (dayAge <= 60) return 850;
-    if (dayAge <= 75) return 1150;
-    if (dayAge <= 90) return 1450;
-    if (dayAge <= 120) return 1800;
-    return 2050;
+
+  // 1. GÀ BẢN ĐỊA NHỎ CON (Gà Đen H'Mông, Gà Ri thuần, Gà Ta)
+  if (b.includes("h'mông") || b.includes("đen") || b.includes("bản địa") || b.includes("thuần")) {
+    if (dayAge <= 7) return 45;
+    if (dayAge <= 14) return 85;
+    if (dayAge <= 21) return 150;
+    if (dayAge <= 30) return 260;
+    if (dayAge <= 45) return 450;
+    if (dayAge <= 50) return 550;
+    if (dayAge <= 60) return 750;
+    if (dayAge <= 75) return 1050;
+    if (dayAge <= 90) return 1350;
+    if (dayAge <= 120) return 1750;
+    return 1950;
   }
-  if (dayAge <= 7) return 65;
-  if (dayAge <= 14) return 135;
-  if (dayAge <= 21) return 260;
-  if (dayAge <= 30) return 460;
-  if (dayAge <= 45) return 820;
-  if (dayAge <= 60) return 1250;
-  if (dayAge <= 75) return 1650;
-  if (dayAge <= 90) return 2050;
-  if (dayAge <= 105) return 2350;
-  return 2550;
+
+  // 2. GÀ RI LAI (1/2, 3/4), GÀ LẠC THỦY, GÀ MÍA THẢ VƯỜN THỰC TẾ
+  if (dayAge <= 7) return 55;
+  if (dayAge <= 14) return 110;
+  if (dayAge <= 21) return 190;
+  if (dayAge <= 30) return 330;
+  if (dayAge <= 40) return 500;
+  if (dayAge <= 45) return 600;
+  if (dayAge <= 50) return 700;   // <-- 50 ngày chuẩn bình quân đạt 700g
+  if (dayAge <= 60) return 920;   // 2 tháng đạt gần 1kg
+  if (dayAge <= 70) return 1200;
+  if (dayAge <= 80) return 1450;
+  if (dayAge <= 90) return 1700;  // 3 tháng đạt 1.7kg
+  if (dayAge <= 100) return 1950;
+  if (dayAge <= 110) return 2150;
+  return 2300;                    // Xuất bán
 };
 
 const formatDateVN = (dStr?: string) => {
