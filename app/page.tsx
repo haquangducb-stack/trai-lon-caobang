@@ -95,6 +95,8 @@ const formatVietnameseStage = (rawStage?: string) => {
   if (s === "CHO_PHOI" || s === "CHOPHOI" || s === "WEANED" || s.includes("CHỜ") || s.includes("CHO")) return "Chờ phối";
   if (s === "CAI_SUA" || s === "CAISUA" || s === "DA_CAI_SUA") return "Đã cai sữa";
   if (s === "THIT" || s === "VO_BEO" || s === "VO_BEO_THIT" || s === "FATTEN" || s.includes("THỊT") || s.includes("THIT")) return "Vỗ béo thịt";
+  if (s.includes("LOẠI THẢI") || s.includes("LOAI THAI")) return "Đã loại thải";
+  if (s.includes("ĐÃ XUẤT") || s.includes("DA XUAT")) return "Đã xuất bán";
   return rawStage;
 };
 
@@ -189,6 +191,19 @@ export default function FarmApp() {
   const [showLitterActionModal, setShowLitterActionModal] = useState(false);
   const [pigletSelections, setPigletSelections] = useState<Record<number, "NONE" | "GILT" | "MEAT">>({});
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
+
+  // Modal Xuất bán hàng loạt lợn thịt
+  const [showBulkSellModal, setShowBulkSellModal] = useState(false);
+  const [selectedMeatIds, setSelectedMeatIds] = useState<string[]>([]);
+  const [bulkTotalWeight, setBulkTotalWeight] = useState<string>("");
+  const [bulkNotes, setBulkNotes] = useState<string>("");
+  const [isBulkSelling, setIsBulkSelling] = useState(false);
+
+  // Modal Loại thải / Xuất bán Nái & Đực
+  const [cullTargetPig, setCullTargetPig] = useState<Pig | null>(null);
+  const [cullReason, setCullReason] = useState<string>("Loại thải (Lốc nhiều lần / Kém sinh sản)");
+  const [cullWeight, setCullWeight] = useState<string>("");
+  const [isCulling, setIsCulling] = useState(false);
 
   const [activityPhotoModal, setActivityPhotoModal] = useState<{
     isOpen: boolean;
@@ -499,21 +514,36 @@ export default function FarmApp() {
     return tag.includes("-C") || tag.includes("CON");
   };
 
+  // Kiểm tra lợn đã xuất bán hoặc loại thải (để không đếm vào đàn hiện tại)
+  const isArchivedOrSold = (pig?: Pig) => {
+    if (!pig) return true;
+    const st = (pig.stage || "").toLowerCase();
+    const status = (pig.status || "").toLowerCase();
+    return (
+      st.includes("đã xuất") ||
+      st.includes("da xuat") ||
+      st.includes("loại thải") ||
+      st.includes("loai thai") ||
+      status.includes("đã xuất") ||
+      status.includes("loại thải")
+    );
+  };
+
   const isMeat = (pig?: Pig) => {
-    if (!pig || isIndividualPiglet(pig)) return false;
+    if (!pig || isIndividualPiglet(pig) || isArchivedOrSold(pig)) return false;
     const st = (pig.stage || "").toLowerCase();
     return st.includes("thịt") || st.includes("thit") || st.includes("vỗ béo") || st.includes("vo beo");
   };
 
   const isBoar = (pig?: Pig) => {
-    if (!pig || isIndividualPiglet(pig) || isMeat(pig)) return false;
+    if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isArchivedOrSold(pig)) return false;
     const sx = (pig.sex || "").trim().toLowerCase();
     const st = (pig.stage || "").trim().toLowerCase();
     return (sx === "đực" || sx === "duc" || st.includes("đực") || st.includes("duc")) && !sx.includes("cái") && !sx.includes("cai");
   };
 
   const isSow = (pig?: Pig) => {
-    if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isBoar(pig)) return false;
+    if (!pig || isIndividualPiglet(pig) || isMeat(pig) || isBoar(pig) || isArchivedOrSold(pig)) return false;
     return true;
   };
 
@@ -533,6 +563,130 @@ export default function FarmApp() {
   const sowList = safePigs.filter(isSow);
   const boarList = safePigs.filter(isBoar);
   const meatList = safePigs.filter(isMeat);
+
+  // Xuất bán 1 con lợn thịt
+  const handleSellMeatPig = async (pig: Pig) => {
+    if (!requireAuth("xuất bán lợn thịt")) return;
+    const weightStr = prompt(`Xác nhận XUẤT BÁN lợn thịt ${pig.ear_tag}?\nNhập trọng lượng xuất chuồng (kg) hoặc bỏ trống:`, "100");
+    if (weightStr === null) return;
+
+    try {
+      const todayStr = new Date().toLocaleDateString("vi-VN");
+      const weightNote = weightStr.trim() ? ` - Trọng lượng: ${weightStr.trim()} kg` : "";
+      const newNote = `${pig.notes || ""} [Đã xuất bán ngày ${todayStr}${weightNote}]`.trim();
+
+      const { error } = await supabase
+        .from("pigs")
+        .update({
+          stage: "Đã xuất bán",
+          status: "Đã xuất",
+          notes: newNote
+        })
+        .eq("id", pig.id);
+
+      if (error) throw error;
+
+      await logAction(
+        "SELL_MEAT_PIG",
+        pig.ear_tag,
+        `Xuất bán lợn thịt ${pig.ear_tag} (${pig.breed_id})${weightNote}`
+      );
+
+      alert(`✅ Đã ghi nhận xuất bán thành công lợn thịt ${pig.ear_tag}!`);
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi xuất bán: " + err.message);
+    }
+  };
+
+  // Xuất bán hàng loạt nhiều con lợn thịt
+  const handleConfirmBulkSell = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requireAuth("xuất bán đàn lợn thịt")) return;
+    if (selectedMeatIds.length === 0) {
+      alert("Vui lòng tích chọn ít nhất 1 con lợn thịt để xuất bán!");
+      return;
+    }
+
+    setIsBulkSelling(true);
+    try {
+      const todayStr = new Date().toLocaleDateString("vi-VN");
+      const targetPigs = meatList.filter(p => selectedMeatIds.includes(p.id));
+      const tagList = targetPigs.map(p => p.ear_tag).join(", ");
+      const weightStr = bulkTotalWeight.trim() ? ` - Tổng trọng lượng: ${bulkTotalWeight.trim()} kg` : "";
+      const extraNote = bulkNotes.trim() ? ` (${bulkNotes.trim()})` : "";
+
+      for (const p of targetPigs) {
+        await supabase
+          .from("pigs")
+          .update({
+            stage: "Đã xuất bán",
+            status: "Đã xuất",
+            notes: `${p.notes || ""} [Xuất bán lô ngày ${todayStr}${weightStr}${extraNote}]`.trim()
+          })
+          .eq("id", p.id);
+      }
+
+      await logAction(
+        "BULK_SELL_MEAT",
+        `Lô ${targetPigs.length} con`,
+        `Xuất bán đàn lợn thịt (${targetPigs.length} con: ${tagList})${weightStr}${extraNote}`
+      );
+
+      alert(`✅ Đã xuất bán thành công ${targetPigs.length} con lợn thịt!`);
+      setShowBulkSellModal(false);
+      setSelectedMeatIds([]);
+      setBulkTotalWeight("");
+      setBulkNotes("");
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi xuất bán hàng loạt: " + err.message);
+    } finally {
+      setIsBulkSelling(false);
+    }
+  };
+
+  // Loại thải / Xuất bán Nái & Đực
+  const handleConfirmCullPig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requireAuth("loại thải / xuất bán vật nuôi")) return;
+    if (!cullTargetPig) return;
+
+    setIsCulling(true);
+    try {
+      const todayStr = new Date().toLocaleDateString("vi-VN");
+      const weightNote = cullWeight.trim() ? ` - Trọng lượng: ${cullWeight.trim()} kg` : "";
+      const roleName = isBoar(cullTargetPig) ? "Đực giống" : "Lợn nái";
+      const fullNote = `${cullTargetPig.notes || ""} [Đã loại thải ngày ${todayStr}: ${cullReason}${weightNote}]`.trim();
+
+      const { error } = await supabase
+        .from("pigs")
+        .update({
+          stage: "Đã loại thải",
+          status: "Đã loại thải",
+          notes: fullNote
+        })
+        .eq("id", cullTargetPig.id);
+
+      if (error) throw error;
+
+      await logAction(
+        "CULL_BREEDER",
+        cullTargetPig.ear_tag,
+        `Loại thải ${roleName} ${cullTargetPig.ear_tag} (${cullTargetPig.breed_id}) - Lý do: ${cullReason}${weightNote}`
+      );
+
+      alert(`✅ Đã ghi nhận loại thải ${roleName} ${cullTargetPig.ear_tag}!\nCá thể đã được đưa ra khỏi danh sách đàn sinh sản.`);
+      setCullTargetPig(null);
+      setActiveProfilePig(null);
+      setCullWeight("");
+      await fetchData();
+    } catch (err: any) {
+      alert("Lỗi khi loại thải: " + err.message);
+    } finally {
+      setIsCulling(false);
+    }
+  };
 
   const getSowConsecutiveRepeats = useCallback((sowTag: string) => {
     const normTag = sowTag.trim().toUpperCase();
@@ -751,7 +905,7 @@ export default function FarmApp() {
       }
 
       const sowInFarm = safePigs.find(p => (p.ear_tag || "").trim().toUpperCase() === l.sow_ear_tag.trim().toUpperCase());
-      if (sowInFarm && (checkSowState(sowInFarm) === "CHOPHOI" || checkSowState(sowInFarm) === "CHUA")) {
+      if (sowInFarm && (checkSowState(sowInFarm) === "CHOPHOI" || checkSowState(sowInFarm) === "CHUA" || isArchivedOrSold(sowInFarm))) {
         return false;
       }
 
@@ -848,7 +1002,6 @@ export default function FarmApp() {
         is_dismissed: false
       }]);
 
-      const logId = "log-" + Date.now();
       const logDetails = `Cai sữa đàn con nái ${cleanTag} (${litterCount || ""} con). Nái mẹ chuyển Chờ phối.`;
       await logAction("WEAN_LITTER", cleanTag, logDetails);
 
@@ -888,10 +1041,10 @@ export default function FarmApp() {
 
     const selections = Object.entries(pigletSelections);
     const giltList = selections.filter(([_, v]) => v === "GILT");
-    const meatList = selections.filter(([_, v]) => v === "MEAT");
+    const meatListSel = selections.filter(([_, v]) => v === "MEAT");
 
     const giltCount = giltList.length;
-    const meatCount = meatList.length;
+    const meatCount = meatListSel.length;
 
     if (giltCount === 0 && meatCount === 0) {
       alert("Bạn chưa tích chọn con nào để chuyển thành Hậu bị hoặc Nuôi thịt!");
@@ -1730,6 +1883,9 @@ export default function FarmApp() {
 
   const renderPigCard = (pig: Pig) => {
     const isThisSow = isSow(pig);
+    const isThisBoar = isBoar(pig);
+    const isThisMeat = isMeat(pig);
+
     const reproData = isThisSow ? getSowReproAnalysis(pig.ear_tag) : null;
     const currentState = checkSowState(pig);
     const gestation = isThisSow && currentState === "CHUA" ? getGestationProgress(pig.ear_tag) : null;
@@ -1752,7 +1908,7 @@ export default function FarmApp() {
           gap: "8px"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ fontSize: "21px", fontWeight: "900", color: "#1e1b4b", letterSpacing: "0.5px" }}>
               {pig.ear_tag}
@@ -1762,7 +1918,8 @@ export default function FarmApp() {
             </span>
           </div>
           
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {/* NÚT PHỐI GIỐNG */}
             {canMate && (
               <button
                 onClick={() => {
@@ -1775,20 +1932,21 @@ export default function FarmApp() {
                   setShowMatingModal(true);
                 }}
                 style={{
-                  fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                  fontSize: "12px", fontWeight: "900", padding: "7px 10px", borderRadius: "9px",
                   background: "#7c3aed", color: "#fff", border: "none", cursor: "pointer"
                 }}
               >
-                🔬 Phối giống
+                🔬 Phối
               </button>
             )}
 
+            {/* NÚT BÁO LỐC & BÁO ĐẺ */}
             {isThisSow && currentState === "CHUA" && (
               <>
                 <button
                   onClick={() => handleReportSowRepeat(pig.ear_tag)}
                   style={{
-                    fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                    fontSize: "12px", fontWeight: "900", padding: "7px 10px", borderRadius: "9px",
                     background: "#ea580c", color: "#fff", border: "none", cursor: "pointer"
                   }}
                 >
@@ -1807,7 +1965,7 @@ export default function FarmApp() {
                     setFarrowingSow(pig);
                   }}
                   style={{
-                    fontSize: "13px", fontWeight: "900", padding: "7px 12px", borderRadius: "10px",
+                    fontSize: "12px", fontWeight: "900", padding: "7px 10px", borderRadius: "9px",
                     background: "#10b981", color: "#fff", border: "none", cursor: "pointer"
                   }}
                 >
@@ -1816,6 +1974,44 @@ export default function FarmApp() {
               </>
             )}
 
+            {/* NÚT XUẤT BÁN LỢN THỊT */}
+            {isThisMeat && (
+              <button
+                onClick={() => handleSellMeatPig(pig)}
+                style={{
+                  fontSize: "12px", fontWeight: "900", padding: "7px 12px", borderRadius: "9px",
+                  background: "#fef3c7", color: "#b45309", border: "1.5px solid #fde68a", cursor: "pointer"
+                }}
+              >
+                💰 Xuất bán
+              </button>
+            )}
+
+            {/* NÚT LOẠI THẢI CHO NÁI VÀ ĐỰC */}
+            {(isThisSow || isThisBoar) && (
+              <button
+                onClick={() => {
+                  if (!requireAuth("loại thải vật nuôi")) return;
+                  setCullTargetPig(pig);
+                  setCullReason(
+                    consecutiveRepeats >= 2
+                      ? `Loại thải do lốc liên tiếp ${consecutiveRepeats} lần`
+                      : isThisBoar
+                        ? "Loại thải đực già / kém chất lượng tinh"
+                        : "Loại thải (Già yếu / Kém sữa / Xương chân)"
+                  );
+                  setCullWeight("");
+                }}
+                style={{
+                  fontSize: "12px", fontWeight: "800", padding: "7px 10px", borderRadius: "9px",
+                  background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", cursor: "pointer"
+                }}
+              >
+                🏷️ Loại thải
+              </button>
+            )}
+
+            {/* NÚT HỒ SƠ CHI TIẾT */}
             <button
               onClick={() => {
                 setActiveProfilePig({ ...pig });
@@ -1824,11 +2020,11 @@ export default function FarmApp() {
                 setEditingInsemId(null);
               }}
               style={{
-                fontSize: "13px", fontWeight: "800", padding: "7px 14px", borderRadius: "10px",
+                fontSize: "12px", fontWeight: "800", padding: "7px 12px", borderRadius: "9px",
                 background: "#ede9fe", color: "#6d28d9", border: "1.5px solid #ddd6fe", cursor: "pointer"
               }}
             >
-              ⚙️ Hồ Sơ & Chi Tiết
+              ⚙️ Hồ Sơ
             </button>
           </div>
         </div>
@@ -2445,10 +2641,41 @@ export default function FarmApp() {
         </div>
       )}
 
+      {/* 5. TAB LỢN THỊT (CÓ NÚT XUẤT BÁN HÀNG LOẠT & TỪNG CON) */}
       {currentMenu === "MEAT" && (
         <div style={{ padding: "16px" }}>
-          <div style={{ fontSize: "15px", fontWeight: "900", color: "#854d0e", marginBottom: "12px" }}>ĐÀN LỢN THỊT ({meatList.length} CON)</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>{meatList.map(renderPigCard)}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <span style={{ fontSize: "15px", fontWeight: "900", color: "#854d0e" }}>
+              ĐÀN LỢN THỊT ({meatList.length} CON)
+            </span>
+            {meatList.length > 0 && (
+              <button
+                onClick={() => {
+                  if (!requireAuth("xuất bán hàng loạt lợn thịt")) return;
+                  setSelectedMeatIds(meatList.map(p => p.id));
+                  setBulkTotalWeight("");
+                  setBulkNotes("");
+                  setShowBulkSellModal(true);
+                }}
+                style={{
+                  padding: "8px 14px", borderRadius: "10px", background: "#d97706", color: "#fff",
+                  border: "none", fontSize: "12px", fontWeight: "900", cursor: "pointer",
+                  boxShadow: "0 2px 4px rgba(217, 119, 6, 0.3)"
+                }}
+              >
+                💰 Xuất bán đàn / Chọn nhiều
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {meatList.length === 0 ? (
+              <div style={{ padding: "20px", textAlign: "center", background: "#fff", borderRadius: "12px", color: "#64748b", fontSize: "13px" }}>
+                Hiện chưa có lợn thịt đang vỗ béo.
+              </div>
+            ) : (
+              meatList.map(renderPigCard)
+            )}
+          </div>
         </div>
       )}
 
@@ -2458,12 +2685,14 @@ export default function FarmApp() {
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {safePigs.filter(p => !isIndividualPiglet(p)).map(pig => {
               const bCat = getBreedCategoryInfo(pig.breed_id, pig.sire_ear_tag, pig.dam_ear_tag);
+              const isInactive = isArchivedOrSold(pig);
               return (
-                <div key={pig.id} style={{ background: "#fff", padding: "12px 16px", borderRadius: "12px", border: "1px solid #f1e5f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={pig.id} style={{ background: isInactive ? "#f1f5f9" : "#fff", padding: "12px 16px", borderRadius: "12px", border: "1px solid #f1e5f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <b style={{ fontSize: "16px" }}>{pig.ear_tag}</b>
+                      <b style={{ fontSize: "16px", color: isInactive ? "#64748b" : "#0f172a" }}>{pig.ear_tag}</b>
                       <span style={{ fontSize: "10px", fontWeight: "800", padding: "2px 6px", borderRadius: "4px", background: "#f5f3ff", color: bCat.badgeColor }}>{bCat.label}</span>
+                      {isInactive && <span style={{ fontSize: "10px", fontWeight: "800", padding: "2px 6px", borderRadius: "4px", background: "#e2e8f0", color: "#475569" }}>{pig.stage}</span>}
                     </div>
                     <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>Bố: {pig.sire_ear_tag || "—"} • Mẹ: {pig.dam_ear_tag || "—"}</div>
                   </div>
@@ -2622,6 +2851,158 @@ export default function FarmApp() {
           </button>
         ))}
       </nav>
+
+      {/* MODAL LOẠI THẢI / XUẤT BÁN NÁI & ĐỰC */}
+      {cullTargetPig && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "360px", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "17px", fontWeight: "900", color: "#dc2626" }}>
+              🏷️ Loại Thải / Xuất Bán: {cullTargetPig.ear_tag}
+            </h3>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+              Giống: <b>{cullTargetPig.breed_id}</b> • Ô: <b>{cullTargetPig.current_pen_code}</b>
+            </div>
+            <form onSubmit={handleConfirmCullPig} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Lý do loại thải / xuất bán (*):</label>
+                <select
+                  value={cullReason}
+                  onChange={e => setCullReason(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px" }}
+                >
+                  <option value="Loại thải (Lốc nhiều lần / Kém sinh sản)">Loại thải (Lốc nhiều lần / Kém sinh sản)</option>
+                  <option value="Loại thải (Nái già yếu / Kém sữa)">Loại thải (Nái già yếu / Kém sữa)</option>
+                  <option value="Loại thải (Bệnh tật / Xương chân)">Loại thải (Bệnh tật / Xương chân)</option>
+                  <option value="Xuất bán con giống ra ngoài">Xuất bán con giống ra ngoài</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800" }}>Trọng lượng xuất (kg - tùy chọn):</label>
+                <input
+                  type="number"
+                  placeholder="VD: 140..."
+                  value={cullWeight}
+                  onChange={e => setCullWeight(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "3px", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ background: "#fef2f2", padding: "8px 10px", borderRadius: "8px", fontSize: "11.5px", color: "#991b1b" }}>
+                * Cá thể này sẽ được trừ khỏi đàn hiện tại nhưng vẫn lưu giữ hồ sơ phục vụ tra cứu phả hệ đời con.
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
+                <button type="button" onClick={() => setCullTargetPig(null)} style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button type="submit" disabled={isCulling} style={{ padding: "8px 16px", borderRadius: "8px", background: "#dc2626", color: "#fff", border: "none", fontWeight: "800", cursor: "pointer" }}>
+                  {isCulling ? "Đang xử lý..." : "✓ Xác Nhận Loại Thải"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XUẤT BÁN HÀNG LOẠT LỢN THỊT */}
+      {showBulkSellModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 160, display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", width: "100%", maxWidth: "400px", maxHeight: "90vh", display: "flex", flexDirection: "column", padding: "18px" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "17px", fontWeight: "900", color: "#b45309" }}>
+              💰 Xuất Bán Đàn Lợn Thịt
+            </h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <span style={{ fontSize: "12px", color: "#475569" }}>
+                Đã chọn: <b style={{ color: "#d97706", fontSize: "14px" }}>{selectedMeatIds.length}/{meatList.length} con</b>
+              </span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMeatIds(meatList.map(p => p.id))}
+                  style={{ padding: "4px 8px", fontSize: "11px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer", fontWeight: "700" }}
+                >
+                  Chọn tất cả
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMeatIds([])}
+                  style={{ padding: "4px 8px", fontSize: "11px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer", fontWeight: "700" }}
+                >
+                  Bỏ chọn
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowY: "auto", flex: 1, border: "1px solid #e2e8f0", borderRadius: "10px", padding: "8px", marginBottom: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              {meatList.map(p => {
+                const isChecked = selectedMeatIds.includes(p.id);
+                return (
+                  <label
+                    key={p.id}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px",
+                      borderRadius: "8px", border: isChecked ? "1.5px solid #d97706" : "1px solid #f1f5f9",
+                      background: isChecked ? "#fffbeb" : "#fff", cursor: "pointer"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedMeatIds([...selectedMeatIds, p.id]);
+                          else setSelectedMeatIds(selectedMeatIds.filter(id => id !== p.id));
+                        }}
+                      />
+                      <b style={{ fontSize: "14px", color: "#1e293b" }}>{p.ear_tag}</b>
+                      <span style={{ fontSize: "12px", color: "#64748b" }}>({p.breed_id})</span>
+                    </div>
+                    <span style={{ fontSize: "11px", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
+                      Ô: {p.current_pen_code}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <form onSubmit={handleConfirmBulkSell} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Tổng trọng lượng cả lô xuất bán (kg):</label>
+                <input
+                  type="number"
+                  placeholder="VD: 850..."
+                  value={bulkTotalWeight}
+                  onChange={e => setBulkTotalWeight(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "2px", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: "800" }}>Ghi chú (Thương lái, giá bán...):</label>
+                <input
+                  placeholder="VD: Bán cho thương lái A..."
+                  value={bulkNotes}
+                  onChange={e => setBulkNotes(e.target.value)}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", marginTop: "2px", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
+                <button type="button" onClick={() => setShowBulkSellModal(false)} style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}>Hủy</button>
+                <button
+                  type="submit"
+                  disabled={isBulkSelling || selectedMeatIds.length === 0}
+                  style={{
+                    padding: "8px 16px", borderRadius: "8px", background: selectedMeatIds.length === 0 ? "#cbd5e1" : "#d97706",
+                    color: "#fff", border: "none", fontWeight: "900", cursor: selectedMeatIds.length === 0 ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {isBulkSelling ? "Đang xử lý..." : `✓ Xác Nhận Bán (${selectedMeatIds.length} con)`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showLitterActionModal && selectedLitter && (() => {
         const total = selectedLitter.alive_born || 0;
@@ -2890,6 +3271,8 @@ export default function FarmApp() {
                       <option value="Đang chửa">🤰 Đang chửa</option>
                       <option value="Nuôi con">🍼 Nuôi con</option>
                       <option value="Đực giống">🐗 Đực giống</option>
+                      <option value="Đã xuất bán">💰 Đã xuất bán</option>
+                      <option value="Đã loại thải">🏷️ Đã loại thải</option>
                     </select>
                   </div>
 
